@@ -1,0 +1,1 @@
+ALTER TABLE online_orders ADD COLUMN IF NOT EXISTS customer_id uuid REFERENCES customers(id) ON DELETE SET NULL;

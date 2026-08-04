@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "美業管家",
+    "slug": "beauty-crm-app",
+    "version": "1.0.75",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "buildNumber": "1",
+      "bundleIdentifier": "com.miaoda.appd2yss59nidj5"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "predictiveBackGestureEnabled": false,
+      "versionCode": 1,
+      "package": "com.miaoda.appd2yss59nidj5"
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-asset",
+      "expo-sqlite",
+      "expo-font",
+      "expo-system-ui",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "允許美業管家使用相機拍攝施術照片",
+          "photosPermission": "允許美業管家存取相片庫以選擇施術照片"
+        }
+      ],
+      "expo-image",
+      "expo-file-system",
+      "expo-web-browser"
+    ],
+    "router": {
+      "root": "src"
+    },
+    "experiments": {
+      "typedRoutes": true
+    },
+    "scheme": "appd2yss59nidj5"
+  }
+}

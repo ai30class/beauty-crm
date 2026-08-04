@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* 梦幻治愈：棉花粉主色 + 薄荷绿辅助 */
+    --background: 0 0% 99%;
+    --foreground: 340 15% 25%;
+    --card: 0 0% 100%;
+    --card-foreground: 340 15% 25%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 340 15% 25%;
+    --primary: 340 60% 70%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 160 35% 88%;
+    --secondary-foreground: 160 20% 30%;
+    --muted: 340 20% 96%;
+    --muted-foreground: 340 10% 55%;
+    --accent: 200 50% 85%;
+    --accent-foreground: 200 30% 25%;
+    --destructive: 0 75% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 340 20% 92%;
+    --input: 340 20% 92%;
+    --ring: 340 60% 70%;
+    --radius: 1rem;
+  }
+
+  .dark {
+    --background: 340 15% 10%;
+    --foreground: 340 15% 92%;
+    --card: 340 15% 13%;
+    --card-foreground: 340 15% 92%;
+    --popover: 340 15% 13%;
+    --popover-foreground: 340 15% 92%;
+    --primary: 340 55% 65%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 160 20% 20%;
+    --secondary-foreground: 160 30% 80%;
+    --muted: 340 15% 18%;
+    --muted-foreground: 340 10% 60%;
+    --accent: 200 30% 25%;
+    --accent-foreground: 200 50% 80%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 340 15% 20%;
+    --input: 340 15% 20%;
+    --ring: 340 55% 65%;
+  }
+}
