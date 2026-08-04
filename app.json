@@ -2,7 +2,7 @@
   "expo": {
     "name": "美業管家",
     "slug": "beauty-crm-app",
-    "version": "1.0.75",
+    "version": "1.0.76",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -22,7 +22,15 @@
     },
     "web": {
       "bundler": "metro",
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "美業管家",
+      "shortName": "美業管家",
+      "description": "美容、按摩、教練等服務業的顧客管理與預約系統",
+      "themeColor": "#e8789a",
+      "backgroundColor": "#fff5f7",
+      "lang": "zh-TW",
+      "scope": "/",
+      "startUrl": "/"
     },
     "plugins": [
       "expo-router",

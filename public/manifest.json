@@ -1,0 +1,41 @@
+{
+  "name": "美業管家",
+  "short_name": "美業管家",
+  "description": "美容、美甲、按摩、教練等服務業的顧客管理與預約系統",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fff5f7",
+  "theme_color": "#e8789a",
+  "lang": "zh-TW",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/assets/favicon.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/adaptive-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "線上預約",
+      "short_name": "預約",
+      "description": "顧客線上預約入口",
+      "url": "/online-booking",
+      "icons": [{ "src": "/assets/favicon.png", "sizes": "64x64" }]
+    }
+  ]
+}
