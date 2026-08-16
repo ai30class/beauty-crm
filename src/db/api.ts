@@ -855,7 +855,6 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
     supabase
       .from('online_orders')
       .select('*, staff:staff!staff_id(name, color)')
-      .not('status', 'in', '("cancelled","refunded")')
       .order('appointment_time', { ascending: true })
       .limit(500)
       .then(r => r.data ?? []),
