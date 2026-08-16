@@ -59,3 +59,6 @@ package.json.[0-9]*
 
 # local secrets
 .env
+
+# Supabase CLI local state
+supabase/.temp/
