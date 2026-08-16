@@ -312,7 +312,7 @@ export default function NewAppointmentScreen() {
                 </Pressable>
                 {showBirthdayPicker && (
                   <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden">
-                    <DateTimePicker
+                    <DateTimePicker locale="zh-tw"
                       mode="single"
                       date={profileBirthday ?? new Date(1990, 0, 1)}
                       onChange={(params) => {
@@ -393,7 +393,7 @@ export default function NewAppointmentScreen() {
           </Pressable>
           {showDatePicker && (
             <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden">
-              <DateTimePicker
+              <DateTimePicker locale="zh-tw"
                 mode="single"
                 date={apptDate}
                 onChange={(params) => {

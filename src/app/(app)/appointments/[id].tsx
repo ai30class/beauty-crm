@@ -167,7 +167,7 @@ export default function AppointmentDetailScreen() {
           </Pressable>
           {showDatePicker && (
             <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden">
-              <DateTimePicker
+              <DateTimePicker locale="zh-tw"
                 mode="single"
                 date={apptDate}
                 onChange={(params) => {

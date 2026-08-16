@@ -222,7 +222,7 @@ export default function NewPackageScreen() {
           </Pressable>
           {showDatePicker && (
             <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden">
-              <DateTimePicker
+              <DateTimePicker locale="zh-tw"
                 mode="single" date={purchaseDate}
                 onChange={(p) => { if (p.date) setPurchaseDate(p.date as Date); setShowDatePicker(false); }}
               />
@@ -244,7 +244,7 @@ export default function NewPackageScreen() {
           </Pressable>
           {showExpirePicker && (
             <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden">
-              <DateTimePicker
+              <DateTimePicker locale="zh-tw"
                 mode="single" date={expireDate ?? new Date()}
                 onChange={(p) => { if (p.date) setExpireDate(p.date as Date); setShowExpirePicker(false); }}
               />

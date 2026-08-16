@@ -108,7 +108,7 @@ function EditModal({
             </Pressable>
             {showDatePicker && (
               <View className="mt-2 bg-card rounded-2xl border border-border overflow-hidden">
-                <DateTimePicker
+                <DateTimePicker locale="zh-tw"
                   mode="single"
                   date={apptDate}
                   onChange={({ date }: { date: unknown }) => {

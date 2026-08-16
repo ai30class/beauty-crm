@@ -462,7 +462,7 @@ export default function OnlineBookingScreen() {
               </Pressable>
               {showBirthdayPicker && (
                 <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden">
-                  <DateTimePicker
+                  <DateTimePicker locale="zh-tw"
                     mode="single"
                     date={customerBirthday ?? new Date(1990, 0, 1)}
                     onChange={(params) => {
@@ -590,7 +590,7 @@ export default function OnlineBookingScreen() {
 
             {showDatePicker && (
               <View className="bg-card border border-border rounded-2xl overflow-hidden">
-                <DateTimePicker
+                <DateTimePicker locale="zh-tw"
                   mode="single"
                   date={selectedDate}
                   minDate={new Date()}

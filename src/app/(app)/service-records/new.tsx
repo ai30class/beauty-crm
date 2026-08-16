@@ -393,7 +393,7 @@ export default function NewServiceRecordScreen() {
           </Pressable>
           {showDatePicker && (
             <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden">
-              <DateTimePicker mode="single" date={serviceDate}
+              <DateTimePicker locale="zh-tw" mode="single" date={serviceDate}
                 onChange={(p) => { if (p.date) setServiceDate(p.date as Date); setShowDatePicker(false); }} />
             </View>
           )}

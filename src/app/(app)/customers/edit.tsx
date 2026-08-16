@@ -95,7 +95,7 @@ export default function CustomerEditScreen() {
           </Pressable>
           {showDatePicker && (
             <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden">
-              <DateTimePicker mode="single" date={birthday ?? new Date(1990, 0, 1)} onChange={(params) => { if (params.date) setBirthday(params.date as Date); setShowDatePicker(false); }} />
+              <DateTimePicker locale="zh-tw" mode="single" date={birthday ?? new Date(1990, 0, 1)} onChange={(params) => { if (params.date) setBirthday(params.date as Date); setShowDatePicker(false); }} />
             </View>
           )}
         </View>

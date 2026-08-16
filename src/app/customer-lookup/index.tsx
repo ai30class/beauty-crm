@@ -280,7 +280,7 @@ function OrderCard({
               </Pressable>
               {showDatePicker && (
                 <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden">
-                  <DateTimePicker
+                  <DateTimePicker locale="zh-tw"
                     mode="single"
                     date={editDate}
                     onChange={(p) => {

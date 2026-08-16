@@ -148,7 +148,7 @@ export default function HolidaysScreen() {
 
             {showPicker && (
               <View className="bg-background border border-border rounded-xl overflow-hidden">
-                <DateTimePicker
+                <DateTimePicker locale="zh-tw"
                   mode="single"
                   date={pickedDate}
                   onChange={(params) => {

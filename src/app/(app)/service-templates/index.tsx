@@ -77,7 +77,7 @@ type FormState = {
 };
 
 const EMPTY_FORM: FormState = {
-  name: '', duration_minutes: '60', default_amount: '0', color: '#e8789a',
+  name: '', duration_minutes: '', default_amount: '', color: '#e8789a',
   allow_online_booking: true, require_deposit: true, break_after_minutes: '30',
 };
 
