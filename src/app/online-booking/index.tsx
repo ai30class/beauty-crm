@@ -102,13 +102,13 @@ export default function OnlineBookingScreen() {
 
   // 日期/人員/服務改變時重新撈時段
   useEffect(() => {
-    if (!selectedStaff || !selectedTemplate || !ownerId) return;
+    if (!selectedTemplate || !ownerId) return;
     (async () => {
       setSlotsLoading(true);
       try {
         const s = await getAvailableSlots(
           ownerId,
-          selectedStaff.id,
+          selectedStaff?.id ?? null,
           toLocalDateStr(selectedDate),
           selectedTemplate.duration_minutes,
           selectedTemplate.break_after_minutes,
@@ -140,10 +140,10 @@ export default function OnlineBookingScreen() {
     if (!customerName.trim()) { setError('請輸入姓名'); return; }
     if (!/^09\d{8}$/.test(customerPhone)) { setError('請輸入正確的手機號碼（09 開頭 10 碼）'); return; }
     if (!customerBirthday) { setError('請選擇生日'); return; }
-    if (!selectedTemplate || !selectedStaff || !selectedTime) { setError('請完成所有選擇'); return; }
+    if (!selectedTemplate || !selectedTime) { setError('請完成所有選擇'); return; }
 
     // 優先從已選員工直接取 owner_id，避免 race condition
-    const resolvedOwnerId = selectedStaff.owner_id || ownerId;
+    const resolvedOwnerId = selectedStaff?.owner_id || ownerId;
     if (!resolvedOwnerId) { setError('無法確認店家資訊，請重新整理後再試'); return; }
 
     const [hh, mm] = selectedTime.split(':').map(Number);
@@ -177,7 +177,7 @@ export default function OnlineBookingScreen() {
           customer_name:       customerName.trim(),
           customer_phone:      customerPhone.trim(),
           customer_id:         customerId,
-          staff_id:            selectedStaff.id,
+          staff_id:            selectedStaff?.id ?? null,
           service_template_id: selectedTemplate.id,
           service_name:        selectedTemplate.name,
           duration_minutes:    selectedTemplate.duration_minutes,
@@ -199,7 +199,7 @@ export default function OnlineBookingScreen() {
           customer_name:       customerName.trim(),
           customer_phone:      customerPhone.trim(),
           customer_id:         customerId,
-          staff_id:            selectedStaff.id,
+          staff_id:            selectedStaff?.id ?? null,
           service_template_id: selectedTemplate.id,
           service_name:        selectedTemplate.name,
           duration_minutes:    selectedTemplate.duration_minutes,
@@ -540,6 +540,9 @@ export default function OnlineBookingScreen() {
         {step === 'staff' && (
           <View className="gap-3">
             <Text className="font-rounded text-base font-semibold text-foreground">選擇服務人員</Text>
+            {staffList.length === 0 && (
+              <Text className="font-rounded text-sm text-muted-foreground">店家尚未指定服務人員，將由店家統一安排</Text>
+            )}
             {staffList.map(s => (
               <Pressable
                 key={s.id}
@@ -556,7 +559,7 @@ export default function OnlineBookingScreen() {
             ))}
             <Pressable
               className="bg-primary rounded-2xl h-14 items-center justify-center flex-row gap-2 mt-2 active:opacity-80"
-              onPress={() => { if (selectedStaff) { setError(''); setStep('datetime'); } else setError('請選擇服務人員'); }}
+              onPress={() => { if (selectedStaff || staffList.length === 0) { setError(''); setStep('datetime'); } else setError('請選擇服務人員'); }}
             >
               <Text className="font-rounded text-base text-white font-semibold">下一步</Text>
               <ArrowRight size={18} color="#fff" />

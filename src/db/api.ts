@@ -516,7 +516,7 @@ export async function deleteHoliday(id: string): Promise<void> {
 
 export async function getAvailableSlots(
   ownerId: string,
-  staffId: string,
+  staffId: string | null,
   dateStr: string,
   durationMinutes: number,
   breakMinutes: number,
@@ -525,14 +525,16 @@ export async function getAvailableSlots(
   // 取得當天已預約（online_orders paid/confirmed）
   const dayStart = `${dateStr}T00:00:00.000Z`;
   const dayEnd = `${dateStr}T23:59:59.999Z`;
-  const { data: orders } = await supabase
+  // 未指定人員（店家尚未設定服務人員）時，以全店的預約去對衝突，避免超收
+  let ordersQuery = supabase
     .from('online_orders')
     .select('appointment_time, end_time')
     .eq('owner_id', ownerId)
-    .eq('staff_id', staffId)
     .in('status', ['paid', 'confirmed'])
     .gte('appointment_time', dayStart)
     .lte('appointment_time', dayEnd);
+  if (staffId) ordersQuery = ordersQuery.eq('staff_id', staffId);
+  const { data: orders } = await ordersQuery;
 
   const busyRanges = (orders ?? []).map((o: { appointment_time: string; end_time: string }) => ({
     start: new Date(o.appointment_time).getTime(),
@@ -674,7 +676,7 @@ export async function createDirectOnlineOrder(payload: {
   customer_name: string;
   customer_phone: string;
   customer_id: string;
-  staff_id: string;
+  staff_id: string | null;
   service_template_id: string;
   service_name: string;
   duration_minutes: number;
