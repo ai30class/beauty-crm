@@ -29,11 +29,13 @@ export default function OnlineBookingScreen() {
   // ── 顧客登入狀態 ──────────────────────────────────────────────────
   const [authChecked, setAuthChecked] = useState(false);
   const [customerSession, setCustomerSession] = useState<boolean>(false);
+  const [customerUserId, setCustomerUserId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setCustomerSession(!!session);
+      setCustomerUserId(session?.user?.id ?? null);
       setAuthChecked(true);
       if (!session) {
         // 未登入 → 跳轉到顧客登入頁，帶回 redirect 參數
@@ -177,6 +179,7 @@ export default function OnlineBookingScreen() {
           customer_name:       customerName.trim(),
           customer_phone:      customerPhone.trim(),
           customer_id:         customerId,
+          customer_user_id:    customerUserId,
           staff_id:            selectedStaff?.id ?? null,
           service_template_id: selectedTemplate.id,
           service_name:        selectedTemplate.name,
@@ -199,6 +202,7 @@ export default function OnlineBookingScreen() {
           customer_name:       customerName.trim(),
           customer_phone:      customerPhone.trim(),
           customer_id:         customerId,
+          customer_user_id:    customerUserId,
           staff_id:            selectedStaff?.id ?? null,
           service_template_id: selectedTemplate.id,
           service_name:        selectedTemplate.name,

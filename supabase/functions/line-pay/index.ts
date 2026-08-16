@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
     // ── 建立訂單並取得付款 URL ──────────────────────────────────────────────
     if (action === 'create' && req.method === 'POST') {
       const {
-        owner_id, customer_name, customer_phone,
+        owner_id, customer_name, customer_phone, customer_user_id,
         staff_id, service_template_id, service_name,
         duration_minutes, total_amount,
         appointment_time, notes,
@@ -74,6 +74,7 @@ Deno.serve(async (req) => {
         owner_id: string;
         customer_name: string;
         customer_phone: string;
+        customer_user_id: string | null;
         staff_id: string | null;
         service_template_id: string | null;
         service_name: string;
@@ -130,6 +131,7 @@ Deno.serve(async (req) => {
           owner_id,
           customer_name,
           customer_phone,
+          customer_user_id:    customer_user_id ?? null,
           staff_id:            staff_id ?? null,
           service_template_id: service_template_id ?? null,
           service_name,

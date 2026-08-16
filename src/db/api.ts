@@ -676,6 +676,7 @@ export async function createDirectOnlineOrder(payload: {
   customer_name: string;
   customer_phone: string;
   customer_id: string;
+  customer_user_id: string | null;
   staff_id: string | null;
   service_template_id: string;
   service_name: string;

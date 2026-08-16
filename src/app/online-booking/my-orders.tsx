@@ -25,23 +25,18 @@ export default function MyOrdersScreen() {
         setUserEmail(user.email ?? '');
         setUserPhone(user.phone ?? '');
 
-        // 查詢此帳號的所有預約（依 customer_phone 或 customer_email 比對）
-        const phone = user.phone ?? '';
-        const email = user.email ?? '';
-
-        let query = supabase
+        // 查詢此帳號建立的所有預約（依 customer_user_id = auth.uid() 比對）
+        const { data, error } = await supabase
           .from('online_orders')
-          .select('*')
+          .select('*, staff:staff!staff_id(name, color)')
+          .eq('customer_user_id', user.id)
           .order('appointment_time', { ascending: false });
 
-        if (phone) {
-          query = query.eq('customer_phone', phone.replace(/^\+886/, '0'));
-        } else if (email) {
-          query = query.eq('customer_email', email);
-        }
-
-        const { data } = await query;
+        if (error) throw error;
         setOrders(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error('載入預約記錄失敗', e);
+        setOrders([]);
       } finally {
         setLoading(false);
       }
