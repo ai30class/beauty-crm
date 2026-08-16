@@ -79,7 +79,10 @@ export default function SignIn() {
     setError('');
     setLoading(true);
     try {
-      const redirectUrl = AuthSession.makeRedirectUri({ scheme: 'appd2yss59nidj5', path: 'auth/callback' });
+      const isWeb = process.env.EXPO_OS === 'web';
+      const redirectUrl = isWeb
+        ? `${window.location.origin}/auth/callback`
+        : AuthSession.makeRedirectUri({ scheme: 'appd2yss59nidj5', path: 'auth/callback' });
       const { data, error: e } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -91,7 +94,12 @@ export default function SignIn() {
         setError(e?.message ?? '無法取得 Google 登入連結');
         return;
       }
-      // 打開系統瀏覽器進行 Google 認證
+      if (isWeb) {
+        // Web：整頁導向 Google 登入，避免 await 之後才開彈出視窗被瀏覽器的快顯封鎖擋下
+        window.location.href = data.url;
+        return;
+      }
+      // 原生 App：打開系統瀏覽器進行 Google 認證
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
       if (result.type === 'success' && result.url) {
         // 從回呼 URL 解析 session
