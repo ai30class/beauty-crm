@@ -735,12 +735,13 @@ export async function restockProduct(id: string, qty: number, costTotal = 0, not
   const { error } = await supabase.rpc('restock_product', { p_id: id, qty });
   if (error) throw error;
   // 寫入補貨記錄
-  await supabase.from('restock_log').insert({
+  const { error: logError } = await supabase.from('restock_log').insert({
     product_id: id,
     qty,
     cost_total: costTotal,
     note: note.trim() || null,
   });
+  if (logError) throw logError;
 }
 
 // 原子扣庫存，回傳實際扣減量
