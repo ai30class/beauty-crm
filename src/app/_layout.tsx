@@ -97,11 +97,11 @@ const RootLayout: React.FC = () => {
   usePWA();
   usePWAMeta();
 
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     'ResourceHanRoundedCN': { uri: 'https://resource-static.cdn.bcebos.com/fonts/ResourceHanRoundedCN-Regular.ttf' },
   });
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded && !fontError) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff5f7' }}>
         <ActivityIndicator size="large" color="#e8789a" />
