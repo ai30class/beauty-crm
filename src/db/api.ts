@@ -20,35 +20,38 @@ export async function getCustomerByPhone(phone: string): Promise<Customer | null
 }
 
 /**
- * 線上預約用：依電話號碼 upsert 顧客檔案。
- * - 已建檔：若 birthday 尚未填寫則補上；name 一律更新。
- * - 未建檔：新增一筆（owner_id 從 session 取得）。
- * 回傳最終 customer_id。
+ * 線上預約表單即時顯示「您是我們的熟客」用：透過 SECURITY DEFINER RPC
+ * 只回傳 boolean，不外洩顧客 PII，也不受顧客自助登入時的 RLS 限制。
+ */
+export async function customerExistsByPhone(ownerId: string, phone: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .rpc('customer_exists_by_phone', { p_owner_id: ownerId, p_phone: phone });
+  if (error) throw error;
+  return !!data;
+}
+
+/**
+ * 線上預約用：依電話號碼 upsert 顧客檔案（透過 SECURITY DEFINER RPC，
+ * 避免顧客自助登入時被 RLS 擋下查詢/寫錯 owner_id，也不開放顧客直接
+ * 讀取 customers 表）。回傳 customer_id 與是否為已建檔熟客。
  */
 export async function upsertCustomerByPhone(
+  ownerId: string,
   name: string,
   phone: string,
   birthday: string,
-): Promise<string> {
-  const existing = await getCustomerByPhone(phone);
-  if (existing) {
-    const patch: Partial<Pick<Customer, 'name' | 'birthday'>> = { name };
-    if (!existing.birthday) patch.birthday = birthday;
-    const { error } = await supabase
-      .from('customers')
-      .update(patch)
-      .eq('id', existing.id);
-    if (error) throw error;
-    return existing.id;
-  }
-  // 新顧客：insert，owner_id 由 RLS 政策從 auth.uid() 取得
+): Promise<{ customerId: string; wasAlreadyRegistered: boolean }> {
   const { data, error } = await supabase
-    .from('customers')
-    .insert({ name, phone, birthday, notes: null })
-    .select('id')
+    .rpc('upsert_customer_by_phone', {
+      p_owner_id: ownerId,
+      p_name: name,
+      p_phone: phone,
+      p_birthday: birthday,
+    })
     .single();
   if (error) throw error;
-  return (data as { id: string }).id;
+  const row = data as { customer_id: string; was_already_registered: boolean };
+  return { customerId: row.customer_id, wasAlreadyRegistered: row.was_already_registered };
 }
 
 export async function getCustomers(): Promise<Customer[]> {

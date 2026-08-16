@@ -7,7 +7,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getActiveStaff, getServiceTemplates, getAvailableSlots, getAllHolidays, createDirectOnlineOrder, getCustomerByPhone, upsertCustomerByPhone, getShopProfileByOwner } from '@/db/api';
+import { getActiveStaff, getServiceTemplates, getAvailableSlots, getAllHolidays, createDirectOnlineOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import { fetch } from 'expo/fetch';
 import type { Staff, ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
@@ -160,17 +160,14 @@ export default function OnlineBookingScreen() {
 
     setSubmitting(true);
     try {
-      // ── 先查是否為已建檔熟客（upsert 前查，避免 upsert 後必然有 birthday 導致判斷失真）
-      const priorCustomer = await getCustomerByPhone(customerPhone.trim());
-      const wasAlreadyRegistered = !!(priorCustomer && priorCustomer.birthday);
-      const needDeposit = selectedTemplate.require_deposit && !wasAlreadyRegistered;
-
-      // ── Upsert 顧客檔案，取得 customer_id ──────────────────────────────
-      const customerId = await upsertCustomerByPhone(
+      // ── Upsert 顧客檔案，取得 customer_id 與是否為已建檔熟客 ──────────────
+      const { customerId, wasAlreadyRegistered } = await upsertCustomerByPhone(
+        resolvedOwnerId,
         customerName.trim(),
         customerPhone.trim(),
         birthdayStr,
       );
+      const needDeposit = selectedTemplate.require_deposit && !wasAlreadyRegistered;
 
       // ── 直接預約（免訂金）──────────────────────────────
       if (!needDeposit) {
@@ -420,9 +417,9 @@ export default function OnlineBookingScreen() {
                   value={customerPhone}
                   onChangeText={async (v) => {
                     setCustomerPhone(v);
-                    if (/^09\d{8}$/.test(v)) {
-                      const found = await getCustomerByPhone(v.trim());
-                      setIsRegisteredCustomer(!!found);
+                    if (/^09\d{8}$/.test(v) && ownerId) {
+                      const found = await customerExistsByPhone(ownerId, v.trim());
+                      setIsRegisteredCustomer(found);
                     } else {
                       setIsRegisteredCustomer(null);
                     }
