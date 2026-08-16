@@ -197,6 +197,7 @@ export default function UsePackageScreen() {
                       value={sessions}
                       onChangeText={setSessions}
                       keyboardType="numeric"
+                      selectTextOnFocus
                     />
                     <Pressable onPress={() => setSessions(s => String(parseInt(s, 10) + 1))} className="active:opacity-60">
                       <Text className="font-rounded text-xl text-primary">+</Text>

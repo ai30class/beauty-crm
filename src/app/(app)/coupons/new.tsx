@@ -20,9 +20,9 @@ export default function NewCouponScreen() {
   const [type, setType] = useState<CouponType>('discount_pct');
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
-  const [minAmount, setMinAmount] = useState('0');
+  const [minAmount, setMinAmount] = useState('');
   const [quota, setQuota] = useState('');
-  const [validDays, setValidDays] = useState('90');
+  const [validDays, setValidDays] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');

@@ -28,7 +28,7 @@ export default function NewPackageScreen() {
   const [customerName, setCustomerName] = useState('');
   const [packageType, setPackageType] = useState<PackageType>('session');
   const [name, setName] = useState('');
-  const [totalSessions, setTotalSessions] = useState('10');
+  const [totalSessions, setTotalSessions] = useState('');
   const [initialAmount, setInitialAmount] = useState('');
   const [purchaseDate, setPurchaseDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
