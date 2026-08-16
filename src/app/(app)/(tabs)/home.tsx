@@ -45,6 +45,7 @@ export default function HomeScreen() {
   const [searching, setSearching] = useState(false);
   const [templates, setTemplates] = useState<ServiceTemplate[]>([]);
   const [isTodayHoliday, setIsTodayHoliday] = useState(false);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadCustomers = useCallback(async () => {
@@ -57,6 +58,7 @@ export default function HomeScreen() {
       ]);
       setCustomers(data);
       setTemplates(tpls);
+      setOwnerId(user?.id ?? null);
       // 判斷今日是否公休
       if (user) {
         const profile = await getShopProfileByOwner(user.id).catch(() => null);
@@ -230,7 +232,7 @@ export default function HomeScreen() {
       <Pressable
         className="absolute left-5 flex-row items-center gap-2 bg-primary px-4 rounded-full active:opacity-80"
         style={{ bottom: 96, height: 44, shadowColor: '#e8789a', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 5 }}
-        onPress={() => router.push('/online-booking' as any)}
+        onPress={() => router.push(`/online-booking${ownerId ? `?ownerId=${ownerId}` : ''}` as any)}
       >
         <CalendarDays size={16} color="#fff" />
         <Text className="font-rounded text-sm font-semibold text-white">立即線上預約</Text>
