@@ -15,12 +15,16 @@ export default function BirthdaysScreen() {
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [customers, setCustomers] = useState<BirthdayCustomer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const load = useCallback(async (m: number) => {
     setLoading(true);
+    setError('');
     try {
       const data = await getBirthdayCustomers(m);
       setCustomers(data);
+    } catch (e: any) {
+      setError(e.message ?? '載入失敗，請重試');
     } finally {
       setLoading(false);
     }
@@ -71,6 +75,10 @@ export default function BirthdaysScreen() {
       {loading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color="#e8789a" />
+        </View>
+      ) : error ? (
+        <View className="flex-1 items-center justify-center gap-2 px-8">
+          <Text className="font-rounded text-sm text-destructive text-center">{error}</Text>
         </View>
       ) : currentMonthBirthdays.length === 0 ? (
         <View className="flex-1 items-center justify-center gap-3 px-8">

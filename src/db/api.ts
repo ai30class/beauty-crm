@@ -941,22 +941,24 @@ export { DEFAULT_HOURS };
 
 // ─── 壽星顧客 ────────────────────────────────────────────────────────────────
 export async function getBirthdayCustomers(month: number): Promise<BirthdayCustomer[]> {
-  const mm = String(month).padStart(2, '0');
+  // birthday 是 date 欄位，LIKE 對 date 無效（PostgREST 會回 42883），
+  // 撈全部有生日的顧客後改在這裡用 JS 篩選月份
   const { data, error } = await supabase
     .from('customers')
     .select('id, name, phone, birthday')
     .not('birthday', 'is', null)
-    .like('birthday', `%-${mm}-%`)
     .order('birthday');
   if (error) throw error;
-  return (data ?? []).map((r: any) => ({
-    id: r.id,
-    name: r.name,
-    phone: r.phone,
-    birthday: r.birthday,
-    birthday_month: parseInt(r.birthday.split('-')[1], 10),
-    birthday_day: parseInt(r.birthday.split('-')[2], 10),
-  }));
+  return (data ?? [])
+    .map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      phone: r.phone,
+      birthday: r.birthday,
+      birthday_month: parseInt(r.birthday.split('-')[1], 10),
+      birthday_day: parseInt(r.birthday.split('-')[2], 10),
+    }))
+    .filter((c) => c.birthday_month === month);
 }
 
 // ─── 顧客消費排行 ─────────────────────────────────────────────────────────────
