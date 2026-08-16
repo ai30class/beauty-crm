@@ -965,13 +965,13 @@ export async function getBirthdayCustomers(month: number): Promise<BirthdayCusto
 export async function getCustomerRanking(limit = 20): Promise<CustomerRankRow[]> {
   const { data, error } = await supabase
     .from('service_records')
-    .select('customer_id, total_amount, service_date, customer:customers!customer_id(name, phone)')
+    .select('customer_id, amount, service_date, customer:customers!customer_id(name, phone)')
     .order('service_date', { ascending: false });
   if (error) throw error;
   const map = new Map<string, CustomerRankRow>();
   for (const r of (data ?? []) as any[]) {
     const cid = r.customer_id as string;
-    const amt = Number(r.total_amount ?? 0);
+    const amt = Number(r.amount ?? 0);
     const existing = map.get(cid);
     if (existing) {
       existing.total_amount += amt;
