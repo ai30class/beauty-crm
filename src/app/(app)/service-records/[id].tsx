@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, Share2, Scissors, DollarSign, CalendarDays, FileText, Package } from 'lucide-react-native';
+import { ArrowLeft, Share2, Scissors, DollarSign, CalendarDays, FileText, Package, User } from 'lucide-react-native';
 import { getServiceRecordById, getPhotoUrl, getProductUsageByRecord } from '@/db/api';
 import type { ServiceRecord, ProductUsage } from '@/types/types';
 
@@ -102,6 +102,17 @@ export default function ServiceRecordDetailScreen() {
               <Text className="font-rounded text-base font-semibold text-foreground">{record.service_date}</Text>
             </View>
           </View>
+          {record.staff ? (
+            <View className="flex-row items-center gap-2">
+              <View className="w-8 h-8 rounded-full items-center justify-center" style={{ backgroundColor: record.staff.color + '22' }}>
+                <User size={16} color={record.staff.color} />
+              </View>
+              <View className="flex-1">
+                <Text className="font-rounded text-xs text-muted-foreground">服務人員</Text>
+                <Text className="font-rounded text-base font-semibold text-foreground">{record.staff.name}</Text>
+              </View>
+            </View>
+          ) : null}
           {record.notes ? (
             <View className="flex-row items-start gap-2">
               <View className="w-8 h-8 rounded-full bg-amber-50 items-center justify-center mt-0.5">

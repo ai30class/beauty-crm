@@ -126,7 +126,7 @@ export async function updateServiceRecord(
 export async function getServiceRecordById(id: string): Promise<ServiceRecord | null> {
   const { data } = await supabase
     .from('service_records')
-    .select('*, customer:customers!customer_id(name)')
+    .select('*, customer:customers!customer_id(name), staff:staff!staff_id(name, color)')
     .eq('id', id)
     .maybeSingle();
   return data;
@@ -999,7 +999,7 @@ export async function getStaffPerformance(year: number, month: number): Promise<
   const endDate = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
   const { data, error } = await supabase
     .from('service_records')
-    .select('staff_id, staff_name, total_amount, staff:staff!staff_id(color)')
+    .select('staff_id, amount, staff:staff!staff_id(name, color)')
     .gte('service_date', startDate)
     .lt('service_date', endDate)
     .not('staff_id', 'is', null);
@@ -1007,7 +1007,7 @@ export async function getStaffPerformance(year: number, month: number): Promise<
   const map = new Map<string, StaffPerformanceRow>();
   for (const r of (data ?? []) as any[]) {
     const sid = r.staff_id as string;
-    const amt = Number(r.total_amount ?? 0);
+    const amt = Number(r.amount ?? 0);
     const existing = map.get(sid);
     if (existing) {
       existing.service_count += 1;
@@ -1015,7 +1015,7 @@ export async function getStaffPerformance(year: number, month: number): Promise<
     } else {
       map.set(sid, {
         staff_id: sid,
-        staff_name: r.staff_name ?? '—',
+        staff_name: r.staff?.name ?? '—',
         staff_color: r.staff?.color ?? '#e8789a',
         service_count: 1,
         total_revenue: amt,

@@ -44,8 +44,10 @@ export interface ServiceRecord {
   payment_method: 'cash' | 'card' | 'line_pay' | 'package';
   package_id: string | null;
   status: 'completed' | 'pending';
+  staff_id: string | null;
   created_at: string;
   customer?: { name: string };
+  staff?: { name: string; color: string } | null;
 }
 
 export interface TrendPoint {

@@ -16,9 +16,9 @@ import {
   createServiceRecord, updateServiceRecord, getCustomerById,
   getServiceTemplates, getPackagesByCustomer, usePackageSession, usePackageAmount,
   getProducts, deductProductStock, createProductUsageBatch,
-  getOnlineOrderById, updateOnlineOrderStatus, getCustomerByPhone,
+  getOnlineOrderById, updateOnlineOrderStatus, getCustomerByPhone, getActiveStaff,
 } from '@/db/api';
-import type { ServiceTemplate, Product } from '@/types/types';
+import type { ServiceTemplate, Product, Staff } from '@/types/types';
 
 const BUCKET = 'appd2yss59nidj5_service_photos';
 
@@ -69,6 +69,8 @@ export default function NewServiceRecordScreen() {
   const [activePackages, setActivePackages] = useState<import('@/types/types').ServicePackage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [selectedStaffId, setSelectedStaffId] = useState<string>('');
 
   // 保養品明細
   const [products, setProducts] = useState<Product[]>([]);
@@ -136,6 +138,9 @@ export default function NewServiceRecordScreen() {
       // 載入保養品列表
       const prods = await getProducts();
       setProducts(prods);
+      // 載入服務人員列表
+      const staff = await getActiveStaff();
+      setStaffList(staff);
     })();
   }, [customerIdParam, templateId, onlineOrderId]);
 
@@ -180,6 +185,7 @@ export default function NewServiceRecordScreen() {
         payment_method: paymentMethod,
         package_id: paymentMethod === 'package' ? selectedPackageId : null,
         status: 'completed',
+        staff_id: selectedStaffId || null,
       });
       // 套票扣款
       if (paymentMethod === 'package' && selectedPackageId) {
@@ -320,6 +326,35 @@ export default function NewServiceRecordScreen() {
               placeholderTextColor="#c4a0ae" value={amount} onChangeText={setAmount} keyboardType="numeric" />
           </View>
         </View>
+
+        {staffList.length > 0 && (
+          <View>
+            <Text className="font-rounded text-sm font-medium text-foreground mb-2">服務人員（選填）</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
+              <View className="flex-row gap-2 px-1 pb-1">
+                {staffList.map(s => {
+                  const isSelected = selectedStaffId === s.id;
+                  return (
+                    <Pressable
+                      key={s.id}
+                      className="rounded-xl px-3 py-2 active:opacity-70"
+                      style={{
+                        backgroundColor: isSelected ? s.color + '22' : '#fafafa',
+                        borderWidth: 1.5,
+                        borderColor: isSelected ? s.color : '#e8dce8',
+                      }}
+                      onPress={() => setSelectedStaffId(isSelected ? '' : s.id)}
+                    >
+                      <Text className="font-rounded text-sm font-medium" style={{ color: isSelected ? s.color : '#b0a0b0' }}>
+                        {s.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </View>
+        )}
 
         <View>
           <Text className="font-rounded text-sm font-medium text-foreground mb-2">付款方式 *</Text>
