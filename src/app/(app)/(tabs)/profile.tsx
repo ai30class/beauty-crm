@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { supabase } from '@/client/supabase';
 import { useRouter } from 'expo-router';
 import { useSession } from '@/ctx';
-import { User, Mail, LogOut, ChevronRight, Scissors, Users2, CalendarOff, ShoppingBag, Users, TrendingDown, Package, Store, Cake, Trophy, BarChart2, Tag, TrendingUp } from 'lucide-react-native';
+import { User, Mail, LogOut, ChevronRight, Scissors, Users2, CalendarOff, ShoppingBag, Users, TrendingDown, Package, Store, Cake, Trophy, BarChart2, Tag, TrendingUp, UserX } from 'lucide-react-native';
 
 export default function ProfileTab() {
   const router = useRouter();
@@ -146,6 +146,19 @@ export default function ProfileTab() {
             <View className="flex-1">
               <Text className="font-rounded text-base text-foreground">保養品銷售報表</Text>
               <Text className="font-rounded text-xs text-muted-foreground mt-0.5">銷售毛利、進貨成本損益分析</Text>
+            </View>
+            <ChevronRight size={16} color="#c4a0ae" />
+          </Pressable>
+          <Pressable
+            className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
+            onPress={() => router.push('/(app)/analytics/dormant-customers' as any)}
+          >
+            <View className="w-8 h-8 rounded-full items-center justify-center mr-3" style={{ backgroundColor: '#fce9f0' }}>
+              <UserX size={16} color="#e8789a" />
+            </View>
+            <View className="flex-1">
+              <Text className="font-rounded text-base text-foreground">久未到店提醒</Text>
+              <Text className="font-rounded text-xs text-muted-foreground mt-0.5">找出超過一段時間沒來的顧客名單</Text>
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>

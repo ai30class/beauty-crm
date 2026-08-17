@@ -466,7 +466,7 @@ export async function createStaff(payload: Omit<Staff, 'id' | 'owner_id' | 'crea
   if (error) throw error;
 }
 
-export async function updateStaff(id: string, payload: Partial<Pick<Staff, 'name' | 'role' | 'color' | 'is_active'>>): Promise<void> {
+export async function updateStaff(id: string, payload: Partial<Pick<Staff, 'name' | 'role' | 'color' | 'is_active' | 'commission_rate'>>): Promise<void> {
   const { error } = await supabase.from('staff').update(payload).eq('id', id);
   if (error) throw error;
 }
@@ -1003,7 +1003,7 @@ export async function getStaffPerformance(year: number, month: number): Promise<
   const endDate = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
   const { data, error } = await supabase
     .from('service_records')
-    .select('staff_id, amount, staff:staff!staff_id(name, color)')
+    .select('staff_id, amount, staff:staff!staff_id(name, color, commission_rate)')
     .gte('service_date', startDate)
     .lt('service_date', endDate)
     .not('staff_id', 'is', null);
@@ -1012,10 +1012,12 @@ export async function getStaffPerformance(year: number, month: number): Promise<
   for (const r of (data ?? []) as any[]) {
     const sid = r.staff_id as string;
     const amt = Number(r.amount ?? 0);
+    const rate = Number(r.staff?.commission_rate ?? 0);
     const existing = map.get(sid);
     if (existing) {
       existing.service_count += 1;
       existing.total_revenue += amt;
+      existing.commission_amount += amt * rate / 100;
     } else {
       map.set(sid, {
         staff_id: sid,
@@ -1023,10 +1025,41 @@ export async function getStaffPerformance(year: number, month: number): Promise<
         staff_color: r.staff?.color ?? '#e8789a',
         service_count: 1,
         total_revenue: amt,
+        commission_rate: rate,
+        commission_amount: amt * rate / 100,
       });
     }
   }
   return Array.from(map.values()).sort((a, b) => b.total_revenue - a.total_revenue);
+}
+
+// ─── 久未到店提醒 ─────────────────────────────────────────────────────────────
+export async function getDormantCustomers(days: number): Promise<DormantCustomer[]> {
+  const [{ data: customers, error: custErr }, { data: records, error: recErr }] = await Promise.all([
+    supabase.from('customers').select('id, name, phone, created_at'),
+    supabase.from('service_records').select('customer_id, service_date'),
+  ]);
+  if (custErr) throw custErr;
+  if (recErr) throw recErr;
+
+  const lastVisitMap = new Map<string, string>();
+  for (const r of (records ?? []) as { customer_id: string; service_date: string }[]) {
+    const existing = lastVisitMap.get(r.customer_id);
+    if (!existing || r.service_date > existing) lastVisitMap.set(r.customer_id, r.service_date);
+  }
+
+  const now = Date.now();
+  const cutoffMs = days * 24 * 60 * 60 * 1000;
+  const result: DormantCustomer[] = [];
+  for (const c of (customers ?? []) as { id: string; name: string; phone: string; created_at: string }[]) {
+    const lastVisit = lastVisitMap.get(c.id) ?? null;
+    const refDate = lastVisit ? new Date(lastVisit).getTime() : new Date(c.created_at).getTime();
+    const daysSince = Math.floor((now - refDate) / (24 * 60 * 60 * 1000));
+    if (now - refDate >= cutoffMs) {
+      result.push({ id: c.id, name: c.name, phone: c.phone, last_visit: lastVisit, days_since: daysSince });
+    }
+  }
+  return result.sort((a, b) => b.days_since - a.days_since);
 }
 
 // ─── 優惠券 ───────────────────────────────────────────────────────────────────

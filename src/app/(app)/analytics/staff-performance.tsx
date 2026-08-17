@@ -38,6 +38,7 @@ export default function StaffPerformanceScreen() {
 
   const totalRevenue = rows.reduce((s, r) => s + r.total_revenue, 0);
   const totalCount   = rows.reduce((s, r) => s + r.service_count, 0);
+  const totalCommission = rows.reduce((s, r) => s + r.commission_amount, 0);
   const maxRevenue   = rows[0]?.total_revenue ?? 1;
 
   return (
@@ -104,6 +105,18 @@ export default function StaffPerformanceScreen() {
             </View>
           </View>
 
+          {totalCommission > 0 && (
+            <View className="bg-card border border-border rounded-2xl p-4 gap-1">
+              <View className="flex-row items-center gap-1.5 mb-1">
+                <DollarSign size={14} color="#e8a87c" />
+                <Text className="font-rounded text-xs text-muted-foreground">本月應發業績獎金合計</Text>
+              </View>
+              <Text className="font-rounded text-xl font-bold" style={{ color: '#e8a87c' }}>
+                ${totalCommission.toLocaleString()}
+              </Text>
+            </View>
+          )}
+
           {/* 員工業績卡 */}
           {rows.map((row, i) => {
             const barPct = maxRevenue > 0 ? row.total_revenue / maxRevenue : 0;
@@ -141,6 +154,14 @@ export default function StaffPerformanceScreen() {
                     </Text>
                   </View>
                 </View>
+                {row.commission_rate > 0 && (
+                  <View className="flex-row items-center justify-between border-t border-border pt-2">
+                    <Text className="font-rounded text-xs text-muted-foreground">業績獎金（抽成 {row.commission_rate}%）</Text>
+                    <Text className="font-rounded text-sm font-bold" style={{ color: '#e8a87c' }}>
+                      ${row.commission_amount.toLocaleString()}
+                    </Text>
+                  </View>
+                )}
                 {/* 收入占比條 */}
                 <View className="h-2 bg-muted rounded-full overflow-hidden">
                   <View className="h-full rounded-full"

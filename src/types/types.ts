@@ -144,6 +144,7 @@ export interface Staff {
   role: string;
   color: string;
   is_active: boolean;
+  commission_rate: number;
   created_at: string;
 }
 
@@ -285,6 +286,17 @@ export interface StaffPerformanceRow {
   staff_color: string;
   service_count: number;
   total_revenue: number;
+  commission_rate: number;
+  commission_amount: number;
+}
+
+// ─── 久未到店提醒 ─────────────────────────────────────────────────────────────
+export interface DormantCustomer {
+  id: string;
+  name: string;
+  phone: string;
+  last_visit: string | null;
+  days_since: number;
 }
 
 // ─── 優惠券 ───────────────────────────────────────────────────────────────────
