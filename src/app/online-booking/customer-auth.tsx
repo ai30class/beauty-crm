@@ -29,7 +29,11 @@ export default function CustomerAuthScreen() {
     setLoading(true);
     try {
       if (isSignUp) {
-        const { error: e } = await supabase.auth.signUp({ email: email.trim(), password });
+        const { error: e } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: { data: { account_type: 'customer' } },
+        });
         if (e) throw e;
         setShowVerify(true);
       } else {

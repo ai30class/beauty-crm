@@ -906,6 +906,16 @@ const DEFAULT_HOURS: BusinessHours = {
   sun: { open: false, start: '09:00', end: '18:00' },
 };
 
+// ─── 帳號類型（商家 / 顧客）───────────────────────────────────────────────────
+export async function getAccountType(): Promise<'merchant' | 'customer'> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('account_type')
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.account_type as 'merchant' | 'customer') ?? 'merchant';
+}
+
 // ─── 新手引導 ─────────────────────────────────────────────────────────────────
 export async function getOnboardingStatus(): Promise<boolean> {
   const { data, error } = await supabase
