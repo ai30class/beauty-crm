@@ -1,7 +1,7 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, CalendarDays, Clock, LogOut, Plus, User2 } from 'lucide-react-native';
+import { ArrowLeft, CalendarDays, Clock, LogOut, Plus, User2, BellRing } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import {ActivityIndicator,Pressable, ScrollView, Text, 
   View, 
@@ -58,6 +58,13 @@ export default function MyOrdersScreen() {
     }
   };
 
+  const now = Date.now();
+  const in24h = now + 24 * 60 * 60 * 1000;
+  const upcomingSoon = orders.filter(o => {
+    const t = new Date(o.appointment_time).getTime();
+    return t >= now && t <= in24h && o.status !== 'cancelled' && o.status !== 'refunded';
+  });
+
   if (loading) {
     return (
       <View className="flex-1 bg-background items-center justify-center">
@@ -88,6 +95,17 @@ export default function MyOrdersScreen() {
       </View>
 
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerClassName="pb-12">
+        {/* 24 小時內預約提醒 */}
+        {upcomingSoon.length > 0 && (
+          <View className="mx-5 mt-4 flex-row items-center gap-2.5 px-4 py-3 rounded-2xl border"
+            style={{ backgroundColor: '#eef0ff', borderColor: '#c9d0ff' }}>
+            <BellRing size={16} color="#4a6cf7" />
+            <Text className="font-rounded text-sm font-semibold flex-1" style={{ color: '#3a53c4' }}>
+              🔔 您 24 小時內有預約，別忘記囉！
+            </Text>
+          </View>
+        )}
+
         {/* 用戶資訊 */}
         <View className="mx-5 mt-4 mb-3 bg-card rounded-2xl p-4 border border-border flex-row items-center gap-3">
           <View className="w-11 h-11 rounded-full bg-primary/10 items-center justify-center">

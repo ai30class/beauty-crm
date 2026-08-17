@@ -3,10 +3,10 @@ import { View, Text, ScrollView, Pressable, ActivityIndicator, TextInput, FlatLi
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { Search, Plus, User, Phone, ChevronRight, Scissors, Clock, CalendarDays, AlertCircle } from 'lucide-react-native';
-import { getCustomers, searchCustomers, getServiceTemplates, getShopProfileByOwner } from '@/db/api';
+import { Search, Plus, User, Phone, ChevronRight, Scissors, Clock, CalendarDays, AlertCircle, BellRing } from 'lucide-react-native';
+import { getCustomers, searchCustomers, getServiceTemplates, getShopProfileByOwner, getMergedAppointments } from '@/db/api';
 import { supabase } from '@/client/supabase';
-import type { Customer, ServiceTemplate, BusinessHours } from '@/types/types';
+import type { Customer, ServiceTemplate, BusinessHours, UnifiedAppointment } from '@/types/types';
 
 const DAY_KEYS: (keyof BusinessHours)[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -46,19 +46,28 @@ export default function HomeScreen() {
   const [templates, setTemplates] = useState<ServiceTemplate[]>([]);
   const [isTodayHoliday, setIsTodayHoliday] = useState(false);
   const [ownerId, setOwnerId] = useState<string | null>(null);
+  const [upcomingSoon, setUpcomingSoon] = useState<UnifiedAppointment[]>([]);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
     try {
-      const [data, tpls, { data: { user } }] = await Promise.all([
+      const [data, tpls, { data: { user } }, appts] = await Promise.all([
         getCustomers(),
         getServiceTemplates(),
         supabase.auth.getUser(),
+        getMergedAppointments().catch(() => []),
       ]);
       setCustomers(data);
       setTemplates(tpls);
       setOwnerId(user?.id ?? null);
+      // 24 小時內即將到來、尚未取消的預約提醒
+      const now = Date.now();
+      const in24h = now + 24 * 60 * 60 * 1000;
+      setUpcomingSoon(appts.filter(a => {
+        const t = new Date(a.appointment_time).getTime();
+        return t >= now && t <= in24h && a.status !== 'cancelled' && a.status !== 'refunded';
+      }));
       // 判斷今日是否公休
       if (user) {
         const profile = await getShopProfileByOwner(user.id).catch(() => null);
@@ -101,6 +110,21 @@ export default function HomeScreen() {
         <Text className="font-rounded text-2xl font-bold text-foreground mb-1">顧客管理</Text>
         <Text className="font-rounded text-sm text-muted-foreground">共 {customers.length} 位顧客</Text>
       </View>
+
+      {/* 24 小時內預約提醒 */}
+      {upcomingSoon.length > 0 && (
+        <Pressable
+          className="mx-5 mb-2 flex-row items-center gap-2.5 px-4 py-3 rounded-2xl border active:opacity-80"
+          style={{ backgroundColor: '#eef0ff', borderColor: '#c9d0ff' }}
+          onPress={() => router.push('/(app)/(tabs)/appointments' as any)}
+        >
+          <BellRing size={16} color="#4a6cf7" />
+          <Text className="font-rounded text-sm font-semibold flex-1" style={{ color: '#3a53c4' }}>
+            🔔 24 小時內有 {upcomingSoon.length} 筆預約：{upcomingSoon.slice(0, 2).map(a => a.customer_name).join('、')}{upcomingSoon.length > 2 ? ' 等' : ''}
+          </Text>
+          <ChevronRight size={14} color="#4a6cf7" />
+        </Pressable>
+      )}
 
       {/* 今日公休橫幅 */}
       {isTodayHoliday && (

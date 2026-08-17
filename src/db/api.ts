@@ -906,6 +906,26 @@ const DEFAULT_HOURS: BusinessHours = {
   sun: { open: false, start: '09:00', end: '18:00' },
 };
 
+// ─── 新手引導 ─────────────────────────────────────────────────────────────────
+export async function getOnboardingStatus(): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('onboarding_completed')
+    .maybeSingle();
+  if (error) throw error;
+  return data?.onboarding_completed ?? true;
+}
+
+export async function markOnboardingCompleted(): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('未登入');
+  const { error } = await supabase
+    .from('profiles')
+    .update({ onboarding_completed: true })
+    .eq('id', user.id);
+  if (error) throw error;
+}
+
 export async function getShopProfile(): Promise<ShopProfile | null> {
   const { data, error } = await supabase
     .from('shop_profiles')
