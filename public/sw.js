@@ -1,9 +1,8 @@
 // 美業管家 Service Worker
 // 負責：離線快取、背景同步、推播通知基礎
 
-const CACHE_NAME = 'beauty-crm-v1';
+const CACHE_NAME = 'beauty-crm-v2';
 const STATIC_ASSETS = [
-  '/',
   '/offline.html',
   '/assets/icon.png',
   '/assets/favicon.png',
