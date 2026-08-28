@@ -1,17 +1,24 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, CalendarDays, Clock, LogOut, Plus, User2, BellRing } from 'lucide-react-native';
+import { ArrowLeft, CalendarDays, Clock, LogOut, Plus, User2, BellRing, Wallet } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import {ActivityIndicator,Pressable, ScrollView, Text, 
-  View, 
+import {ActivityIndicator,Pressable, ScrollView, Text,
+  View,
 } from 'react-native';
 import { supabase } from '@/client/supabase';
-import type { OnlineOrder } from '@/types/types';
+import { getMyPackages } from '@/db/api';
+import type { OnlineOrder, ServicePackage } from '@/types/types';
+
+type MyPackage = Pick<ServicePackage,
+  'id' | 'package_type' | 'name' | 'total_sessions' | 'used_sessions' |
+  'initial_amount' | 'remaining_amount' | 'purchase_date' | 'expire_date' | 'is_active'
+>;
 
 export default function MyOrdersScreen() {
   const router = useRouter();
   const [orders, setOrders] = useState<OnlineOrder[]>([]);
+  const [packages, setPackages] = useState<MyPackage[]>([]);
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState('');
   const [userPhone, setUserPhone] = useState('');
@@ -34,6 +41,9 @@ export default function MyOrdersScreen() {
 
         if (error) throw error;
         setOrders(Array.isArray(data) ? data : []);
+
+        const myPackages = await getMyPackages().catch(() => []);
+        setPackages(myPackages);
       } catch (e) {
         console.error('載入預約記錄失敗', e);
         setOrders([]);
@@ -125,6 +135,47 @@ export default function MyOrdersScreen() {
             <Text className="font-rounded text-xs text-primary font-semibold">新增預約</Text>
           </Pressable>
         </View>
+
+        {/* 我的儲值卡/套票 */}
+        {packages.length > 0 && (
+          <View className="mx-5 mb-3 gap-2">
+            <View className="flex-row items-center gap-1.5 px-1">
+              <Wallet size={14} color="#e8789a" />
+              <Text className="font-rounded text-sm font-semibold text-foreground">我的儲值卡/套票</Text>
+            </View>
+            {packages.map(pkg => {
+              const isStoredValue = pkg.package_type === 'stored_value';
+              const remainingLabel = isStoredValue
+                ? `剩餘 $${Number(pkg.remaining_amount ?? 0).toLocaleString()}`
+                : `剩餘 ${Math.max((pkg.total_sessions ?? 0) - pkg.used_sessions, 0)} 次`;
+              const totalLabel = isStoredValue
+                ? `原值 $${Number(pkg.initial_amount ?? 0).toLocaleString()}`
+                : `共 ${pkg.total_sessions ?? 0} 次`;
+              return (
+                <View
+                  key={pkg.id}
+                  className="bg-card rounded-2xl p-4 border border-border flex-row items-center justify-between"
+                  style={{ opacity: pkg.is_active ? 1 : 0.55 }}
+                >
+                  <View className="flex-1 mr-2">
+                    <Text className="font-rounded text-sm font-semibold text-foreground" numberOfLines={1}>{pkg.name}</Text>
+                    <Text className="font-rounded text-xs text-muted-foreground mt-0.5">
+                      {totalLabel}{pkg.expire_date ? `　效期至 ${pkg.expire_date}` : ''}
+                    </Text>
+                  </View>
+                  <View className="items-end">
+                    <Text className="font-rounded text-base font-bold" style={{ color: pkg.is_active ? '#5dc0a0' : '#c4a0ae' }}>
+                      {remainingLabel}
+                    </Text>
+                    {!pkg.is_active && (
+                      <Text className="font-rounded text-xs text-muted-foreground">已停用</Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
 
         {/* 預約列表 */}
         {orders.length === 0 ? (
