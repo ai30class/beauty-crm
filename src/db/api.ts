@@ -271,7 +271,7 @@ export async function createServiceTemplate(
 
 export async function updateServiceTemplate(
   id: string,
-  payload: Partial<Pick<ServiceTemplate, 'name' | 'duration_minutes' | 'default_amount' | 'color' | 'sort_order'>>
+  payload: Partial<Pick<ServiceTemplate, 'name' | 'category' | 'duration_minutes' | 'default_amount' | 'color' | 'sort_order' | 'allow_online_booking' | 'require_deposit' | 'break_after_minutes'>>
 ): Promise<void> {
   const { error } = await supabase.from('service_templates').update(payload).eq('id', id);
   if (error) throw error;

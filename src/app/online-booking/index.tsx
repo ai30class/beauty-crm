@@ -49,6 +49,7 @@ export default function OnlineBookingScreen() {
 
   // 資料載入
   const [templates, setTemplates] = useState<ServiceTemplate[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('全部');
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [holidays, setHolidays] = useState<string[]>([]);
   const [slots, setSlots] = useState<TimeSlot[]>([]);
@@ -495,12 +496,37 @@ export default function OnlineBookingScreen() {
             </Pressable>
           </View>
         )}
-        {step === 'service' && (
+        {step === 'service' && (() => {
+          const categories = ['全部', ...Array.from(new Set(templates.map(t => t.category.trim() || '未分類')))];
+          const visibleTemplates = selectedCategory === '全部'
+            ? templates
+            : templates.filter(t => (t.category.trim() || '未分類') === selectedCategory);
+          return (
           <View className="gap-3">
             <Text className="font-rounded text-base font-semibold text-foreground">選擇服務項目</Text>
             {templates.length === 0 ? (
               <Text className="font-rounded text-sm text-muted-foreground text-center py-8">目前無開放線上預約的服務</Text>
-            ) : templates.map(t => (
+            ) : (
+            <>
+            {categories.length > 2 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
+                <View className="flex-row gap-2 px-1 pb-1">
+                  {categories.map(c => (
+                    <Pressable
+                      key={c}
+                      className="px-4 py-2 rounded-full active:opacity-70"
+                      style={{ backgroundColor: selectedCategory === c ? '#e8789a' : '#fce9f0' }}
+                      onPress={() => setSelectedCategory(c)}
+                    >
+                      <Text className="font-rounded text-sm font-medium" style={{ color: selectedCategory === c ? '#fff' : '#e8789a' }}>
+                        {c}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
+            {visibleTemplates.map(t => (
               <Pressable
                 key={t.id}
                 className="bg-card rounded-2xl p-4 border active:opacity-80 flex-row items-center gap-3"
@@ -526,6 +552,8 @@ export default function OnlineBookingScreen() {
                 {selectedTemplate?.id === t.id && <CheckCircle size={18} color={t.color} />}
               </Pressable>
             ))}
+            </>
+            )}
             <Pressable
               className="bg-primary rounded-2xl h-14 items-center justify-center flex-row gap-2 mt-2 active:opacity-80"
               onPress={() => { if (selectedTemplate) setStep('staff'); else setError('請選擇服務項目'); }}
@@ -535,7 +563,8 @@ export default function OnlineBookingScreen() {
             </Pressable>
             {error ? <Text className="font-rounded text-xs text-destructive text-center">{error}</Text> : null}
           </View>
-        )}
+          );
+        })()}
 
         {/* ── Step 2: 選人員 ── */}
         {step === 'staff' && (

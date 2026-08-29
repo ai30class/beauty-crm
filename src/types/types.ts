@@ -107,6 +107,7 @@ export interface ServiceTemplate {
   id: string;
   owner_id: string;
   name: string;
+  category: string;
   duration_minutes: number;
   default_amount: number;
   color: string;

@@ -68,6 +68,7 @@ function TemplateRow({
 
 type FormState = {
   name: string;
+  category: string;
   duration_minutes: string;
   default_amount: string;
   color: string;
@@ -77,9 +78,11 @@ type FormState = {
 };
 
 const EMPTY_FORM: FormState = {
-  name: '', duration_minutes: '', default_amount: '', color: '#e8789a',
+  name: '', category: '', duration_minutes: '', default_amount: '', color: '#e8789a',
   allow_online_booking: true, require_deposit: true, break_after_minutes: '30',
 };
+
+const UNCATEGORIZED = '未分類';
 
 export default function ServiceTemplatesScreen() {
   const router = useRouter();
@@ -91,6 +94,23 @@ export default function ServiceTemplatesScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showBreakInfo, setShowBreakInfo] = useState(false);
+
+  const existingCategories = Array.from(
+    new Set(templates.map(t => t.category.trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+
+  // 依分類分組，未分類統一放最後
+  const grouped = templates.reduce((acc, tpl) => {
+    const key = tpl.category.trim() || UNCATEGORIZED;
+    if (!acc.has(key)) acc.set(key, []);
+    acc.get(key)!.push(tpl);
+    return acc;
+  }, new Map<string, ServiceTemplate[]>());
+  const groupEntries = Array.from(grouped.entries()).sort(([a], [b]) => {
+    if (a === UNCATEGORIZED) return 1;
+    if (b === UNCATEGORIZED) return -1;
+    return a.localeCompare(b, 'zh-Hant');
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,6 +133,7 @@ export default function ServiceTemplatesScreen() {
   const openEdit = (tpl: ServiceTemplate) => {
     setForm({
       name: tpl.name,
+      category: tpl.category,
       duration_minutes: String(tpl.duration_minutes),
       default_amount: String(tpl.default_amount),
       color: tpl.color,
@@ -138,6 +159,7 @@ export default function ServiceTemplatesScreen() {
       const brk = parseInt(form.break_after_minutes, 10);
       const payload = {
         name: form.name.trim(),
+        category: form.category.trim(),
         duration_minutes: dur,
         default_amount: amt,
         color: form.color,
@@ -197,6 +219,32 @@ export default function ServiceTemplatesScreen() {
                 value={form.name}
                 onChangeText={v => setForm(f => ({ ...f, name: v }))}
               />
+            </View>
+
+            <View>
+              <Text className="font-rounded text-sm font-medium text-foreground mb-1">分類（選填）</Text>
+              <TextInput
+                className="bg-background border border-border rounded-xl px-3 font-rounded text-sm text-foreground"
+                style={{ height: 44 }}
+                placeholder="例：美甲、紋繡、美容、除毛"
+                placeholderTextColor="#c4a0ae"
+                value={form.category}
+                onChangeText={v => setForm(f => ({ ...f, category: v }))}
+              />
+              {existingCategories.length > 0 && (
+                <View className="flex-row gap-2 flex-wrap mt-2">
+                  {existingCategories.map(c => (
+                    <Pressable
+                      key={c}
+                      className="px-3 py-1.5 rounded-full active:opacity-70"
+                      style={{ backgroundColor: form.category === c ? '#e8789a' : '#fce9f0' }}
+                      onPress={() => setForm(f => ({ ...f, category: c }))}
+                    >
+                      <Text className="font-rounded text-xs" style={{ color: form.category === c ? '#fff' : '#e8789a' }}>{c}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
             </View>
 
             <View className="flex-row gap-3">
@@ -355,14 +403,23 @@ export default function ServiceTemplatesScreen() {
             <Text className="font-rounded text-xs text-muted-foreground mt-1">點擊右上角「新增」建立項目</Text>
           </View>
         ) : (
-          <View className="bg-card rounded-2xl p-4 border border-border">
-            {templates.map(tpl => (
-              <TemplateRow
-                key={tpl.id}
-                tpl={tpl}
-                onEdit={() => openEdit(tpl)}
-                onDelete={() => handleDelete(tpl.id)}
-              />
+          <View className="gap-4">
+            {groupEntries.map(([category, items]) => (
+              <View key={category}>
+                <Text className="font-rounded text-xs font-semibold text-muted-foreground mb-1.5 px-1">
+                  {category}（{items.length}）
+                </Text>
+                <View className="bg-card rounded-2xl p-4 border border-border">
+                  {items.map(tpl => (
+                    <TemplateRow
+                      key={tpl.id}
+                      tpl={tpl}
+                      onEdit={() => openEdit(tpl)}
+                      onDelete={() => handleDelete(tpl.id)}
+                    />
+                  ))}
+                </View>
+              </View>
             ))}
           </View>
         )}
