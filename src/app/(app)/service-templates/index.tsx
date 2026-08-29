@@ -201,11 +201,11 @@ export default function ServiceTemplatesScreen() {
 
             <View className="flex-row gap-3">
               <View className="flex-1">
-                <Text className="font-rounded text-sm font-medium text-foreground mb-1">時長（分鐘）</Text>
+                <Text className="font-rounded text-sm font-medium text-foreground mb-1">時長（分鐘）*</Text>
                 <View className="flex-row items-center bg-background border border-border rounded-xl px-3" style={{ height: 44 }}>
                   <TextInput
                     className="flex-1 font-rounded text-sm text-foreground"
-                    placeholder="60"
+                    placeholder="請輸入分鐘數"
                     placeholderTextColor="#c4a0ae"
                     value={form.duration_minutes}
                     onChangeText={v => setForm(f => ({ ...f, duration_minutes: v }))}
@@ -213,6 +213,7 @@ export default function ServiceTemplatesScreen() {
                   />
                   <Text className="font-rounded text-xs text-muted-foreground">分</Text>
                 </View>
+                <Text className="font-rounded text-xs text-muted-foreground mt-1">以 30 分鐘為基準，例如：30、60、90</Text>
               </View>
               <View className="flex-1">
                 <Text className="font-rounded text-sm font-medium text-foreground mb-1">預設金額</Text>
