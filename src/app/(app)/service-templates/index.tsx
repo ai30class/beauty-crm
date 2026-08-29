@@ -1,12 +1,12 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable, ActivityIndicator,
-  TextInput, KeyboardAvoidingView
+  TextInput, KeyboardAvoidingView, Modal
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, Plus, Trash2, Clock, DollarSign, Pencil } from 'lucide-react-native';
+import { ArrowLeft, Plus, Trash2, Clock, DollarSign, Pencil, HelpCircle, X } from 'lucide-react-native';
 import {
   getServiceTemplates, createServiceTemplate,
   updateServiceTemplate, deleteServiceTemplate
@@ -90,6 +90,7 @@ export default function ServiceTemplatesScreen() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [showBreakInfo, setShowBreakInfo] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -290,9 +291,19 @@ export default function ServiceTemplatesScreen() {
                 </View>
               )}
 
-              {/* 服務後休息時間 */}              <View className="flex-row items-center justify-between">
+              {/* 服務後休息時間 */}
+              <View className="flex-row items-center justify-between">
                 <View className="flex-1 mr-3">
-                  <Text className="font-rounded text-sm font-medium text-foreground">服務後休息時間</Text>
+                  <View className="flex-row items-center gap-1">
+                    <Text className="font-rounded text-sm font-medium text-foreground">服務後休息時間</Text>
+                    <Pressable
+                      className="w-5 h-5 items-center justify-center active:opacity-60"
+                      onPress={() => setShowBreakInfo(true)}
+                      hitSlop={8}
+                    >
+                      <HelpCircle size={14} color="#c4a0ae" />
+                    </Pressable>
+                  </View>
                   <Text className="font-rounded text-xs text-muted-foreground mt-0.5">完成服務後自動封鎖的時段</Text>
                 </View>
                 <View className="flex-row items-center bg-background border border-border rounded-xl px-3" style={{ width: 90, height: 40 }}>
@@ -355,6 +366,37 @@ export default function ServiceTemplatesScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* 服務後休息時間說明 */}
+      <Modal visible={showBreakInfo} transparent animationType="fade" onRequestClose={() => setShowBreakInfo(false)}>
+        <Pressable className="flex-1 bg-black/30 items-center justify-center px-8" onPress={() => setShowBreakInfo(false)}>
+          <Pressable className="bg-card w-full rounded-3xl p-5 gap-3" onPress={() => {/* 阻止冒泡 */}}>
+            <View className="flex-row items-center justify-between">
+              <Text className="font-rounded text-base font-bold text-foreground">服務後休息時間是什麼？</Text>
+              <Pressable className="w-7 h-7 items-center justify-center rounded-full active:bg-muted" onPress={() => setShowBreakInfo(false)}>
+                <X size={16} color="#c4a0ae" />
+              </Pressable>
+            </View>
+            <Text className="font-rounded text-sm text-muted-foreground leading-6">
+              顧客線上預約時，系統會用「服務時長 + 這裡設定的休息分鐘數」來判斷這個時段還能不能被預約，確保服務完成後有留出足夠的準備／休息時間，才會開放下一個時段給顧客約。
+            </Text>
+            <View className="bg-background rounded-2xl p-3 gap-1">
+              <Text className="font-rounded text-xs text-muted-foreground">舉例：服務 60 分鐘、休息 30 分鐘</Text>
+              <Text className="font-rounded text-sm text-foreground">顧客約 14:00 → 佔用到 15:30，下一位顧客最早只能約 15:30</Text>
+            </View>
+            <Text className="font-rounded text-xs text-muted-foreground">
+              設成 0 代表不留休息時間，服務一結束下一個時段就能立刻被預約。
+            </Text>
+            <Pressable
+              className="bg-primary rounded-2xl items-center justify-center mt-1"
+              style={{ height: 44 }}
+              onPress={() => setShowBreakInfo(false)}
+            >
+              <Text className="font-rounded text-sm font-semibold text-white">知道了</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
