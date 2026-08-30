@@ -680,13 +680,15 @@ export async function updateOnlineOrder(id: string, payload: {
 }
 
 // 顧客自助查詢：依手機號查詢所有預約
-export async function getOnlineOrdersByPhone(phone: string): Promise<OnlineOrder[]> {  const { data, error } = await supabase
-    .from('online_orders')
-    .select('*, staff:staff!staff_id(name, color)')
-    .eq('customer_phone', phone)
-    .order('appointment_time', { ascending: false });
+// 走 SECURITY DEFINER function（不是直接 select 整張表）——RLS 沒辦法限制
+// 「未登入的人只能用自己知道的手機號碼查」，只能靠資料庫端強制比對手機號碼。
+export async function getOnlineOrdersByPhone(phone: string): Promise<OnlineOrder[]> {
+  const { data, error } = await supabase.rpc('get_online_orders_by_phone', { p_phone: phone });
   if (error) throw error;
-  return Array.isArray(data) ? data : [];
+  return (Array.isArray(data) ? data : []).map((row: any) => ({
+    ...row,
+    staff: row.staff_name ? { name: row.staff_name, color: row.staff_color } : undefined,
+  })) as OnlineOrder[];
 }
 
 // 直接預約（免訂金）——在 client 端直接寫入 DB，不經 LINE Pay
