@@ -362,3 +362,13 @@ export interface ShopProfile {
   created_at: string;
   updated_at: string;
 }
+
+// 獨立表存放，只有商家自己（owner_id = auth.uid()）能讀寫，不會出現在給顧客的公開查詢裡
+export interface ShopPaymentSettings {
+  owner_id: string;
+  line_pay_channel_id: string | null;
+  line_pay_channel_secret: string | null;
+  line_pay_env: 'sandbox' | 'production';
+  created_at: string;
+  updated_at: string;
+}

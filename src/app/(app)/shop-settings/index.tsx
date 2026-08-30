@@ -7,9 +7,12 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   ArrowLeft, Store, Phone, MapPin, FileText, Clock, ChevronDown,
-  Plus, Trash2, Ban,
+  Plus, Trash2, Ban, CreditCard, Eye, EyeOff, HelpCircle, X,
 } from 'lucide-react-native';
-import { getShopProfile, upsertShopProfile, DEFAULT_HOURS, getShopBlockedSlots, createShopBlockedSlot, deleteShopBlockedSlot } from '@/db/api';
+import {
+  getShopProfile, upsertShopProfile, DEFAULT_HOURS, getShopBlockedSlots, createShopBlockedSlot, deleteShopBlockedSlot,
+  getShopPaymentSettings, upsertShopPaymentSettings,
+} from '@/db/api';
 import type { BusinessHours, DayHours, ShopBlockedSlot } from '@/types/types';
 
 // ── 常數 ──────────────────────────────────────────────────────────────────────
@@ -132,6 +135,13 @@ export default function ShopSettingsScreen() {
   // 營業時間
   const [hours, setHours] = useState<BusinessHours>(DEFAULT_HOURS);
 
+  // LINE Pay（各店家自己的金鑰）
+  const [linePayChannelId, setLinePayChannelId] = useState('');
+  const [linePayChannelSecret, setLinePayChannelSecret] = useState('');
+  const [linePayEnv, setLinePayEnv] = useState<'sandbox' | 'production'>('sandbox');
+  const [showLinePaySecret, setShowLinePaySecret] = useState(false);
+  const [showLinePayInfo, setShowLinePayInfo] = useState(false);
+
   // 全店封閉時段
   const [blockedSlots, setBlockedSlots] = useState<ShopBlockedSlot[]>([]);
   const [newLabel, setNewLabel] = useState('');
@@ -151,6 +161,12 @@ export default function ShopSettingsScreen() {
           setAddress(profile.address);
           setDescription(profile.description);
           setHours({ ...DEFAULT_HOURS, ...profile.business_hours });
+        }
+        const paymentSettings = await getShopPaymentSettings();
+        if (paymentSettings) {
+          setLinePayChannelId(paymentSettings.line_pay_channel_id ?? '');
+          setLinePayChannelSecret(paymentSettings.line_pay_channel_secret ?? '');
+          setLinePayEnv(paymentSettings.line_pay_env ?? 'sandbox');
         }
         const bs = await getShopBlockedSlots();
         setBlockedSlots(bs);
@@ -199,6 +215,11 @@ export default function ShopSettingsScreen() {
         address: address.trim(),
         description: description.trim(),
         business_hours: hours,
+      });
+      await upsertShopPaymentSettings({
+        line_pay_channel_id: linePayChannelId.trim() || null,
+        line_pay_channel_secret: linePayChannelSecret.trim() || null,
+        line_pay_env: linePayEnv,
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 2500);
@@ -332,6 +353,70 @@ export default function ShopSettingsScreen() {
           </Text>
         </View>
 
+        {/* ── LINE Pay 訂金收款 ── */}
+        <View>
+          <View className="flex-row items-center gap-2 mb-3">
+            <CreditCard size={16} color="#e8789a" />
+            <Text className="font-rounded text-base font-bold text-foreground">LINE Pay 訂金收款</Text>
+            <Pressable hitSlop={8} onPress={() => setShowLinePayInfo(true)}>
+              <HelpCircle size={14} color="#c4a0ae" />
+            </Pressable>
+          </View>
+          <View className="bg-card border border-border rounded-2xl overflow-hidden">
+            <View className="px-4 py-3 border-b border-border">
+              <Text className="font-rounded text-xs text-muted-foreground mb-1">Channel ID</Text>
+              <TextInput
+                className="font-rounded text-base text-foreground"
+                placeholder="請輸入你自己申請的 LINE Pay Channel ID"
+                placeholderTextColor="#c4a0ae"
+                value={linePayChannelId}
+                onChangeText={setLinePayChannelId}
+                autoCapitalize="none"
+              />
+            </View>
+            <View className="px-4 py-3 border-b border-border flex-row items-center gap-2">
+              <View className="flex-1">
+                <Text className="font-rounded text-xs text-muted-foreground mb-1">Channel Secret</Text>
+                <TextInput
+                  className="font-rounded text-base text-foreground"
+                  placeholder="請輸入你自己申請的 LINE Pay Channel Secret"
+                  placeholderTextColor="#c4a0ae"
+                  value={linePayChannelSecret}
+                  onChangeText={setLinePayChannelSecret}
+                  secureTextEntry={!showLinePaySecret}
+                  autoCapitalize="none"
+                />
+              </View>
+              <Pressable className="p-1" onPress={() => setShowLinePaySecret(v => !v)}>
+                {showLinePaySecret
+                  ? <EyeOff size={16} color="#c4a0ae" />
+                  : <Eye size={16} color="#c4a0ae" />
+                }
+              </Pressable>
+            </View>
+            <View className="px-4 py-3 flex-row items-center justify-between">
+              <Text className="font-rounded text-xs text-muted-foreground">環境</Text>
+              <View className="flex-row gap-2">
+                {(['sandbox', 'production'] as const).map(e => (
+                  <Pressable
+                    key={e}
+                    onPress={() => setLinePayEnv(e)}
+                    className="px-3 py-1.5 rounded-full border active:opacity-70"
+                    style={{ borderColor: linePayEnv === e ? '#e8789a' : '#e8d5dc', backgroundColor: linePayEnv === e ? '#fce9f0' : 'transparent' }}
+                  >
+                    <Text className="font-rounded text-xs" style={{ color: linePayEnv === e ? '#e8789a' : '#c4a0ae' }}>
+                      {e === 'sandbox' ? '測試環境' : '正式環境'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          </View>
+          <Text className="font-rounded text-xs text-muted-foreground mt-2 px-1">
+            💡 沒有填的話，線上預約的訂金付款功能就不會開放；每家店用自己的 LINE Pay 帳號收款，訂金直接進你自己的戶頭
+          </Text>
+        </View>
+
         {/* 錯誤 / 成功提示 */}
         {error ? (
           <View className="bg-destructive/10 border border-destructive/20 rounded-xl px-4 py-3">
@@ -436,6 +521,33 @@ export default function ShopSettingsScreen() {
           }
         </Pressable>
       </ScrollView>
+
+      {/* LINE Pay 說明 */}
+      <Modal visible={showLinePayInfo} transparent animationType="fade" onRequestClose={() => setShowLinePayInfo(false)}>
+        <Pressable className="flex-1 bg-black/30 items-center justify-center px-8" onPress={() => setShowLinePayInfo(false)}>
+          <Pressable className="bg-card w-full rounded-3xl p-5 gap-3" onPress={() => {/* 阻止冒泡 */}}>
+            <View className="flex-row items-center justify-between">
+              <Text className="font-rounded text-base font-bold text-foreground">LINE Pay 金鑰去哪裡拿？</Text>
+              <Pressable className="w-7 h-7 items-center justify-center rounded-full active:bg-muted" onPress={() => setShowLinePayInfo(false)}>
+                <X size={16} color="#c4a0ae" />
+              </Pressable>
+            </View>
+            <Text className="font-rounded text-sm text-muted-foreground leading-6">
+              每家店要自己申請 LINE Pay 商家帳號（線上預約的訂金，會直接收進你自己的帳戶，不會經過我們平台）。到 LINE Pay 商家後台申請 Messaging／Online API 後，把申請到的 Channel ID 跟 Channel Secret 填在這裡就完成了。
+            </Text>
+            <Text className="font-rounded text-xs text-muted-foreground">
+              還沒申請好之前，先選「測試環境」用假資料試流程；正式收真的訂金時再切換成「正式環境」，並填入正式環境核發的金鑰。
+            </Text>
+            <Pressable
+              className="bg-primary rounded-2xl items-center justify-center mt-1"
+              style={{ height: 44 }}
+              onPress={() => setShowLinePayInfo(false)}
+            >
+              <Text className="font-rounded text-sm font-semibold text-white">知道了</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }

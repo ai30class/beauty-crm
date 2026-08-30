@@ -47,6 +47,22 @@ async function linePayRequest(
   return res.json();
 }
 
+// 每家店自己的 LINE Pay 金鑰（獨立表 shop_payment_settings，不是全平台共用，
+// 也刻意不放在 shop_profiles——那張表有給顧客的公開讀取規則，放進去金鑰會外洩）
+async function getShopLinePayCreds(supabase: ReturnType<typeof createClient>, ownerId: string) {
+  const { data } = await supabase
+    .from('shop_payment_settings')
+    .select('line_pay_channel_id, line_pay_channel_secret, line_pay_env')
+    .eq('owner_id', ownerId)
+    .maybeSingle();
+  if (!data?.line_pay_channel_id || !data?.line_pay_channel_secret) return null;
+  return {
+    channelId: data.line_pay_channel_id as string,
+    channelSecret: data.line_pay_channel_secret as string,
+    payEnv: (data.line_pay_env ?? 'sandbox') as 'sandbox' | 'production',
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -54,10 +70,6 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
-
-  const channelId     = Deno.env.get('LINE_PAY_CHANNEL_ID') ?? '';
-  const channelSecret = Deno.env.get('LINE_PAY_CHANNEL_SECRET') ?? '';
-  const payEnv        = (Deno.env.get('LINE_PAY_ENV') ?? 'sandbox') as 'sandbox' | 'production';
 
   try {
     const url = new URL(req.url);
@@ -87,6 +99,12 @@ Deno.serve(async (req) => {
       if (!owner_id || !customer_name || !customer_phone || !service_name || !appointment_time) {
         return new Response(JSON.stringify({ error: '缺少必填欄位' }), { status: 400, headers: corsHeaders });
       }
+
+      const creds = await getShopLinePayCreds(supabase, owner_id);
+      if (!creds) {
+        return new Response(JSON.stringify({ error: '此店家尚未設定 LINE Pay，請先在商家設定填入 LINE Pay 金鑰' }), { status: 400, headers: corsHeaders });
+      }
+      const { channelId, channelSecret, payEnv } = creds;
 
       const deposit_amount = Math.round(total_amount * 0.5);
       // 結束時間 = 開始 + 服務時長 + 30 分鐘休息
@@ -169,7 +187,7 @@ Deno.serve(async (req) => {
       // 查訂單
       const { data: order } = await supabase
         .from('online_orders')
-        .select('id, deposit_amount, status')
+        .select('id, owner_id, deposit_amount, status')
         .eq('line_pay_order_id', orderId)
         .single();
 
@@ -179,6 +197,10 @@ Deno.serve(async (req) => {
       if (order.status !== 'pending_payment') {
         return Response.redirect(`${Deno.env.get('EXPO_PUBLIC_APP_URL') ?? ''}/payment-result?orderId=${orderId}&result=ok`);
       }
+
+      const creds = await getShopLinePayCreds(supabase, order.owner_id);
+      if (!creds) return new Response('shop LINE Pay not configured', { status: 400 });
+      const { channelId, channelSecret, payEnv } = creds;
 
       // Confirm API
       const confirmRes = await linePayRequest(

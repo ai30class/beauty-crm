@@ -2,6 +2,7 @@ import { supabase } from '@/client/supabase';
 import type {
   Customer, ServiceRecord, TrendPoint, Appointment, ServiceTemplate,
   ServicePackage, PackageTransaction, Staff, TimeSlot, ShopProfile,
+  ShopPaymentSettings,
   BusinessHours, Expense, Product, ProductUsage, RestockLog,
   Holiday, OnlineOrder, Coupon, CustomerCoupon, ShopBlockedSlot,
   MonthlyStats, UnifiedAppointment, ProductSalesRow,
@@ -980,6 +981,30 @@ export async function upsertShopProfile(payload: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('未登入');
   const { error } = await supabase.from('shop_profiles').upsert(
+    { ...payload, owner_id: user.id },
+    { onConflict: 'owner_id' }
+  );
+  if (error) throw error;
+}
+
+// ─── LINE Pay 商家金鑰（獨立表，各店家自己的，不會出現在給顧客的公開查詢裡）────────
+export async function getShopPaymentSettings(): Promise<ShopPaymentSettings | null> {
+  const { data, error } = await supabase
+    .from('shop_payment_settings')
+    .select('*')
+    .maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
+export async function upsertShopPaymentSettings(payload: {
+  line_pay_channel_id: string | null;
+  line_pay_channel_secret: string | null;
+  line_pay_env: 'sandbox' | 'production';
+}): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('未登入');
+  const { error } = await supabase.from('shop_payment_settings').upsert(
     { ...payload, owner_id: user.id },
     { onConflict: 'owner_id' }
   );
