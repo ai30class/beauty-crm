@@ -2,7 +2,7 @@ import { supabase } from '@/client/supabase';
 import type {
   Customer, ServiceRecord, TrendPoint, Appointment, ServiceTemplate,
   ServicePackage, PackageTransaction, Staff, TimeSlot, ShopProfile,
-  ShopPaymentSettings,
+  ShopPaymentSettings, WaitlistEntry, WaitlistStatus,
   BusinessHours, Expense, Product, ProductUsage, RestockLog,
   Holiday, OnlineOrder, Coupon, CustomerCoupon, ShopBlockedSlot,
   MonthlyStats, UnifiedAppointment, ProductSalesRow,
@@ -689,6 +689,46 @@ export async function getOnlineOrdersByPhone(phone: string): Promise<OnlineOrder
     ...row,
     staff: row.staff_name ? { name: row.staff_name, color: row.staff_color } : undefined,
   })) as OnlineOrder[];
+}
+
+// ─── 候補名單 ─────────────────────────────────────────────────────────────────
+// 只有商家自己能查看名單（RLS 沒有給顧客的 SELECT 規則），顧客（含未登入）只能新增登記
+
+export async function createWaitlistEntry(payload: {
+  owner_id: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_user_id: string | null;
+  staff_id: string | null;
+  service_template_id: string | null;
+  service_name: string;
+  duration_minutes: number;
+  desired_date: string;
+  desired_time: string;
+  notes?: string | null;
+}): Promise<void> {
+  const { error } = await supabase.from('waitlist_entries').insert(payload);
+  if (error) throw error;
+}
+
+export async function getWaitlistEntries(): Promise<WaitlistEntry[]> {
+  const { data, error } = await supabase
+    .from('waitlist_entries')
+    .select('*, staff:staff!staff_id(name, color)')
+    .order('desired_date', { ascending: true })
+    .order('desired_time', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function updateWaitlistEntryStatus(id: string, status: WaitlistStatus): Promise<void> {
+  const { error } = await supabase.from('waitlist_entries').update({ status }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteWaitlistEntry(id: string): Promise<void> {
+  const { error } = await supabase.from('waitlist_entries').delete().eq('id', id);
+  if (error) throw error;
 }
 
 // 直接預約（免訂金）——在 client 端直接寫入 DB，不經 LINE Pay

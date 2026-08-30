@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  KeyboardAvoidingView, ActivityIndicator
+  KeyboardAvoidingView, ActivityIndicator, Modal
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getActiveStaff, getServiceTemplates, getAvailableSlots, getAllHolidays, createDirectOnlineOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner } from '@/db/api';
+import { getActiveStaff, getServiceTemplates, getAvailableSlots, getAllHolidays, createDirectOnlineOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import { fetch } from 'expo/fetch';
 import type { Staff, ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
@@ -68,6 +68,42 @@ export default function OnlineBookingScreen() {
   const [customerBirthday, setCustomerBirthday] = useState<Date | null>(null);
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [notes, setNotes] = useState('');
+
+  // 候補名單
+  const [waitlistModalTime, setWaitlistModalTime] = useState<string | null>(null);
+  const [waitlistNotes, setWaitlistNotes] = useState('');
+  const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
+  const [waitlistJoinedTimes, setWaitlistJoinedTimes] = useState<Set<string>>(new Set());
+
+  const handleJoinWaitlist = async () => {
+    if (!waitlistModalTime || !selectedTemplate) return;
+    const resolvedOwnerId = selectedStaff?.owner_id || ownerId;
+    if (!resolvedOwnerId) return;
+    setWaitlistSubmitting(true);
+    try {
+      await createWaitlistEntry({
+        owner_id: resolvedOwnerId,
+        customer_name: customerName.trim(),
+        customer_phone: customerPhone.trim(),
+        customer_user_id: customerUserId,
+        staff_id: selectedStaff?.id ?? null,
+        service_template_id: selectedTemplate.id,
+        service_name: selectedTemplate.name,
+        duration_minutes: selectedTemplate.duration_minutes,
+        desired_date: toLocalDateStr(selectedDate),
+        desired_time: waitlistModalTime,
+        notes: waitlistNotes.trim() || null,
+      });
+      setWaitlistJoinedTimes(prev => new Set(prev).add(waitlistModalTime));
+      setWaitlistModalTime(null);
+      setWaitlistNotes('');
+    } catch {
+      setError('候補登記失敗，請稍後再試');
+      setWaitlistModalTime(null);
+    } finally {
+      setWaitlistSubmitting(false);
+    }
+  };
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [directSuccess, setDirectSuccess] = useState(false);
@@ -654,27 +690,44 @@ export default function OnlineBookingScreen() {
                   <Text className="font-rounded text-sm text-muted-foreground text-center py-6">此日期無可用時段</Text>
                 ) : (
                   <View className="flex-row flex-wrap gap-2">
-                    {slots.map(slot => (
-                      <Pressable
-                        key={slot.time}
-                        className="rounded-xl px-4 py-2.5 active:opacity-70"
-                        style={{
-                          backgroundColor: !slot.available ? '#f5f0f3' :
-                            selectedTime === slot.time ? '#e8789a' : '#fce9f0',
-                          opacity: slot.available ? 1 : 0.4,
-                        }}
-                        disabled={!slot.available}
-                        onPress={() => setSelectedTime(slot.time)}
-                      >
-                        <Text
-                          className="font-rounded text-sm font-medium"
-                          style={{ color: !slot.available ? '#c4a0ae' : selectedTime === slot.time ? '#fff' : '#e8789a' }}
+                    {slots.map(slot => {
+                      const joined = waitlistJoinedTimes.has(slot.time);
+                      return (
+                        <Pressable
+                          key={slot.time}
+                          className="rounded-xl px-4 py-2.5 active:opacity-70"
+                          style={{
+                            backgroundColor: !slot.available ? '#f5f0f3' :
+                              selectedTime === slot.time ? '#e8789a' : '#fce9f0',
+                            opacity: slot.available ? 1 : joined ? 0.7 : 0.4,
+                          }}
+                          onPress={() => {
+                            if (slot.available) setSelectedTime(slot.time);
+                            else if (!joined) setWaitlistModalTime(slot.time);
+                          }}
                         >
-                          {slot.time}
-                        </Text>
-                      </Pressable>
-                    ))}
+                          {!slot.available && joined ? (
+                            <View className="flex-row items-center gap-1">
+                              <BellRing size={11} color="#c99a1f" />
+                              <Text className="font-rounded text-xs font-medium" style={{ color: '#c99a1f' }}>已候補</Text>
+                            </View>
+                          ) : (
+                            <Text
+                              className="font-rounded text-sm font-medium"
+                              style={{ color: !slot.available ? '#c4a0ae' : selectedTime === slot.time ? '#fff' : '#e8789a' }}
+                            >
+                              {slot.time}
+                            </Text>
+                          )}
+                        </Pressable>
+                      );
+                    })}
                   </View>
+                )}
+                {slots.some(s => !s.available) && (
+                  <Text className="font-rounded text-xs text-muted-foreground -mt-1">
+                    💡 灰色時段已滿，點一下可以登記候補
+                  </Text>
                 )}
               </>
             )}
@@ -780,6 +833,40 @@ export default function OnlineBookingScreen() {
       )}
         </>
       )}
+      {/* 候補名單登記 */}
+      <Modal visible={!!waitlistModalTime} transparent animationType="fade" onRequestClose={() => setWaitlistModalTime(null)}>
+        <Pressable className="flex-1 bg-black/30 items-center justify-center px-8" onPress={() => setWaitlistModalTime(null)}>
+          <Pressable className="bg-card w-full rounded-3xl p-5 gap-3" onPress={() => {/* 阻止冒泡 */}}>
+            <View className="flex-row items-center justify-between">
+              <Text className="font-rounded text-base font-bold text-foreground">加入候補名單</Text>
+              <Pressable className="w-7 h-7 items-center justify-center rounded-full active:bg-muted" onPress={() => setWaitlistModalTime(null)}>
+                <X size={16} color="#c4a0ae" />
+              </Pressable>
+            </View>
+            <Text className="font-rounded text-sm text-muted-foreground leading-6">
+              {toLocalDateStr(selectedDate)} {waitlistModalTime} 這個時段目前已滿，登記候補後，有空位時店家會主動聯繫你。
+            </Text>
+            <TextInput
+              className="font-rounded text-sm text-foreground bg-background border border-border rounded-xl px-3 py-2"
+              placeholder="備註（選填，例如方便聯繫的時段）"
+              placeholderTextColor="#c4a0ae"
+              value={waitlistNotes}
+              onChangeText={setWaitlistNotes}
+            />
+            <Pressable
+              className="bg-primary rounded-2xl items-center justify-center mt-1"
+              style={{ height: 48 }}
+              onPress={handleJoinWaitlist}
+              disabled={waitlistSubmitting}
+            >
+              {waitlistSubmitting
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text className="font-rounded text-sm font-semibold text-white">確認登記候補</Text>
+              }
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }

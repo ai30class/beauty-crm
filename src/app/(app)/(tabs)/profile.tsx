@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { supabase } from '@/client/supabase';
 import { useRouter } from 'expo-router';
 import { useSession } from '@/ctx';
-import { User, Mail, LogOut, ChevronRight, Scissors, Users2, CalendarOff, ShoppingBag, Users, TrendingDown, Package, Store, Cake, Trophy, BarChart2, Tag, TrendingUp, UserX } from 'lucide-react-native';
+import { User, Mail, LogOut, ChevronRight, Scissors, Users2, CalendarOff, ShoppingBag, Users, TrendingDown, Package, Store, Cake, Trophy, BarChart2, Tag, TrendingUp, UserX, ListPlus } from 'lucide-react-native';
 
 export default function ProfileTab() {
   const router = useRouter();
@@ -49,6 +49,19 @@ export default function ProfileTab() {
             <View className="flex-1">
               <Text className="font-rounded text-base text-foreground">線上預約訂單</Text>
               <Text className="font-rounded text-xs text-muted-foreground mt-0.5">查看顧客線上預約與訂金狀態</Text>
+            </View>
+            <ChevronRight size={16} color="#c4a0ae" />
+          </Pressable>
+          <Pressable
+            className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
+            onPress={() => router.push('/(app)/waitlist' as any)}
+          >
+            <View className="w-8 h-8 rounded-full items-center justify-center mr-3" style={{ backgroundColor: '#fff8e0' }}>
+              <ListPlus size={16} color="#c99a1f" />
+            </View>
+            <View className="flex-1">
+              <Text className="font-rounded text-base text-foreground">候補名單</Text>
+              <Text className="font-rounded text-xs text-muted-foreground mt-0.5">時段已滿時登記候補的顧客</Text>
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>

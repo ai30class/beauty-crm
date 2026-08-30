@@ -372,3 +372,25 @@ export interface ShopPaymentSettings {
   created_at: string;
   updated_at: string;
 }
+
+export type WaitlistStatus = 'waiting' | 'notified' | 'booked' | 'cancelled';
+
+// 候補名單：只有商家自己能查看（沒有給顧客的 SELECT 規則），顧客只能新增登記
+export interface WaitlistEntry {
+  id: string;
+  owner_id: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_user_id: string | null;
+  staff_id: string | null;
+  service_template_id: string | null;
+  service_name: string;
+  duration_minutes: number;
+  desired_date: string;
+  desired_time: string;
+  notes: string | null;
+  status: WaitlistStatus;
+  created_at: string;
+  updated_at: string;
+  staff?: { name: string; color: string } | null;
+}
