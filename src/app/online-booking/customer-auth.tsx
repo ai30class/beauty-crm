@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, Eye, EyeOff, Lock, Mail } from 'lucide-react-native';
+import { ArrowLeft, Eye, EyeOff, Lock, Mail, MessageCircle } from 'lucide-react-native';
 import { useState } from 'react';
 import {ActivityIndicator,
   KeyboardAvoidingView, Pressable, ScrollView,Text, TextInput, 
@@ -20,6 +20,24 @@ export default function CustomerAuthScreen() {
   const [showVerify, setShowVerify] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  // Channel ID 不是密鑰（等同 Google OAuth 的 client_id），可以直接寫在前端
+  const LINE_LOGIN_CHANNEL_ID = '2011350553';
+
+  const handleLineLogin = () => {
+    const randomState = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    try { sessionStorage.setItem('line_login_state', randomState); } catch {}
+    const state = btoa(JSON.stringify({ r: randomState, o: ownerId ?? '' }));
+    const redirectUri = `${window.location.origin}/online-booking/line-callback`;
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: LINE_LOGIN_CHANNEL_ID,
+      redirect_uri: redirectUri,
+      state,
+      scope: 'openid profile',
+    });
+    window.location.href = `https://access.line.me/oauth2/v2.1/authorize?${params.toString()}`;
+  };
 
   const handleAuth = async () => {
     setError('');
@@ -98,6 +116,22 @@ export default function CustomerAuthScreen() {
             <Text className="font-rounded text-sm text-muted-foreground text-center mb-4">
               {isSignUp ? '註冊後即可預約及查看歷史記錄' : '登入後即可開始預約服務'}
             </Text>
+
+            {/* LINE 一鍵登入 */}
+            <Pressable
+              className="rounded-2xl h-14 items-center justify-center active:opacity-80 flex-row gap-2"
+              style={{ backgroundColor: '#06C755' }}
+              onPress={handleLineLogin}
+            >
+              <MessageCircle size={18} color="#fff" />
+              <Text className="font-rounded text-base text-white font-semibold">用 LINE 一鍵登入</Text>
+            </Pressable>
+
+            <View className="flex-row items-center gap-3 my-1">
+              <View className="flex-1 h-px bg-border" />
+              <Text className="font-rounded text-xs text-muted-foreground">或使用 Email</Text>
+              <View className="flex-1 h-px bg-border" />
+            </View>
 
             {/* Email */}
             <View className="bg-card border border-border rounded-2xl px-4 py-1 flex-row items-center gap-2">
