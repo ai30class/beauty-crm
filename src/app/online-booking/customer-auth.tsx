@@ -36,6 +36,9 @@ export default function CustomerAuthScreen() {
       redirect_uri: redirectUri,
       state,
       scope: 'openid profile',
+      // LINE Login 頻道已連動官方帳號時，順便請顧客加好友，這樣登入時拿到的
+      // userId 才能直接拿去發 Messaging API 推播，不用另外再串一次加好友流程
+      bot_prompt: 'normal',
     });
     window.location.href = `https://access.line.me/oauth2/v2.1/authorize?${params.toString()}`;
   };
