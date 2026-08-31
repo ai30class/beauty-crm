@@ -263,6 +263,18 @@ export async function getServiceTemplates(): Promise<ServiceTemplate[]> {
   return Array.isArray(data) ? data : [];
 }
 
+// 顧客線上預約頁專用：見 getActiveStaffByOwner 的說明，同樣的理由要帶 owner_id
+export async function getServiceTemplatesByOwner(ownerId: string): Promise<ServiceTemplate[]> {
+  const { data, error } = await supabase
+    .from('service_templates')
+    .select('*')
+    .eq('owner_id', ownerId)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
 export async function createServiceTemplate(
   payload: Omit<ServiceTemplate, 'id' | 'owner_id' | 'created_at'>
 ): Promise<void> {
@@ -477,6 +489,20 @@ export async function getActiveStaff(): Promise<Staff[]> {
   return Array.isArray(data) ? data : [];
 }
 
+// 顧客線上預約頁專用：一定要帶 owner_id，不能只靠 RLS scope
+// （customer_select 規則只檢查「呼叫者是不是顧客」，沒有限制是哪家店，
+//  沒帶 owner_id 篩選的話，顧客在任一店家的預約頁會看到全部店家混在一起）
+export async function getActiveStaffByOwner(ownerId: string): Promise<Staff[]> {
+  const { data, error } = await supabase
+    .from('staff')
+    .select('*')
+    .eq('owner_id', ownerId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
 export async function createStaff(payload: Omit<Staff, 'id' | 'owner_id' | 'created_at'>): Promise<void> {
   const { error } = await supabase.from('staff').insert(payload);
   if (error) throw error;
@@ -512,6 +538,17 @@ export async function getAllHolidays(): Promise<Holiday[]> {
   const { data, error } = await supabase
     .from('holidays')
     .select('*, staff:staff!staff_id(name, color)')
+    .order('holiday_date');
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+// 顧客線上預約頁專用：見 getActiveStaffByOwner 的說明，同樣的理由要帶 owner_id
+export async function getHolidaysByOwner(ownerId: string): Promise<Holiday[]> {
+  const { data, error } = await supabase
+    .from('holidays')
+    .select('*, staff:staff!staff_id(name, color)')
+    .eq('owner_id', ownerId)
     .order('holiday_date');
   if (error) throw error;
   return Array.isArray(data) ? data : [];

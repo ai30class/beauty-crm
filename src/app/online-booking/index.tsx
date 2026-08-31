@@ -7,7 +7,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getActiveStaff, getServiceTemplates, getAvailableSlots, getAllHolidays, createDirectOnlineOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry } from '@/db/api';
+import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import { fetch } from 'expo/fetch';
 import type { Staff, ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
@@ -113,29 +113,30 @@ export default function OnlineBookingScreen() {
   const [ownerId, setOwnerId] = useState(presetOwnerId ?? '');
   const [shopProfile, setShopProfile] = useState<Pick<ShopProfile, 'shop_name' | 'phone' | 'address' | 'description' | 'business_hours'> | null>(null);
 
+  // presetOwnerId 是路由參數，首次渲染時偶爾還沒解析出來，這裡確保一解析出來就同步
   useEffect(() => {
+    if (presetOwnerId) setOwnerId(presetOwnerId);
+  }, [presetOwnerId]);
+
+  useEffect(() => {
+    // 一定要有明確的 owner_id 才能載入——不能再用「猜第一位員工屬於哪家店」
+    // 這種方式推斷，那樣等於把全部店家的員工、服務、公休日混在一起顯示
+    // （見顧客線上預約頁必須帶 owner_id 查詢的說明）
+    if (!presetOwnerId) return;
     (async () => {
       const [tpls, staff, hols] = await Promise.all([
-        getServiceTemplates(),
-        getActiveStaff(),
-        getAllHolidays(),
+        getServiceTemplatesByOwner(presetOwnerId),
+        getActiveStaffByOwner(presetOwnerId),
+        getHolidaysByOwner(presetOwnerId),
       ]);
       // 只顯示開放線上預約的
       setTemplates(tpls.filter(t => t.allow_online_booking));
       setStaffList(staff);
       setHolidays(hols.map(h => h.holiday_date));
 
-      // 若 presetOwnerId 未傳，嘗試從 staff owner 推斷
-      const resolvedOwnerId = presetOwnerId || (staff.length > 0 ? staff[0].owner_id : '');
-      if (!presetOwnerId && resolvedOwnerId) {
-        setOwnerId(resolvedOwnerId);
-      }
-
       // 載入商家公開資訊
-      if (resolvedOwnerId) {
-        const profile = await getShopProfileByOwner(resolvedOwnerId).catch(() => null);
-        setShopProfile(profile);
-      }
+      const profile = await getShopProfileByOwner(presetOwnerId).catch(() => null);
+      setShopProfile(profile);
     })();
   }, [presetOwnerId]);
 
