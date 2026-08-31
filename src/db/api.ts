@@ -41,6 +41,7 @@ export async function upsertCustomerByPhone(
   name: string,
   phone: string,
   birthday: string,
+  customerUserId?: string | null,
 ): Promise<{ customerId: string; wasAlreadyRegistered: boolean }> {
   const { data, error } = await supabase
     .rpc('upsert_customer_by_phone', {
@@ -48,11 +49,23 @@ export async function upsertCustomerByPhone(
       p_name: name,
       p_phone: phone,
       p_birthday: birthday,
+      p_customer_user_id: customerUserId ?? null,
     })
     .single();
   if (error) throw error;
   const row = data as { customer_id: string; was_already_registered: boolean };
   return { customerId: row.customer_id, wasAlreadyRegistered: row.was_already_registered };
+}
+
+// 已登入的回頭客：讀出這位顧客上次在這家店留的姓名/電話/生日，不用重打
+export async function getMyCustomerProfile(ownerId: string): Promise<{ id: string; name: string; phone: string; birthday: string | null } | null> {
+  const { data, error } = await supabase
+    .from('customers')
+    .select('id, name, phone, birthday')
+    .eq('owner_id', ownerId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
 }
 
 export async function getCustomers(): Promise<Customer[]> {

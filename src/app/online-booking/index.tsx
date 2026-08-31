@@ -7,7 +7,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry } from '@/db/api';
+import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import { fetch } from 'expo/fetch';
 import type { Staff, ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
@@ -140,6 +140,21 @@ export default function OnlineBookingScreen() {
     })();
   }, [presetOwnerId]);
 
+  // 回頭客辨識：已登入且這個帳號在這家店留過資料的話，直接帶出來，
+  // 不用每次都重打一次姓名/電話/生日
+  useEffect(() => {
+    if (!presetOwnerId || !customerUserId) return;
+    (async () => {
+      const profile = await getMyCustomerProfile(presetOwnerId).catch(() => null);
+      if (!profile) return;
+      setCustomerName(profile.name);
+      setCustomerPhone(profile.phone);
+      if (profile.birthday) setCustomerBirthday(new Date(`${profile.birthday}T12:00:00`));
+      setIsRegisteredCustomer(true);
+      setStep(s => (s === 'identity' ? 'service' : s));
+    })();
+  }, [presetOwnerId, customerUserId]);
+
   // 日期/人員/服務改變時重新撈時段
   useEffect(() => {
     if (!selectedTemplate || !ownerId) return;
@@ -205,6 +220,7 @@ export default function OnlineBookingScreen() {
         customerName.trim(),
         customerPhone.trim(),
         birthdayStr,
+        customerUserId,
       );
       const needDeposit = selectedTemplate.require_deposit && !wasAlreadyRegistered;
 
@@ -770,6 +786,9 @@ export default function OnlineBookingScreen() {
                   <Text className="font-rounded text-xs" style={{ color: '#2ea87e' }}>熟客</Text>
                 </View>
               )}
+              <Pressable className="px-2 py-1 active:opacity-70" onPress={() => setStep('identity')}>
+                <Text className="font-rounded text-xs" style={{ color: '#e8789a' }}>編輯</Text>
+              </Pressable>
             </View>
 
             {/* 備註 */}
