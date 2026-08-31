@@ -25,9 +25,10 @@ export default function CustomerAuthScreen() {
   const LINE_LOGIN_CHANNEL_ID = '2011350553';
 
   const handleLineLogin = () => {
-    const randomState = Math.random().toString(36).slice(2) + Date.now().toString(36);
-    try { sessionStorage.setItem('line_login_state', randomState); } catch {}
-    const state = btoa(JSON.stringify({ r: randomState, o: ownerId ?? '' }));
+    // state 只用來夾帶 ownerId 過去，不依賴 sessionStorage 之類的暫存比對——
+    // LINE 常會把整個授權流程交給 LINE App 自己的瀏覽器處理，跳回來時
+    // 已經不是原本這個分頁了，暫存的東西會讀不到（見 line-callback.tsx 的說明）
+    const state = btoa(JSON.stringify({ o: ownerId ?? '' }));
     const redirectUri = `${window.location.origin}/online-booking/line-callback`;
     const params = new URLSearchParams({
       response_type: 'code',

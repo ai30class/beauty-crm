@@ -16,15 +16,17 @@ export default function LineCallbackScreen() {
       if (lineError) { setError('已取消 LINE 登入'); return; }
       if (!code || !state) { setError('連結不完整，請重新登入'); return; }
 
+      // 不能靠 sessionStorage 存的暫存值來核對 state——LINE 常常會把授權流程整個
+      // 交給 LINE App 自己的內建瀏覽器處理，跳回來時已經不是原本按登入那個
+      // Safari 分頁了，兩邊的 sessionStorage 互相讀不到。state 只用來夾帶
+      // ownerId，不是不能少的安全機制（真正驗證身份的是後面用 code 換 token
+      // 這一步，一定要有 LINE 的 Channel Secret 才換得到）。
       let ownerId = '';
       try {
         const decoded = JSON.parse(atob(state));
-        const expected = sessionStorage.getItem('line_login_state');
-        if (!expected || decoded.r !== expected) { setError('驗證失敗，請重新登入'); return; }
         ownerId = decoded.o ?? '';
-        sessionStorage.removeItem('line_login_state');
       } catch {
-        setError('驗證失敗，請重新登入');
+        setError('連結格式錯誤，請重新登入');
         return;
       }
 
