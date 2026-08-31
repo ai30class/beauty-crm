@@ -540,6 +540,7 @@ export async function getAvailableSlots(
   durationMinutes: number,
   breakMinutes: number,
   customerPhone?: string,
+  businessHours?: BusinessHours | null,
 ): Promise<TimeSlot[]> {
   // 取得當天已預約（online_orders paid/confirmed）
   const dayStart = `${dateStr}T00:00:00.000Z`;
@@ -592,39 +593,47 @@ export async function getAvailableSlots(
     return h * 60 + m;
   };
 
-  // 產生 09:00–20:00 每 30 分鐘一格的時段
+  // 商家當天的實際營業時間（沒有設定時退回 09:00–20:00 當預設，避免炸掉舊呼叫端）
+  const dayHours = businessHours?.[dayKey as keyof BusinessHours];
+  const openMins = dayHours?.open !== false && dayHours?.start ? toMins(dayHours.start) : 9 * 60;
+  const closeMins = dayHours?.open !== false && dayHours?.end ? toMins(dayHours.end) : 20 * 60;
+
+  // 依營業時間產生每 30 分鐘一格的時段
+  const closeH = Math.floor(closeMins / 60);
+  const closeM = closeMins % 60;
+  const closeDate = new Date(`${dateStr}T${String(closeH).padStart(2,'0')}:${String(closeM).padStart(2,'0')}:00`);
+
   const slots: TimeSlot[] = [];
-  for (let h = 9; h < 20; h++) {
-    for (const min of [0, 30]) {
-      const slotStart = new Date(`${dateStr}T${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}:00`);
-      const slotEnd = new Date(slotStart.getTime() + (durationMinutes + breakMinutes) * 60000);
-      if (slotEnd > new Date(`${dateStr}T20:00:00`)) continue;
+  for (let slotMins = openMins; slotMins < closeMins; slotMins += 30) {
+    const h = Math.floor(slotMins / 60);
+    const min = slotMins % 60;
+    const slotStart = new Date(`${dateStr}T${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}:00`);
+    const slotEnd = new Date(slotStart.getTime() + (durationMinutes + breakMinutes) * 60000);
+    if (slotEnd > closeDate) continue;
 
-      // 既有預約衝突
-      const conflict = busyRanges.some(r =>
-        slotStart.getTime() < r.end && slotEnd.getTime() > r.start
-      );
+    // 既有預約衝突
+    const conflict = busyRanges.some(r =>
+      slotStart.getTime() < r.end && slotEnd.getTime() > r.start
+    );
 
-      // 全店封閉時段
-      const slotMins = h * 60 + min;
-      const shopBlocked = blockedSlots.some((b: { start_time: string; end_time: string }) => {
-        const bs = toMins(b.start_time);
-        const be = toMins(b.end_time);
-        return slotMins >= bs && slotMins < be;
-      });
+    // 全店封閉時段
+    const shopBlocked = blockedSlots.some((b: { start_time: string; end_time: string }) => {
+      const bs = toMins(b.start_time);
+      const be = toMins(b.end_time);
+      return slotMins >= bs && slotMins < be;
+    });
 
-      // 顧客限制：只允許特定時段
-      const custBlocked = customerRestricted && !allowedHours.some(r => {
-        const rs = toMins(r.start);
-        const re = toMins(r.end);
-        return slotMins >= rs && slotMins < re;
-      });
+    // 顧客限制：只允許特定時段
+    const custBlocked = customerRestricted && !allowedHours.some(r => {
+      const rs = toMins(r.start);
+      const re = toMins(r.end);
+      return slotMins >= rs && slotMins < re;
+    });
 
-      slots.push({
-        time: `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`,
-        available: !conflict && !shopBlocked && !custBlocked,
-      });
-    }
+    slots.push({
+      time: `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`,
+      available: !conflict && !shopBlocked && !custBlocked,
+    });
   }
   return slots;
 }

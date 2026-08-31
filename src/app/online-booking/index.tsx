@@ -152,6 +152,7 @@ export default function OnlineBookingScreen() {
           selectedTemplate.duration_minutes,
           selectedTemplate.break_after_minutes,
           customerPhone || undefined,
+          shopProfile?.business_hours,
         );
         setSlots(s);
         setSelectedTime('');
@@ -159,7 +160,7 @@ export default function OnlineBookingScreen() {
         setSlotsLoading(false);
       }
     })();
-  }, [selectedStaff, selectedTemplate, selectedDate, ownerId]);
+  }, [selectedStaff, selectedTemplate, selectedDate, ownerId, shopProfile]);
 
   const isHoliday = (d: Date) => holidays.includes(toLocalDateStr(d));
 
