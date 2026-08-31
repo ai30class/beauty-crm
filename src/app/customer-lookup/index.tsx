@@ -10,7 +10,7 @@ import {
   Clock, User2, Phone, FileText, CheckCircle, Loader, XCircle, Edit3,
 } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getOnlineOrdersByPhone, updateOnlineOrder, updateOnlineOrderStatus } from '@/db/api';
+import { getOnlineOrdersByPhone, updateOnlineOrderByPhone, cancelOnlineOrderByPhone } from '@/db/api';
 import type { OnlineOrder } from '@/types/types';
 
 // ── 工具 ────────────────────────────────────────────────────────────────────
@@ -153,7 +153,7 @@ function OrderCard({
   const handleSave = async () => {
     setSaving(true); setEditError('');
     try {
-      await updateOnlineOrder(order.id, {
+      await updateOnlineOrderByPhone(order.id, order.customer_phone, {
         appointment_time: editDate.toISOString(),
         notes: editNotes.trim() || null,
       });
@@ -167,7 +167,7 @@ function OrderCard({
   const handleCancel = async () => {
     setCancelling(true);
     try {
-      await updateOnlineOrderStatus(order.id, 'cancelled');
+      await cancelOnlineOrderByPhone(order.id, order.customer_phone);
       setShowModal(false);
       onRefresh();
     } catch (e: any) {

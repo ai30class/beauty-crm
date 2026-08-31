@@ -725,6 +725,27 @@ export async function updateOnlineOrder(id: string, payload: {
   if (error) throw error;
 }
 
+// 顧客自助查詢頁（未登入，靠手機號）專用：走 SECURITY DEFINER function，
+// 資料庫端強制比對 customer_phone 吻合才能改，不能只憑訂單 id 就改到別人的預約
+export async function updateOnlineOrderByPhone(
+  id: string,
+  phone: string,
+  payload: { appointment_time: string; notes: string | null },
+): Promise<void> {
+  const { error } = await supabase.rpc('update_online_order_by_phone', {
+    p_id: id,
+    p_phone: phone,
+    p_appointment_time: payload.appointment_time,
+    p_notes: payload.notes,
+  });
+  if (error) throw error;
+}
+
+export async function cancelOnlineOrderByPhone(id: string, phone: string): Promise<void> {
+  const { error } = await supabase.rpc('cancel_online_order_by_phone', { p_id: id, p_phone: phone });
+  if (error) throw error;
+}
+
 // 顧客自助查詢：依手機號查詢所有預約
 // 走 SECURITY DEFINER function（不是直接 select 整張表）——RLS 沒辦法限制
 // 「未登入的人只能用自己知道的手機號碼查」，只能靠資料庫端強制比對手機號碼。
