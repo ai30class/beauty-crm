@@ -7,14 +7,14 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile } from '@/db/api';
+import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, createOnlineOrderAddons } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import { fetch } from 'expo/fetch';
 import type { Staff, ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
 
 const DAY_KEYS: (keyof BusinessHours)[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
-type Step = 'identity' | 'service' | 'staff' | 'datetime' | 'info' | 'payment';
+type Step = 'identity' | 'service' | 'addons' | 'staff' | 'datetime' | 'info' | 'payment';
 
 function toLocalDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -57,6 +57,7 @@ export default function OnlineBookingScreen() {
 
   // 使用者選擇
   const [selectedTemplate, setSelectedTemplate] = useState<ServiceTemplate | null>(null);
+  const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const d = new Date(); d.setDate(d.getDate() + 1); return d;
@@ -156,6 +157,14 @@ export default function OnlineBookingScreen() {
   }, [presetOwnerId, customerUserId]);
 
   // 日期/人員/服務改變時重新撈時段
+  // 加購項目：service_templates 裡 is_addon=true 的另外挑出來，不混進主服務清單
+  const mainTemplates = templates.filter(t => !t.is_addon);
+  const addonTemplates = templates.filter(t => t.is_addon);
+  const hasAddons = addonTemplates.length > 0;
+  const selectedAddons = addonTemplates.filter(t => selectedAddonIds.has(t.id));
+  const totalDuration = (selectedTemplate?.duration_minutes ?? 0) + selectedAddons.reduce((s, a) => s + a.duration_minutes, 0);
+  const totalAmount = (selectedTemplate?.default_amount ?? 0) + selectedAddons.reduce((s, a) => s + a.default_amount, 0);
+
   useEffect(() => {
     if (!selectedTemplate || !ownerId) return;
     (async () => {
@@ -165,7 +174,7 @@ export default function OnlineBookingScreen() {
           ownerId,
           selectedStaff?.id ?? null,
           toLocalDateStr(selectedDate),
-          selectedTemplate.duration_minutes,
+          totalDuration,
           selectedTemplate.break_after_minutes,
           customerPhone || undefined,
           shopProfile?.business_hours,
@@ -176,7 +185,7 @@ export default function OnlineBookingScreen() {
         setSlotsLoading(false);
       }
     })();
-  }, [selectedStaff, selectedTemplate, selectedDate, ownerId, shopProfile]);
+  }, [selectedStaff, selectedTemplate, selectedDate, ownerId, shopProfile, totalDuration]);
 
   const isHoliday = (d: Date) => holidays.includes(toLocalDateStr(d));
 
@@ -188,7 +197,7 @@ export default function OnlineBookingScreen() {
   };
 
   const depositAmount = selectedTemplate
-    ? Math.round(selectedTemplate.default_amount * 0.5)
+    ? Math.round(totalAmount * 0.5)
     : 0;
 
   const handleSubmit = async () => {
@@ -204,7 +213,10 @@ export default function OnlineBookingScreen() {
 
     const [hh, mm] = selectedTime.split(':').map(Number);
     const apptTime = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), hh, mm);
-    const endTime = new Date(apptTime.getTime() + selectedTemplate.duration_minutes * 60000);
+    const endTime = new Date(apptTime.getTime() + totalDuration * 60000);
+    const addonRows = selectedAddons.map(a => ({
+      service_template_id: a.id, name: a.name, amount: a.default_amount, duration_minutes: a.duration_minutes,
+    }));
 
     // 生日字串
     const by = customerBirthday.getFullYear();
@@ -226,7 +238,7 @@ export default function OnlineBookingScreen() {
 
       // ── 直接預約（免訂金）──────────────────────────────
       if (!needDeposit) {
-        await createDirectOnlineOrder({
+        const order = await createDirectOnlineOrder({
           owner_id:            resolvedOwnerId,
           customer_name:       customerName.trim(),
           customer_phone:      customerPhone.trim(),
@@ -235,12 +247,13 @@ export default function OnlineBookingScreen() {
           staff_id:            selectedStaff?.id ?? null,
           service_template_id: selectedTemplate.id,
           service_name:        selectedTemplate.name,
-          duration_minutes:    selectedTemplate.duration_minutes,
-          total_amount:        selectedTemplate.default_amount,
+          duration_minutes:    totalDuration,
+          total_amount:        totalAmount,
           appointment_time:    apptTime.toISOString(),
           end_time:            endTime.toISOString(),
           notes:               notes.trim() || null,
         });
+        await createOnlineOrderAddons(order.id, resolvedOwnerId, addonRows);
         setDirectSuccess(true);
         return;
       }
@@ -258,8 +271,8 @@ export default function OnlineBookingScreen() {
           staff_id:            selectedStaff?.id ?? null,
           service_template_id: selectedTemplate.id,
           service_name:        selectedTemplate.name,
-          duration_minutes:    selectedTemplate.duration_minutes,
-          total_amount:        selectedTemplate.default_amount,
+          duration_minutes:    totalDuration,
+          total_amount:        totalAmount,
           appointment_time:    apptTime.toISOString(),
           notes:               notes.trim() || null,
         }),
@@ -270,7 +283,8 @@ export default function OnlineBookingScreen() {
         throw new Error(err.error ?? '建立失敗');
       }
 
-      const { orderId, paymentUrl } = await res.json() as { orderId: string; paymentUrl: string; orderDbId: string };
+      const { orderId, paymentUrl, orderDbId } = await res.json() as { orderId: string; paymentUrl: string; orderDbId: string };
+      await createOnlineOrderAddons(orderDbId, resolvedOwnerId, addonRows);
       router.push(`/online-booking/payment?orderId=${orderId}&paymentUrl=${encodeURIComponent(paymentUrl)}` as any);
     } catch (e: any) {
       setError(e.message ?? '提交失敗，請重試');
@@ -281,11 +295,11 @@ export default function OnlineBookingScreen() {
 
   // ── 進度指示器 ──────────────────────────────────────────────────────────────
   // identity 步驟不計入進度條（前置確認步驟）
-  const STEPS: Step[] = ['identity', 'service', 'staff', 'datetime', 'info', 'payment'];
-  const PROGRESS_STEPS: Step[] = ['service', 'staff', 'datetime', 'info', 'payment'];
+  const STEPS: Step[] = ['identity', 'service', ...(hasAddons ? (['addons'] as Step[]) : []), 'staff', 'datetime', 'info', 'payment'];
+  const PROGRESS_STEPS: Step[] = ['service', ...(hasAddons ? (['addons'] as Step[]) : []), 'staff', 'datetime', 'info', 'payment'];
   const stepIdx = STEPS.indexOf(step);
   const progressIdx = PROGRESS_STEPS.indexOf(step); // -1 表示在 identity 步驟
-  const STEP_LABELS = ['服務', '人員', '時間', '確認', '付款'];
+  const STEP_LABELS = ['服務', ...(hasAddons ? ['加購'] : []), '人員', '時間', '確認', '付款'];
 
   return (
     <KeyboardAvoidingView behavior={process.env.EXPO_OS === 'ios' ? 'padding' : 'height'} className="flex-1">
@@ -316,6 +330,9 @@ export default function OnlineBookingScreen() {
           </View>
           <View className="w-full bg-card rounded-2xl p-4 border border-border gap-2">
             <SummaryRow label="服務" value={selectedTemplate?.name ?? ''} />
+            {selectedAddons.length > 0 && (
+              <SummaryRow label="加購" value={selectedAddons.map(a => a.name).join('、')} />
+            )}
             <SummaryRow label="人員" value={selectedStaff?.name ?? ''} />
             <SummaryRow label="日期時間" value={`${toLocalDateStr(selectedDate)} ${selectedTime}`} />
             <SummaryRow label="付款方式" value="到店付款" />
@@ -551,14 +568,14 @@ export default function OnlineBookingScreen() {
           </View>
         )}
         {step === 'service' && (() => {
-          const categories = ['全部', ...Array.from(new Set(templates.map(t => t.category.trim() || '未分類')))];
+          const categories = ['全部', ...Array.from(new Set(mainTemplates.map(t => t.category.trim() || '未分類')))];
           const visibleTemplates = selectedCategory === '全部'
-            ? templates
-            : templates.filter(t => (t.category.trim() || '未分類') === selectedCategory);
+            ? mainTemplates
+            : mainTemplates.filter(t => (t.category.trim() || '未分類') === selectedCategory);
           return (
           <View className="gap-3">
             <Text className="font-rounded text-base font-semibold text-foreground">選擇服務項目</Text>
-            {templates.length === 0 ? (
+            {mainTemplates.length === 0 ? (
               <Text className="font-rounded text-sm text-muted-foreground text-center py-8">目前無開放線上預約的服務</Text>
             ) : (
             <>
@@ -610,7 +627,7 @@ export default function OnlineBookingScreen() {
             )}
             <Pressable
               className="bg-primary rounded-2xl h-14 items-center justify-center flex-row gap-2 mt-2 active:opacity-80"
-              onPress={() => { if (selectedTemplate) setStep('staff'); else setError('請選擇服務項目'); }}
+              onPress={() => { if (selectedTemplate) setStep(hasAddons ? 'addons' : 'staff'); else setError('請選擇服務項目'); }}
             >
               <Text className="font-rounded text-base text-white font-semibold">下一步</Text>
               <ArrowRight size={18} color="#fff" />
@@ -619,6 +636,60 @@ export default function OnlineBookingScreen() {
           </View>
           );
         })()}
+
+        {/* ── Step 1.5: 加購（選填，只有店家有設定加購項目時才會出現）── */}
+        {step === 'addons' && (
+          <View className="gap-3">
+            <Text className="font-rounded text-base font-semibold text-foreground">要加購什麼嗎？</Text>
+            <Text className="font-rounded text-xs text-muted-foreground -mt-2">選填，可以直接跳過</Text>
+            {addonTemplates.map(t => {
+              const checked = selectedAddonIds.has(t.id);
+              return (
+                <Pressable
+                  key={t.id}
+                  className="bg-card rounded-2xl p-4 border active:opacity-80 flex-row items-center gap-3"
+                  style={{ borderColor: checked ? t.color : '#f0e0e8' }}
+                  onPress={() => {
+                    setSelectedAddonIds(prev => {
+                      const next = new Set(prev);
+                      if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
+                      return next;
+                    });
+                  }}
+                >
+                  <View
+                    className="w-6 h-6 rounded-md border-2 items-center justify-center"
+                    style={{ borderColor: checked ? t.color : '#d0b0be', backgroundColor: checked ? t.color : 'transparent' }}
+                  >
+                    {checked && <Text className="text-white text-xs font-bold">✓</Text>}
+                  </View>
+                  <View className="flex-1">
+                    <Text className="font-rounded text-base font-semibold text-foreground">{t.name}</Text>
+                    <View className="flex-row gap-3 mt-0.5">
+                      <View className="flex-row items-center gap-1">
+                        <Clock size={11} color="#c4a0ae" />
+                        <Text className="font-rounded text-xs text-muted-foreground">+{t.duration_minutes} 分鐘</Text>
+                      </View>
+                      <View className="flex-row items-center gap-1">
+                        <DollarSign size={11} color="#c4a0ae" />
+                        <Text className="font-rounded text-xs text-muted-foreground">+${Number(t.default_amount).toLocaleString()}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              className="bg-primary rounded-2xl h-14 items-center justify-center flex-row gap-2 mt-2 active:opacity-80"
+              onPress={() => setStep('staff')}
+            >
+              <Text className="font-rounded text-base text-white font-semibold">
+                {selectedAddonIds.size > 0 ? `下一步（已選 ${selectedAddonIds.size} 項）` : '不需要加購，下一步'}
+              </Text>
+              <ArrowRight size={18} color="#fff" />
+            </Pressable>
+          </View>
+        )}
 
         {/* ── Step 2: 選人員 ── */}
         {step === 'staff' && (
@@ -810,10 +881,13 @@ export default function OnlineBookingScreen() {
             <View className="bg-card rounded-2xl p-4 border border-border gap-2">
               <Text className="font-rounded text-sm font-semibold text-foreground mb-1">預約摘要</Text>
               <SummaryRow label="服務" value={selectedTemplate?.name ?? ''} />
+              {selectedAddons.length > 0 && (
+                <SummaryRow label="加購" value={selectedAddons.map(a => a.name).join('、')} />
+              )}
               <SummaryRow label="人員" value={selectedStaff?.name ?? ''} />
               <SummaryRow label="日期" value={toLocalDateStr(selectedDate)} />
               <SummaryRow label="時間" value={selectedTime} />
-              <SummaryRow label="服務費" value={`$${Number(selectedTemplate?.default_amount ?? 0).toLocaleString()}`} />
+              <SummaryRow label="服務費" value={`$${totalAmount.toLocaleString()}`} />
               <View className="border-t border-border pt-2 mt-1">
                 {selectedTemplate?.require_deposit && isRegisteredCustomer !== true ? (
                   <SummaryRow label="需付訂金（50%）" value={`$${depositAmount.toLocaleString()}`} highlight />

@@ -115,6 +115,19 @@ export interface ServiceTemplate {
   allow_online_booking: boolean;
   require_deposit: boolean;
   break_after_minutes: number;
+  is_addon: boolean;
+  created_at: string;
+}
+
+// 一筆線上訂單實際加購了哪些項目
+export interface OnlineOrderAddon {
+  id: string;
+  order_id: string;
+  owner_id: string;
+  service_template_id: string | null;
+  name: string;
+  amount: number;
+  duration_minutes: number;
   created_at: string;
 }
 

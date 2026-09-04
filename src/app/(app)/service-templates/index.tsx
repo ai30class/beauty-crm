@@ -42,6 +42,11 @@ function TemplateRow({
             <DollarSign size={10} color="#c4a0ae" />
             <Text className="font-rounded text-xs text-muted-foreground">${Number(tpl.default_amount).toLocaleString()}</Text>
           </View>
+          {tpl.is_addon && (
+            <View className="px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#e8a87c22' }}>
+              <Text className="font-rounded" style={{ fontSize: 10, color: '#e8a87c' }}>加購</Text>
+            </View>
+          )}
           {tpl.allow_online_booking && (
             <View
               className="px-1.5 py-0.5 rounded-full"
@@ -75,11 +80,12 @@ type FormState = {
   allow_online_booking: boolean;
   require_deposit: boolean;
   break_after_minutes: string;
+  is_addon: boolean;
 };
 
 const EMPTY_FORM: FormState = {
   name: '', category: '', duration_minutes: '', default_amount: '', color: '#e8789a',
-  allow_online_booking: true, require_deposit: true, break_after_minutes: '30',
+  allow_online_booking: true, require_deposit: true, break_after_minutes: '30', is_addon: false,
 };
 
 const UNCATEGORIZED = '未分類';
@@ -140,6 +146,7 @@ export default function ServiceTemplatesScreen() {
       allow_online_booking: tpl.allow_online_booking,
       require_deposit: tpl.require_deposit,
       break_after_minutes: String(tpl.break_after_minutes),
+      is_addon: tpl.is_addon,
     });
     setEditingId(tpl.id);
     setError('');
@@ -167,6 +174,7 @@ export default function ServiceTemplatesScreen() {
         allow_online_booking: form.allow_online_booking,
         require_deposit: form.require_deposit,
         break_after_minutes: isNaN(brk) || brk < 0 ? 0 : brk,
+        is_addon: form.is_addon,
       };
       if (editingId) {
         await updateServiceTemplate(editingId, payload);
@@ -314,6 +322,26 @@ export default function ServiceTemplatesScreen() {
                   <View
                     className="w-5 h-5 rounded-full bg-white"
                     style={{ marginLeft: form.allow_online_booking ? 10 : -10, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 2 }}
+                  />
+                </Pressable>
+              </View>
+
+              {/* 加購項目開關 */}
+              <View className="flex-row items-center justify-between">
+                <View className="flex-1 mr-3">
+                  <Text className="font-rounded text-sm font-medium text-foreground">這是加購項目</Text>
+                  <Text className="font-rounded text-xs text-muted-foreground mt-0.5">
+                    顧客選完主服務後可以額外加購，不會出現在主要服務清單裡
+                  </Text>
+                </View>
+                <Pressable
+                  className="w-12 h-7 rounded-full items-center justify-center active:opacity-80"
+                  style={{ backgroundColor: form.is_addon ? '#e8a87c' : '#e0d8e0' }}
+                  onPress={() => setForm(f => ({ ...f, is_addon: !f.is_addon }))}
+                >
+                  <View
+                    className="w-5 h-5 rounded-full bg-white"
+                    style={{ marginLeft: form.is_addon ? 10 : -10, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 2 }}
                   />
                 </Pressable>
               </View>

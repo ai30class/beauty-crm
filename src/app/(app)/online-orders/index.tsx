@@ -8,7 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Check, X, ShoppingBag, Pencil } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getOnlineOrders, updateOnlineOrderStatus, updateOnlineOrder, getStaff } from '@/db/api';
+import { getOnlineOrders, updateOnlineOrderStatus, updateOnlineOrder, getStaff, getOnlineOrderAddonsByOrderIds } from '@/db/api';
 import type { OnlineOrder, Staff } from '@/types/types';
 
 // ── 共用常數 ──────────────────────────────────────────────
@@ -216,6 +216,7 @@ export default function OnlineOrdersScreen() {
   const router = useRouter();
   const [orders, setOrders] = useState<OnlineOrder[]>([]);
   const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [addonsByOrder, setAddonsByOrder] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'paid' | 'pending_payment' | 'confirmed'>('all');
   const [editingOrder, setEditingOrder] = useState<OnlineOrder | null>(null);
@@ -226,6 +227,12 @@ export default function OnlineOrdersScreen() {
       const [o, s] = await Promise.all([getOnlineOrders(), getStaff()]);
       setOrders(o);
       setStaffList(s);
+      const addons = await getOnlineOrderAddonsByOrderIds(o.map(x => x.id));
+      const map: Record<string, string[]> = {};
+      for (const a of addons) {
+        (map[a.order_id] ??= []).push(a.name);
+      }
+      setAddonsByOrder(Object.fromEntries(Object.entries(map).map(([k, v]) => [k, v.join('、')])));
     } finally { setLoading(false); }
   }, []);
 
@@ -308,6 +315,9 @@ export default function OnlineOrdersScreen() {
                 <View className="flex-row items-start justify-between">
                   <View className="flex-1">
                     <Text className="font-rounded text-base font-bold text-foreground">{item.service_name}</Text>
+                    {addonsByOrder[item.id] && (
+                      <Text className="font-rounded text-xs mt-0.5" style={{ color: '#e8a87c' }}>+ 加購：{addonsByOrder[item.id]}</Text>
+                    )}
                     <Text className="font-rounded text-xs text-muted-foreground mt-0.5">{apptStr}</Text>
                   </View>
                   <View className="flex-row gap-1.5 ml-2 items-center">

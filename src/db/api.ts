@@ -4,7 +4,7 @@ import type {
   ServicePackage, PackageTransaction, Staff, TimeSlot, ShopProfile,
   ShopPaymentSettings, WaitlistEntry, WaitlistStatus,
   BusinessHours, Expense, Product, ProductUsage, RestockLog,
-  Holiday, OnlineOrder, Coupon, CustomerCoupon, ShopBlockedSlot,
+  Holiday, OnlineOrder, OnlineOrderAddon, Coupon, CustomerCoupon, ShopBlockedSlot,
   MonthlyStats, UnifiedAppointment, ProductSalesRow,
   BirthdayCustomer, CustomerRankRow, StaffPerformanceRow,
 } from '@/types/types';
@@ -297,7 +297,7 @@ export async function createServiceTemplate(
 
 export async function updateServiceTemplate(
   id: string,
-  payload: Partial<Pick<ServiceTemplate, 'name' | 'category' | 'duration_minutes' | 'default_amount' | 'color' | 'sort_order' | 'allow_online_booking' | 'require_deposit' | 'break_after_minutes'>>
+  payload: Partial<Pick<ServiceTemplate, 'name' | 'category' | 'duration_minutes' | 'default_amount' | 'color' | 'sort_order' | 'allow_online_booking' | 'require_deposit' | 'break_after_minutes' | 'is_addon'>>
 ): Promise<void> {
   const { error } = await supabase.from('service_templates').update(payload).eq('id', id);
   if (error) throw error;
@@ -839,6 +839,31 @@ export async function createDirectOnlineOrder(payload: {
     .single();
   if (error) throw error;
   return data as OnlineOrder;
+}
+
+// ─── 加購服務 ─────────────────────────────────────────────────────────────────
+
+export async function createOnlineOrderAddons(
+  orderId: string,
+  ownerId: string,
+  addons: { service_template_id: string; name: string; amount: number; duration_minutes: number }[],
+): Promise<void> {
+  if (addons.length === 0) return;
+  const { error } = await supabase.from('online_order_addons').insert(
+    addons.map(a => ({ ...a, order_id: orderId, owner_id: ownerId }))
+  );
+  if (error) throw error;
+}
+
+// 商家後台用：一次查多筆訂單各自加購了什麼（訂單列表要顯示用）
+export async function getOnlineOrderAddonsByOrderIds(orderIds: string[]): Promise<OnlineOrderAddon[]> {
+  if (orderIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('online_order_addons')
+    .select('*')
+    .in('order_id', orderIds);
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
 }
 
 // ─── 保養品庫存 ───────────────────────────────────────────────────────────────
