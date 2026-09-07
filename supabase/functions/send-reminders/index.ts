@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const { type } = await req.json() as { type: 'birthday' | 'appointment' };
+    const { type } = await req.json() as { type: 'birthday' | 'appointment' | 'appointment_day_before' };
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -150,6 +150,64 @@ Deno.serve(async (req) => {
           sent_date: today,
         });
         console.log(`🔔 預約提醒 → ${customerName}，${a.appointment_time}　${sent ? '已用 LINE 發送' : '僅記錄（無 LINE 身份）'}`);
+      }
+    } else if (type === 'appointment_day_before') {
+      // 查詢明天（台灣時區的日曆日）的預約，每天固定時間跑一次、提前一天提醒
+      const TZ_OFFSET_MS = 8 * 60 * 60 * 1000; // 台灣是 UTC+8，沒有日光節約
+      const nowTaipei = new Date(Date.now() + TZ_OFFSET_MS);
+      const tomorrowTaipei = new Date(nowTaipei);
+      tomorrowTaipei.setUTCDate(tomorrowTaipei.getUTCDate() + 1);
+      const tomorrowDateStr = tomorrowTaipei.toISOString().slice(0, 10);
+      const todayDateStr = nowTaipei.toISOString().slice(0, 10);
+
+      const dayStart = new Date(`${tomorrowDateStr}T00:00:00+08:00`).toISOString();
+      const dayEnd = new Date(`${tomorrowDateStr}T23:59:59.999+08:00`).toISOString();
+
+      const { data: appts } = await supabase
+        .from('appointments')
+        .select('id, owner_id, customer_id, appointment_time, customers(name)')
+        .eq('status', 'pending')
+        .gte('appointment_time', dayStart)
+        .lte('appointment_time', dayEnd);
+
+      for (const a of appts ?? []) {
+        // 防重推送：用「今天」當 sent_date，同一筆預約這個提醒類型一天只發一次
+        const { data: existing } = await supabase
+          .from('notification_logs')
+          .select('id')
+          .eq('ref_id', a.id)
+          .eq('type', 'appointment_day_before')
+          .eq('sent_date', todayDateStr)
+          .maybeSingle();
+        if (existing) continue;
+
+        const customerName = (a as any).customers?.name ?? '顧客';
+        const apptTime = new Date(a.appointment_time as unknown as string);
+        const dateStr = apptTime.toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric' });
+        const timeStr = apptTime.toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false });
+
+        const { data: shop } = await supabase
+          .from('shop_profiles')
+          .select('shop_name')
+          .eq('owner_id', a.owner_id)
+          .maybeSingle();
+
+        const lineUserId = a.customer_id ? await findLineUserId(supabase, a.customer_id) : null;
+        let sent = false;
+        if (lineUserId) {
+          sent = await pushLineMessage(
+            lineUserId,
+            `📅 提醒您，明天 ${dateStr} ${timeStr} 在${shop?.shop_name ?? '我們店裡'}有一個預約，記得準時來喔 🌸`,
+          );
+        }
+
+        await supabase.from('notification_logs').insert({
+          owner_id: a.owner_id,
+          ref_id: a.id,
+          type: 'appointment_day_before',
+          sent_date: todayDateStr,
+        });
+        console.log(`📅 前一天預約提醒 → ${customerName}，${a.appointment_time}　${sent ? '已用 LINE 發送' : '僅記錄（無 LINE 身份）'}`);
       }
     }
 
