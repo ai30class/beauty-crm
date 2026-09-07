@@ -22,7 +22,7 @@ export default function CustomerAuthScreen() {
   const [password, setPassword] = useState('');
 
   // Channel ID 不是密鑰（等同 Google OAuth 的 client_id），可以直接寫在前端
-  const LINE_LOGIN_CHANNEL_ID = '2011350553';
+  const LINE_LOGIN_CHANNEL_ID = '2011486633';
 
   const handleLineLogin = () => {
     // state 只用來夾帶 ownerId 過去，不依賴 sessionStorage 之類的暫存比對——
