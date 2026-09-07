@@ -14,6 +14,11 @@ const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 // LIFF ID 不是密鑰（前端本來就要帶著它去初始化 LIFF SDK），可以直接寫在前端
 const LIFF_ID = '2011486633-e6gmiIWk';
 
+// ownerId 暫存 key：LIFF 跳轉過程中網址列的 query string 常常不可靠（實測發現
+// 光靠 window.location.search 重建有時還是抓不到），改用 localStorage 當最後
+//一道保險——顧客一進頁面看到 ownerId 就先存起來，之後不管網址怎麼跳都讀得到
+const PENDING_OWNER_ID_KEY = 'bcrm_pending_owner_id';
+
 export default function CustomerAuthScreen() {
   const router = useRouter();
   const { ownerId } = useLocalSearchParams<{ ownerId?: string }>();
@@ -28,18 +33,36 @@ export default function CustomerAuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // LIFF 登入跳轉時會把網址上的 query string（例如 ownerId）暫存起來，
-  // 要等 liff.init() 跑完才會還原回網址列——但 Expo Router 早就讀過舊網址、
-  // 拿到空的 ownerId 了，這裡要手動從網址重新抓一次、同步回路由參數
+  // LIFF 登入跳轉時網址列的 query string（例如 ownerId）常常不可靠，實測發現
+  // 光從 window.location.search 重建有時還是抓不到——優先順序：路由參數 →
+  // 網址列 → localStorage 暫存（最後一道保險，不管網址怎麼跳都讀得到）
   const resolveOwnerId = (): string => {
     if (ownerId) return ownerId;
     if (typeof window === 'undefined') return '';
     try {
-      return new URLSearchParams(window.location.search).get('ownerId') ?? '';
+      const fromUrl = new URLSearchParams(window.location.search).get('ownerId');
+      if (fromUrl) return fromUrl;
+    } catch {
+      // ignore
+    }
+    try {
+      return localStorage.getItem(PENDING_OWNER_ID_KEY) ?? '';
     } catch {
       return '';
     }
   };
+
+  // 只要看過一次帶 ownerId 的網址，就先存起來，之後 LIFF 跳轉不管網址怎麼變
+  // 都還讀得到
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!ownerId) return;
+    try {
+      localStorage.setItem(PENDING_OWNER_ID_KEY, ownerId);
+    } catch {
+      // ignore（無痕模式等環境可能擋掉 localStorage，忽略即可，不影響其他流程）
+    }
+  }, [ownerId]);
 
   // 進頁面就先初始化 LIFF；如果本來就在 LINE App 裡打開（已經登入過），
   // 會直接偵測到已登入狀態，不用使用者再按一次
@@ -51,6 +74,9 @@ export default function CustomerAuthScreen() {
         const liff = (await import('@line/liff')).default;
         await liff.init({ liffId: LIFF_ID });
         const urlOwnerId = resolveOwnerId();
+        if (urlOwnerId) {
+          try { localStorage.setItem(PENDING_OWNER_ID_KEY, urlOwnerId); } catch { /* ignore */ }
+        }
         if (urlOwnerId && urlOwnerId !== ownerId) {
           router.setParams({ ownerId: urlOwnerId });
         }

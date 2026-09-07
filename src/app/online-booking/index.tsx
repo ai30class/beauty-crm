@@ -114,9 +114,22 @@ export default function OnlineBookingScreen() {
   const [ownerId, setOwnerId] = useState(presetOwnerId ?? '');
   const [shopProfile, setShopProfile] = useState<Pick<ShopProfile, 'shop_name' | 'phone' | 'address' | 'description' | 'business_hours'> | null>(null);
 
-  // presetOwnerId 是路由參數，首次渲染時偶爾還沒解析出來，這裡確保一解析出來就同步
+  // presetOwnerId 是路由參數，首次渲染時偶爾還沒解析出來，這裡確保一解析出來就同步；
+  // 有值的話同時存進 localStorage（跟 customer-auth.tsx 共用同一把 key）——LIFF
+  // 登入跳轉過程實測會把網址上的 ownerId 弄丟，這是跨頁的最後一道保險
   useEffect(() => {
-    if (presetOwnerId) setOwnerId(presetOwnerId);
+    if (typeof window === 'undefined') return;
+    if (presetOwnerId) {
+      setOwnerId(presetOwnerId);
+      try { localStorage.setItem('bcrm_pending_owner_id', presetOwnerId); } catch { /* ignore */ }
+      return;
+    }
+    // 網址完全沒帶 ownerId：從 localStorage 撈回上次記住的值，補回網址參數，
+    // 讓依賴 presetOwnerId 的查詢（服務項目、回頭客資料）都能正常觸發
+    try {
+      const stored = localStorage.getItem('bcrm_pending_owner_id');
+      if (stored) router.setParams({ ownerId: stored });
+    } catch { /* ignore */ }
   }, [presetOwnerId]);
 
   useEffect(() => {
