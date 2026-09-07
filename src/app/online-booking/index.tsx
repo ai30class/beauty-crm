@@ -38,8 +38,13 @@ export default function OnlineBookingScreen() {
       setCustomerUserId(session?.user?.id ?? null);
       setAuthChecked(true);
       if (!session) {
-        // 未登入 → 跳轉到顧客登入頁，帶回 redirect 參數
-        router.replace(`/online-booking/customer-auth?ownerId=${presetOwnerId ?? ''}` as any);
+        // 未登入 → 跳轉到顧客登入頁，帶回 redirect 參數；presetOwnerId 沒有的話
+        // 從 localStorage 兜底（同一把 key，跟 customer-auth.tsx／下面的 ownerId 共用）
+        let ob = presetOwnerId ?? '';
+        if (!ob && typeof window !== 'undefined') {
+          try { ob = localStorage.getItem('bcrm_pending_owner_id') ?? ''; } catch { /* ignore */ }
+        }
+        router.replace(`/online-booking/customer-auth?ownerId=${ob}` as any);
       }
     })();
   }, [presetOwnerId]);
@@ -110,26 +115,25 @@ export default function OnlineBookingScreen() {
   const [directSuccess, setDirectSuccess] = useState(false);
   const [isRegisteredCustomer, setIsRegisteredCustomer] = useState<boolean | null>(null); // null=未查詢
 
-  // 取得老闆 ID（用於查公休和時段衝突）
-  const [ownerId, setOwnerId] = useState(presetOwnerId ?? '');
+  // 取得老闆 ID（用於查公休和時段衝突）——ownerId 這個 local state 才是後面所有
+  // 查詢真正依賴的來源，不要再依賴 presetOwnerId（router 的 useLocalSearchParams）：
+  // 實測發現 LIFF 登入跳轉時網址參數常常遺失，而且用 router.setParams() 想把救回來
+  // 的值寫回網址、讓 useLocalSearchParams 更新，這個框架在這個場景下並不可靠。
+  // 改成 useState 初始化時就同步從 localStorage 兜底，一次到位，不繞回網址列。
+  const [ownerId, setOwnerId] = useState(() => {
+    if (presetOwnerId) return presetOwnerId;
+    if (typeof window === 'undefined') return '';
+    try { return localStorage.getItem('bcrm_pending_owner_id') ?? ''; } catch { return ''; }
+  });
   const [shopProfile, setShopProfile] = useState<Pick<ShopProfile, 'shop_name' | 'phone' | 'address' | 'description' | 'business_hours'> | null>(null);
 
-  // presetOwnerId 是路由參數，首次渲染時偶爾還沒解析出來，這裡確保一解析出來就同步；
-  // 有值的話同時存進 localStorage（跟 customer-auth.tsx 共用同一把 key）——LIFF
-  // 登入跳轉過程實測會把網址上的 ownerId 弄丟，這是跨頁的最後一道保險
+  // presetOwnerId 之後才解析出來（或改變）的話，同步更新 ownerId，同時把
+  // 這把 key 存進 localStorage（跟 customer-auth.tsx 共用），供下次兜底用
   useEffect(() => {
+    if (!presetOwnerId) return;
+    setOwnerId(presetOwnerId);
     if (typeof window === 'undefined') return;
-    if (presetOwnerId) {
-      setOwnerId(presetOwnerId);
-      try { localStorage.setItem('bcrm_pending_owner_id', presetOwnerId); } catch { /* ignore */ }
-      return;
-    }
-    // 網址完全沒帶 ownerId：從 localStorage 撈回上次記住的值，補回網址參數，
-    // 讓依賴 presetOwnerId 的查詢（服務項目、回頭客資料）都能正常觸發
-    try {
-      const stored = localStorage.getItem('bcrm_pending_owner_id');
-      if (stored) router.setParams({ ownerId: stored });
-    } catch { /* ignore */ }
+    try { localStorage.setItem('bcrm_pending_owner_id', presetOwnerId); } catch { /* ignore */ }
   }, [presetOwnerId]);
 
   useEffect(() => {
@@ -142,14 +146,14 @@ export default function OnlineBookingScreen() {
     // 查詢可能搶先在 session 生效前送出去，被資料庫當成「未登入訪客」處理
     // （service_templates 的 RLS 規則要求要登入才能讀），查回一次空清單後
     // 就再也不會重查，害顧客看到「目前無開放線上預約的服務」
-    if (!presetOwnerId || !authChecked) return;
+    if (!ownerId || !authChecked) return;
     let cancelled = false;
     (async () => {
       for (let attempt = 0; attempt < 3; attempt++) {
         const [tpls, staff, hols] = await Promise.all([
-          getServiceTemplatesByOwner(presetOwnerId),
-          getActiveStaffByOwner(presetOwnerId),
-          getHolidaysByOwner(presetOwnerId),
+          getServiceTemplatesByOwner(ownerId),
+          getActiveStaffByOwner(ownerId),
+          getHolidaysByOwner(ownerId),
         ]);
         if (cancelled) return;
         const visible = tpls.filter(t => t.allow_online_booking);
@@ -167,18 +171,18 @@ export default function OnlineBookingScreen() {
       }
 
       // 載入商家公開資訊
-      const profile = await getShopProfileByOwner(presetOwnerId).catch(() => null);
+      const profile = await getShopProfileByOwner(ownerId).catch(() => null);
       if (!cancelled) setShopProfile(profile);
     })();
     return () => { cancelled = true; };
-  }, [presetOwnerId, authChecked]);
+  }, [ownerId, authChecked]);
 
   // 回頭客辨識：已登入且這個帳號在這家店留過資料的話，直接帶出來，
   // 不用每次都重打一次姓名/電話/生日
   useEffect(() => {
-    if (!presetOwnerId || !customerUserId) return;
+    if (!ownerId || !customerUserId) return;
     (async () => {
-      const profile = await getMyCustomerProfile(presetOwnerId).catch(() => null);
+      const profile = await getMyCustomerProfile(ownerId).catch(() => null);
       if (!profile) return;
       setCustomerName(profile.name);
       setCustomerPhone(profile.phone);
@@ -186,7 +190,7 @@ export default function OnlineBookingScreen() {
       setIsRegisteredCustomer(true);
       setStep(s => (s === 'identity' ? 'service' : s));
     })();
-  }, [presetOwnerId, customerUserId]);
+  }, [ownerId, customerUserId]);
 
   // 日期/人員/服務改變時重新撈時段
   // 加購項目：service_templates 裡 is_addon=true 的另外挑出來，不混進主服務清單
