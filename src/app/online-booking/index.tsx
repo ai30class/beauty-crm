@@ -403,6 +403,20 @@ export default function OnlineBookingScreen() {
           <ArrowLeft size={22} color="#e8789a" />
         </Pressable>
         <Text className="font-rounded text-xl font-bold text-foreground flex-1">線上預約</Text>
+        {/* 常駐的「我的預約」入口：原本只有剛預約完成那一頁才有按鈕，
+            顧客隔天回來就找不到自己的記錄了。只在已登入時顯示——未登入
+            點進 my-orders 會被導去沒有帶 ownerId 的登入頁，反而繞回
+            「看不到店家」的老問題。 */}
+        {customerSession && (
+          <Pressable
+            className="flex-row items-center gap-1 px-3 py-2 rounded-full active:opacity-70"
+            style={{ backgroundColor: '#fce9f0' }}
+            onPress={() => router.push('/online-booking/my-orders' as any)}
+          >
+            <ClipboardList size={15} color="#e8789a" />
+            <Text className="font-rounded text-xs font-semibold" style={{ color: '#e8789a' }}>我的預約</Text>
+          </Pressable>
+        )}
       </View>
 
       {/* 商家資訊卡（有資料才顯示） */}

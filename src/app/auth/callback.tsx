@@ -3,8 +3,8 @@ import { View, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/client/supabase';
 
-// Google OAuth 回呼頁面
-// expo-web-browser 會攔截並關閉瀏覽器，此頁通常不會真正顯示
+// 認證回呼頁面：Google OAuth 登入、以及「忘記密碼」信件點進來都會到這裡。
+// expo-web-browser 會攔截並關閉瀏覽器，走 Google 登入時此頁通常不會真正顯示。
 export default function AuthCallback() {
   const router = useRouter();
 
@@ -18,6 +18,13 @@ export default function AuthCallback() {
         const refreshToken = params.get('refresh_token');
         if (accessToken && refreshToken) {
           await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        }
+        // 從「忘記密碼」信點進來的，hash 會帶 type=recovery。這種人現在雖然
+        // 已經有 session 了，但他的目的是換密碼，不是進後台——直接丟去首頁
+        // 他就再也找不到設定新密碼的地方了。
+        if (params.get('type') === 'recovery') {
+          router.replace('/(auth)/reset-password' as any);
+          return;
         }
       }
       const { data } = await supabase.auth.getSession();

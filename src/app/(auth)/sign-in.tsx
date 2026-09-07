@@ -34,7 +34,14 @@ export default function SignIn() {
     if (mode === 'forgot') {
       setLoading(true);
       try {
-        const { error: e } = await supabase.auth.resetPasswordForEmail(email.trim());
+        // 一定要明確指定 redirectTo：沒帶的話 Supabase 會用專案後台的
+        // Site URL 組信裡的連結，而那個值曾經一直是預設的 http://localhost:3000，
+        // 導致所有重設密碼信/驗證信的連結點下去都是「無法連上這個網站」。
+        // 帶著它就不必依賴那個藏在後台、程式碼裡看不到的設定。
+        const redirectTo = typeof window !== 'undefined'
+          ? `${window.location.origin}/auth/callback`
+          : undefined;
+        const { error: e } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
         if (e) { setError(e.message); return; }
         setResetSent(true);
       } finally {
