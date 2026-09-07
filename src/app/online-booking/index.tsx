@@ -612,7 +612,20 @@ export default function OnlineBookingScreen() {
           <View className="gap-3">
             <Text className="font-rounded text-base font-semibold text-foreground">選擇服務項目</Text>
             {mainTemplates.length === 0 ? (
-              <Text className="font-rounded text-sm text-muted-foreground text-center py-8">目前無開放線上預約的服務</Text>
+              <View className="gap-2 py-8">
+                <Text className="font-rounded text-sm text-muted-foreground text-center">目前無開放線上預約的服務</Text>
+                {/* 暫時除錯區塊，排查完會拿掉：顯示關鍵狀態值方便截圖回報 */}
+                <View className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-2">
+                  <Text className="text-xs" style={{ color: '#9a6400' }} selectable>
+                    [除錯] ownerId=&quot;{ownerId}&quot;{'\n'}
+                    presetOwnerId=&quot;{presetOwnerId ?? ''}&quot;{'\n'}
+                    authChecked={String(authChecked)}{'\n'}
+                    customerSession={String(customerSession)}{'\n'}
+                    customerUserId=&quot;{customerUserId ?? ''}&quot;{'\n'}
+                    templates.length={templates.length}
+                  </Text>
+                </View>
+              </View>
             ) : (
             <>
             {categories.length > 2 && (
