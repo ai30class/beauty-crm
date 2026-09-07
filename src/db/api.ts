@@ -336,23 +336,26 @@ export async function getMyPackages(): Promise<Pick<ServicePackage,
 }
 
 export async function createServicePackage(
-  payload: Omit<ServicePackage, 'id' | 'owner_id' | 'used_sessions' | 'created_at'>
+  payload: Omit<ServicePackage, 'id' | 'owner_id' | 'used_sessions' | 'created_at'> & {
+    // 儲值卡可以「多送一點」：initial_amount/remaining_amount 是顧客實際可用的總餘額
+    // （含贈送），但收入報表要照實收金額入帳，不能把贈送的部分也算成營收——
+    // 不填就沿用舊行為（直接拿 initial_amount 當收入）
+    actual_received_amount?: number;
+  }
 ): Promise<void> {
+  const { actual_received_amount, ...pkgPayload } = payload;
+
   // 1. 建立套票
   const { data: pkg, error } = await supabase
     .from('service_packages')
-    .insert(payload)
+    .insert(pkgPayload)
     .select('id')
     .single();
   if (error) throw error;
 
   // 2. 同步建立服務記錄 → 計入當日收入（報表用）
-  //    次數型：金額用 initial_amount（0 表示贈品套票，仍建記錄）
-  //    儲值型：金額用 initial_amount
-  const incomeAmt =
-    payload.package_type === 'stored_value'
-      ? (payload.initial_amount ?? 0)
-      : (payload.initial_amount ?? 0); // 次數型購買金額由呼叫方傳入
+  //    優先用實收金額（贈送情境下 < initial_amount）；沒有才退回用 initial_amount
+  const incomeAmt = actual_received_amount ?? (payload.initial_amount ?? 0);
 
   if (incomeAmt > 0) {
     await supabase.from('service_records').insert({

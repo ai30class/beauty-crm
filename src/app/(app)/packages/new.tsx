@@ -30,6 +30,7 @@ export default function NewPackageScreen() {
   const [name, setName] = useState('');
   const [totalSessions, setTotalSessions] = useState('');
   const [initialAmount, setInitialAmount] = useState('');
+  const [bonusAmount, setBonusAmount] = useState('');
   const [purchaseDate, setPurchaseDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [expireDate, setExpireDate] = useState<Date | null>(null);
@@ -66,18 +67,22 @@ export default function NewPackageScreen() {
     setLoading(true);
     try {
       const amt = parseFloat(initialAmount);
+      const bonus = packageType === 'stored_value' ? (parseFloat(bonusAmount) || 0) : 0;
+      // 儲值卡的「顧客可用餘額」= 實收金額 + 贈送金額；收入報表只記實收的那筆
+      const balanceTotal = packageType === 'stored_value' ? amt + bonus : amt;
       await createServicePackage({
         customer_id: customerId,
         package_type: packageType,
         name: name.trim(),
         total_sessions: packageType === 'session' ? parseInt(totalSessions, 10) : null,
-        initial_amount: packageType === 'stored_value' ? amt : (amt > 0 ? amt : null),
-        remaining_amount: packageType === 'stored_value' ? amt : null,
+        initial_amount: packageType === 'stored_value' ? balanceTotal : (amt > 0 ? amt : null),
+        remaining_amount: packageType === 'stored_value' ? balanceTotal : null,
         purchase_date: fmtDate(purchaseDate),
         expire_date: expireDate ? fmtDate(expireDate) : null,
         notes: notes.trim() || null,
         is_active: true,
         purchase_payment_method: purchasePaymentMethod,
+        actual_received_amount: amt,
       });
       router.back();
     } catch (e: any) {
@@ -172,20 +177,54 @@ export default function NewPackageScreen() {
             </View>
           </>
         ) : (
-          <View>
-            <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">儲值金額 *</Text>
-            <View className="flex-row items-center bg-card border border-border rounded-2xl px-4" style={{ height: 52 }}>
-              <Text className="font-rounded text-base text-muted-foreground mr-2">$</Text>
-              <TextInput
-                className="flex-1 font-rounded text-base text-foreground"
-                placeholder="0"
-                placeholderTextColor="#c4a0ae"
-                value={initialAmount}
-                onChangeText={setInitialAmount}
-                keyboardType="numeric"
-              />
+          <>
+            <View>
+              <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">實收金額 *</Text>
+              <View className="flex-row items-center bg-card border border-border rounded-2xl px-4" style={{ height: 52 }}>
+                <Text className="font-rounded text-base text-muted-foreground mr-2">$</Text>
+                <TextInput
+                  className="flex-1 font-rounded text-base text-foreground"
+                  placeholder="0"
+                  placeholderTextColor="#c4a0ae"
+                  value={initialAmount}
+                  onChangeText={setInitialAmount}
+                  keyboardType="numeric"
+                />
+              </View>
+              <Text className="font-rounded text-xs text-muted-foreground mt-1.5 px-1">
+                顧客實際付給你的金額，會計入收入報表
+              </Text>
             </View>
-          </View>
+
+            <View>
+              <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">贈送金額（選填）</Text>
+              <View className="flex-row items-center bg-card border border-border rounded-2xl px-4" style={{ height: 52 }}>
+                <Text className="font-rounded text-base text-muted-foreground mr-2">$</Text>
+                <TextInput
+                  className="flex-1 font-rounded text-base text-foreground"
+                  placeholder="0"
+                  placeholderTextColor="#c4a0ae"
+                  value={bonusAmount}
+                  onChangeText={setBonusAmount}
+                  keyboardType="numeric"
+                />
+              </View>
+              <Text className="font-rounded text-xs text-muted-foreground mt-1.5 px-1">
+                多送顧客的優惠金額（例：付 10,000 送 2,000），不計入收入
+              </Text>
+            </View>
+
+            {(parseFloat(bonusAmount) > 0) && (
+              <View className="bg-primary/5 rounded-2xl px-4 py-3 border border-primary/10">
+                <Text className="font-rounded text-sm text-foreground">
+                  顧客可用餘額：
+                  <Text className="font-bold" style={{ color: '#e8789a' }}>
+                    {' '}${((parseFloat(initialAmount) || 0) + (parseFloat(bonusAmount) || 0)).toLocaleString()}
+                  </Text>
+                </Text>
+              </View>
+            )}
+          </>
         )}
 
         {/* 收款方式 */}
