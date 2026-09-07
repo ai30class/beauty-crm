@@ -123,7 +123,13 @@ export default function OnlineBookingScreen() {
     // 一定要有明確的 owner_id 才能載入——不能再用「猜第一位員工屬於哪家店」
     // 這種方式推斷，那樣等於把全部店家的員工、服務、公休日混在一起顯示
     // （見顧客線上預約頁必須帶 owner_id 查詢的說明）
-    if (!presetOwnerId) return;
+    //
+    // 一定要等 authChecked（也就是 supabase.auth.getSession() 已經跑完、
+    // client 已經帶上登入 token）才能查，不然剛登入完馬上跳轉過來時，這個
+    // 查詢可能搶先在 session 生效前送出去，被資料庫當成「未登入訪客」處理
+    // （service_templates 的 RLS 規則要求要登入才能讀），查回一次空清單後
+    // 就再也不會重查，害顧客看到「目前無開放線上預約的服務」
+    if (!presetOwnerId || !authChecked) return;
     (async () => {
       const [tpls, staff, hols] = await Promise.all([
         getServiceTemplatesByOwner(presetOwnerId),
@@ -139,7 +145,7 @@ export default function OnlineBookingScreen() {
       const profile = await getShopProfileByOwner(presetOwnerId).catch(() => null);
       setShopProfile(profile);
     })();
-  }, [presetOwnerId]);
+  }, [presetOwnerId, authChecked]);
 
   // 回頭客辨識：已登入且這個帳號在這家店留過資料的話，直接帶出來，
   // 不用每次都重打一次姓名/電話/生日
