@@ -1,12 +1,53 @@
-import { Text, View, Pressable } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Text, View, Pressable } from 'react-native';
 import { useRouter, Redirect } from 'expo-router';
 import { Heart, Scissors, CalendarDays } from 'lucide-react-native';
 import { StatusBar } from 'expo-status-bar';
+import { supabase } from '@/client/supabase';
 import { useSession } from '@/ctx';
 
 export default function LandingScreen() {
   const router = useRouter();
   const { session } = useSession();
+
+  // 「忘記密碼」信件點進來的人會落在這裡。
+  //
+  // 從 App 內按忘記密碼寄的信會帶 redirectTo 指向 /auth/callback，但從
+  // Supabase 後台按 Send password recovery 寄的信一律用專案的 Site URL，
+  // 也就是首頁——token 帶在網址 hash 上。而這個專案的 supabase client 是
+  // detectSessionInUrl: false，不會自動處理網址上的 token，所以那段 hash
+  // 會被整個忽略：本來就還留著登入狀態的人被直接丟進後台，沒登入的人則
+  // 停在首頁，兩種情況都找不到可以設定新密碼的地方（實際發生過）。
+  // 這裡認出 type=recovery，用信裡的 token 換好 session 再帶去設定密碼頁。
+  const [handlingRecovery, setHandlingRecovery] = useState(
+    () => typeof window !== 'undefined' && window.location.hash.includes('type=recovery'),
+  );
+
+  useEffect(() => {
+    if (!handlingRecovery) return;
+    (async () => {
+      try {
+        const params = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+        if (accessToken && refreshToken) {
+          await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        }
+        router.replace('/(auth)/reset-password' as any);
+      } catch {
+        // 換 session 失敗就讓他停在首頁，不要卡在轉圈圈
+        setHandlingRecovery(false);
+      }
+    })();
+  }, [handlingRecovery, router]);
+
+  if (handlingRecovery) {
+    return (
+      <View className="flex-1 bg-background items-center justify-center">
+        <ActivityIndicator size="large" color="#e8789a" />
+      </View>
+    );
+  }
 
   // 已登入的店家直接進入管理後台
   if (session) {
