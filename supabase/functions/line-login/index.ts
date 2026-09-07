@@ -11,6 +11,61 @@ const corsHeaders = {
 // LINE 的 OIDC 金鑰集合，用來驗證 id_token 簽章（避免直接信任未驗證過的 JWT）
 const LINE_JWKS = createRemoteJWKSet(new URL('https://api.line.me/oauth2/v2.1/certs'));
 
+// deno-lint-ignore no-explicit-any
+async function issueSessionForLineUser(
+  supabase: any,
+  lineUserId: string,
+  displayName: string,
+  pictureUrl: string | null,
+  headers: Record<string, string>,
+): Promise<Response> {
+  // ── 找出（或建立）對應的 Supabase 帳號 ──────────────────────────────
+  const { data: existing } = await supabase
+    .from('line_identities')
+    .select('user_id')
+    .eq('line_user_id', lineUserId)
+    .maybeSingle();
+
+  const syntheticEmail = `line-${lineUserId}@line.internal`;
+  let userId: string;
+
+  if (existing) {
+    userId = existing.user_id;
+  } else {
+    const { data: created, error: createErr } = await supabase.auth.admin.createUser({
+      email: syntheticEmail,
+      email_confirm: true,
+      user_metadata: { account_type: 'customer', line_user_id: lineUserId, name: displayName },
+    });
+    if (createErr || !created?.user) throw createErr ?? new Error('建立帳號失敗');
+    userId = created.user.id;
+
+    const { error: linkErr } = await supabase.from('line_identities').insert({
+      line_user_id: lineUserId,
+      user_id: userId,
+      display_name: displayName,
+      picture_url: pictureUrl,
+    });
+    if (linkErr) throw linkErr;
+  }
+
+  // ── 產生一次性登入連結（顧客端用 verifyOtp 換成真正的 session）────────
+  const { data: link, error: linkGenErr } = await supabase.auth.admin.generateLink({
+    type: 'magiclink',
+    email: syntheticEmail,
+  });
+  if (linkGenErr || !link) throw linkGenErr ?? new Error('產生登入連結失敗');
+
+  return new Response(
+    JSON.stringify({
+      email: syntheticEmail,
+      token_hash: link.properties.hashed_token,
+      name: displayName,
+    }),
+    { headers: { ...headers, 'Content-Type': 'application/json' } },
+  );
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -25,6 +80,31 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
     const action = url.pathname.split('/').pop();
+
+    // LIFF 版登入：前端用 liff.getIDToken() 直接拿已經簽好的 id_token，不用再走
+    // code 換 token 那一步（LIFF SDK 自己在 LINE App／內建瀏覽器裡處理過登入了）
+    if (action === 'verify' && req.method === 'POST') {
+      const { idToken } = await req.json() as { idToken: string };
+      if (!idToken) {
+        return new Response(JSON.stringify({ error: '缺少 idToken' }), { status: 400, headers: corsHeaders });
+      }
+      if (!channelId) {
+        return new Response(JSON.stringify({ error: 'LINE Login 尚未設定金鑰' }), { status: 500, headers: corsHeaders });
+      }
+
+      const { payload } = await jwtVerify(idToken, LINE_JWKS, {
+        issuer: 'https://access.line.me',
+        audience: channelId,
+      });
+      const lineUserId = payload.sub as string;
+      const displayName = (payload.name as string | undefined) ?? '';
+      const pictureUrl = (payload.picture as string | undefined) ?? null;
+      if (!lineUserId) {
+        return new Response(JSON.stringify({ error: 'LINE 回傳資料不完整' }), { status: 502, headers: corsHeaders });
+      }
+
+      return await issueSessionForLineUser(supabase, lineUserId, displayName, pictureUrl, corsHeaders);
+    }
 
     if (action === 'callback' && req.method === 'POST') {
       const { code, redirect_uri } = await req.json() as { code: string; redirect_uri: string };
@@ -64,51 +144,7 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: 'LINE 回傳資料不完整' }), { status: 502, headers: corsHeaders });
       }
 
-      // ── 找出（或建立）對應的 Supabase 帳號 ──────────────────────────────
-      const { data: existing } = await supabase
-        .from('line_identities')
-        .select('user_id')
-        .eq('line_user_id', lineUserId)
-        .maybeSingle();
-
-      const syntheticEmail = `line-${lineUserId}@line.internal`;
-      let userId: string;
-
-      if (existing) {
-        userId = existing.user_id;
-      } else {
-        const { data: created, error: createErr } = await supabase.auth.admin.createUser({
-          email: syntheticEmail,
-          email_confirm: true,
-          user_metadata: { account_type: 'customer', line_user_id: lineUserId, name: displayName },
-        });
-        if (createErr || !created?.user) throw createErr ?? new Error('建立帳號失敗');
-        userId = created.user.id;
-
-        const { error: linkErr } = await supabase.from('line_identities').insert({
-          line_user_id: lineUserId,
-          user_id: userId,
-          display_name: displayName,
-          picture_url: pictureUrl,
-        });
-        if (linkErr) throw linkErr;
-      }
-
-      // ── 產生一次性登入連結（顧客端用 verifyOtp 換成真正的 session）────────
-      const { data: link, error: linkGenErr } = await supabase.auth.admin.generateLink({
-        type: 'magiclink',
-        email: syntheticEmail,
-      });
-      if (linkGenErr || !link) throw linkGenErr ?? new Error('產生登入連結失敗');
-
-      return new Response(
-        JSON.stringify({
-          email: syntheticEmail,
-          token_hash: link.properties.hashed_token,
-          name: displayName,
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
+      return await issueSessionForLineUser(supabase, lineUserId, displayName, pictureUrl, corsHeaders);
     }
 
     return new Response('not found', { status: 404, headers: corsHeaders });

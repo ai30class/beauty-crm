@@ -1,12 +1,18 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Eye, EyeOff, Lock, Mail, MessageCircle } from 'lucide-react-native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {ActivityIndicator,
-  KeyboardAvoidingView, Pressable, ScrollView,Text, TextInput, 
-  View, 
+  KeyboardAvoidingView, Pressable, ScrollView,Text, TextInput,
+  View,
 } from 'react-native';
 import { supabase } from '@/client/supabase';
+
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+
+// LIFF ID 不是密鑰（前端本來就要帶著它去初始化 LIFF SDK），可以直接寫在前端
+const LIFF_ID = '2011486633-e6gmiIWk';
 
 export default function CustomerAuthScreen() {
   const router = useRouter();
@@ -14,6 +20,7 @@ export default function CustomerAuthScreen() {
 
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [lineLoading, setLineLoading] = useState(false);
   const [error, setError] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [showPw, setShowPw] = useState(false);
@@ -21,26 +28,69 @@ export default function CustomerAuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // Channel ID 不是密鑰（等同 Google OAuth 的 client_id），可以直接寫在前端
-  const LINE_LOGIN_CHANNEL_ID = '2011486633';
+  // 進頁面就先初始化 LIFF；如果本來就在 LINE App 裡打開（已經登入過），
+  // 會直接偵測到已登入狀態，不用使用者再按一次
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const liff = (await import('@line/liff')).default;
+        await liff.init({ liffId: LIFF_ID });
+        if (!cancelled && liff.isLoggedIn()) {
+          await completeLineLogin();
+        }
+      } catch (e) {
+        console.error('LIFF init failed', e);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleLineLogin = () => {
-    // state 只用來夾帶 ownerId 過去，不依賴 sessionStorage 之類的暫存比對——
-    // LINE 常會把整個授權流程交給 LINE App 自己的瀏覽器處理，跳回來時
-    // 已經不是原本這個分頁了，暫存的東西會讀不到（見 line-callback.tsx 的說明）
-    const state = btoa(JSON.stringify({ o: ownerId ?? '' }));
-    const redirectUri = `${window.location.origin}/online-booking/line-callback`;
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: LINE_LOGIN_CHANNEL_ID,
-      redirect_uri: redirectUri,
-      state,
-      scope: 'openid profile',
-      // LINE Login 頻道已連動官方帳號時，順便請顧客加好友，這樣登入時拿到的
-      // userId 才能直接拿去發 Messaging API 推播，不用另外再串一次加好友流程
-      bot_prompt: 'normal',
-    });
-    window.location.href = `https://access.line.me/oauth2/v2.1/authorize?${params.toString()}`;
+  const completeLineLogin = async () => {
+    setLineLoading(true);
+    setError('');
+    try {
+      const liff = (await import('@line/liff')).default;
+      const idToken = liff.getIDToken();
+      if (!idToken) throw new Error('LINE 登入失敗，請再試一次');
+
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/line-login/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ idToken }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'LINE 登入失敗');
+
+      const { error: otpErr } = await supabase.auth.verifyOtp({
+        token_hash: json.token_hash,
+        type: 'magiclink',
+      });
+      if (otpErr) throw otpErr;
+
+      router.replace(`/online-booking?ownerId=${ownerId ?? ''}` as any);
+    } catch (e: any) {
+      setError(e.message ?? 'LINE 登入失敗，請稍後再試');
+    } finally {
+      setLineLoading(false);
+    }
+  };
+
+  const handleLineLogin = async () => {
+    try {
+      const liff = (await import('@line/liff')).default;
+      if (liff.isLoggedIn()) {
+        await completeLineLogin();
+      } else {
+        // 已經在 LINE 內建瀏覽器打開時，這一步幾乎不會跳轉、直接就登入了；
+        // 在一般瀏覽器打開時才會真的跳去 LINE 授權頁
+        liff.login({ redirectUri: window.location.href });
+      }
+    } catch (e: any) {
+      setError('LINE 登入初始化失敗，請稍後再試');
+    }
   };
 
   const handleAuth = async () => {
@@ -126,9 +176,15 @@ export default function CustomerAuthScreen() {
               className="rounded-2xl h-14 items-center justify-center active:opacity-80 flex-row gap-2"
               style={{ backgroundColor: '#06C755' }}
               onPress={handleLineLogin}
+              disabled={lineLoading}
             >
-              <MessageCircle size={18} color="#fff" />
-              <Text className="font-rounded text-base text-white font-semibold">用 LINE 一鍵登入</Text>
+              {lineLoading
+                ? <ActivityIndicator color="#fff" />
+                : <>
+                    <MessageCircle size={18} color="#fff" />
+                    <Text className="font-rounded text-base text-white font-semibold">用 LINE 一鍵登入</Text>
+                  </>
+              }
             </Pressable>
 
             <View className="flex-row items-center gap-3 my-1">
