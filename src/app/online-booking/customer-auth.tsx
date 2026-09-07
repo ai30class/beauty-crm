@@ -28,6 +28,19 @@ export default function CustomerAuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
+  // LIFF 登入跳轉時會把網址上的 query string（例如 ownerId）暫存起來，
+  // 要等 liff.init() 跑完才會還原回網址列——但 Expo Router 早就讀過舊網址、
+  // 拿到空的 ownerId 了，這裡要手動從網址重新抓一次、同步回路由參數
+  const resolveOwnerId = (): string => {
+    if (ownerId) return ownerId;
+    if (typeof window === 'undefined') return '';
+    try {
+      return new URLSearchParams(window.location.search).get('ownerId') ?? '';
+    } catch {
+      return '';
+    }
+  };
+
   // 進頁面就先初始化 LIFF；如果本來就在 LINE App 裡打開（已經登入過），
   // 會直接偵測到已登入狀態，不用使用者再按一次
   useEffect(() => {
@@ -37,8 +50,12 @@ export default function CustomerAuthScreen() {
       try {
         const liff = (await import('@line/liff')).default;
         await liff.init({ liffId: LIFF_ID });
+        const urlOwnerId = resolveOwnerId();
+        if (urlOwnerId && urlOwnerId !== ownerId) {
+          router.setParams({ ownerId: urlOwnerId });
+        }
         if (!cancelled && liff.isLoggedIn()) {
-          await completeLineLogin();
+          await completeLineLogin(urlOwnerId);
         }
       } catch (e) {
         console.error('LIFF init failed', e);
@@ -48,7 +65,8 @@ export default function CustomerAuthScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const completeLineLogin = async () => {
+  const completeLineLogin = async (ownerIdOverride?: string) => {
+    const targetOwnerId = ownerIdOverride || resolveOwnerId();
     setLineLoading(true);
     setError('');
     try {
@@ -70,7 +88,7 @@ export default function CustomerAuthScreen() {
       });
       if (otpErr) throw otpErr;
 
-      router.replace(`/online-booking?ownerId=${ownerId ?? ''}` as any);
+      router.replace(`/online-booking?ownerId=${targetOwnerId}` as any);
     } catch (e: any) {
       setError(e.message ?? 'LINE 登入失敗，請稍後再試');
     } finally {
