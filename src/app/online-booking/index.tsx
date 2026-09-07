@@ -130,21 +130,34 @@ export default function OnlineBookingScreen() {
     // （service_templates 的 RLS 規則要求要登入才能讀），查回一次空清單後
     // 就再也不會重查，害顧客看到「目前無開放線上預約的服務」
     if (!presetOwnerId || !authChecked) return;
+    let cancelled = false;
     (async () => {
-      const [tpls, staff, hols] = await Promise.all([
-        getServiceTemplatesByOwner(presetOwnerId),
-        getActiveStaffByOwner(presetOwnerId),
-        getHolidaysByOwner(presetOwnerId),
-      ]);
-      // 只顯示開放線上預約的
-      setTemplates(tpls.filter(t => t.allow_online_booking));
-      setStaffList(staff);
-      setHolidays(hols.map(h => h.holiday_date));
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const [tpls, staff, hols] = await Promise.all([
+          getServiceTemplatesByOwner(presetOwnerId),
+          getActiveStaffByOwner(presetOwnerId),
+          getHolidaysByOwner(presetOwnerId),
+        ]);
+        if (cancelled) return;
+        const visible = tpls.filter(t => t.allow_online_booking);
+        // 保險機制：已登入卻查回全空，可能是 session 還沒真正生效就送出查詢
+        // （即使已經等過 authChecked，個別環境還是可能有更細微的時機差），
+        // 稍等一下重查，最多重試 2 次，避免顧客卡在「目前無開放線上預約的服務」
+        if (visible.length === 0 && customerSession && attempt < 2) {
+          await new Promise(r => setTimeout(r, 800));
+          continue;
+        }
+        setTemplates(visible);
+        setStaffList(staff);
+        setHolidays(hols.map(h => h.holiday_date));
+        break;
+      }
 
       // 載入商家公開資訊
       const profile = await getShopProfileByOwner(presetOwnerId).catch(() => null);
-      setShopProfile(profile);
+      if (!cancelled) setShopProfile(profile);
     })();
+    return () => { cancelled = true; };
   }, [presetOwnerId, authChecked]);
 
   // 回頭客辨識：已登入且這個帳號在這家店留過資料的話，直接帶出來，
