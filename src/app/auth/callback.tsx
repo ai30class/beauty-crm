@@ -23,7 +23,10 @@ export default function AuthCallback() {
         // 已經有 session 了，但他的目的是換密碼，不是進後台——直接丟去首頁
         // 他就再也找不到設定新密碼的地方了。
         if (params.get('type') === 'recovery') {
-          router.replace('/(auth)/reset-password' as any);
+          // ⚠️ 是 '/reset-password'，不是 '/(auth)/reset-password'：這頁必須放在
+          // 公開路由，因為 (auth) 的 guard 是 !session，而走到這裡的人一定已經
+          // 有 recovery session。改動這個路徑前先看開發筆記三十四節。
+          router.replace('/reset-password' as any);
           return;
         }
       }
