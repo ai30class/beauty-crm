@@ -26,6 +26,51 @@ async function findLineUserId(supabase: ReturnType<typeof createClient>, custome
   return identity?.line_user_id ?? null;
 }
 
+// 統一撈「預約時間落在指定區間內、真的算數的預約」——同時涵蓋商家後台手動建的
+// appointments，跟顧客線上預約（含 LINE 登入）建的 online_orders（只算 paid／
+// confirmed，還在等訂金確認的 pending_transfer_confirm 不提醒）。這兩張表原本
+// 是分開查的，提醒功能一直漏掉 online_orders，等於線上預約的顧客完全收不到
+// 前一天／快到了的提醒，2026-09-08 補上。
+async function fetchDueAppointments(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  from: string,
+  to: string,
+): Promise<Array<{ id: string; owner_id: string; customer_id: string | null; appointment_time: string; customerName: string }>> {
+  const [{ data: appts }, { data: orders }] = await Promise.all([
+    supabase
+      .from('appointments')
+      .select('id, owner_id, customer_id, appointment_time, customers(name)')
+      .eq('status', 'pending')
+      .gte('appointment_time', from)
+      .lte('appointment_time', to),
+    supabase
+      .from('online_orders')
+      .select('id, owner_id, customer_id, customer_name, appointment_time')
+      .in('status', ['paid', 'confirmed'])
+      .gte('appointment_time', from)
+      .lte('appointment_time', to),
+  ]);
+
+  // deno-lint-ignore no-explicit-any
+  const fromAppts = (appts ?? []).map((a: any) => ({
+    id: a.id as string,
+    owner_id: a.owner_id as string,
+    customer_id: a.customer_id as string | null,
+    appointment_time: a.appointment_time as string,
+    customerName: (a.customers?.name as string | undefined) ?? '顧客',
+  }));
+  // deno-lint-ignore no-explicit-any
+  const fromOrders = (orders ?? []).map((o: any) => ({
+    id: o.id as string,
+    owner_id: o.owner_id as string,
+    customer_id: o.customer_id as string | null,
+    appointment_time: o.appointment_time as string,
+    customerName: (o.customer_name as string | undefined) ?? '顧客',
+  }));
+  return [...fromAppts, ...fromOrders];
+}
+
 async function pushLineMessage(lineUserId: string, text: string): Promise<boolean> {
   const token = Deno.env.get('LINE_MESSAGING_CHANNEL_ACCESS_TOKEN');
   if (!token) return false;
@@ -106,14 +151,9 @@ Deno.serve(async (req) => {
       const from = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
       const to   = new Date(now.getTime() + 75 * 60 * 1000).toISOString();
 
-      const { data: appts } = await supabase
-        .from('appointments')
-        .select('id, owner_id, customer_id, appointment_time, customers(name)')
-        .eq('status', 'pending')
-        .gte('appointment_time', from)
-        .lte('appointment_time', to);
+      const due = await fetchDueAppointments(supabase, from, to);
 
-      for (const a of appts ?? []) {
+      for (const a of due) {
         const today = now.toISOString().slice(0, 10);
         const { data: existing } = await supabase
           .from('notification_logs')
@@ -124,8 +164,7 @@ Deno.serve(async (req) => {
           .maybeSingle();
         if (existing) continue;
 
-        const customerName = (a as any).customers?.name ?? '顧客';
-        const apptTime = new Date(a.appointment_time as unknown as string);
+        const apptTime = new Date(a.appointment_time);
         const timeStr = apptTime.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false });
 
         const { data: shop } = await supabase
@@ -149,7 +188,7 @@ Deno.serve(async (req) => {
           type: 'appointment',
           sent_date: today,
         });
-        console.log(`🔔 預約提醒 → ${customerName}，${a.appointment_time}　${sent ? '已用 LINE 發送' : '僅記錄（無 LINE 身份）'}`);
+        console.log(`🔔 預約提醒 → ${a.customerName}，${a.appointment_time}　${sent ? '已用 LINE 發送' : '僅記錄（無 LINE 身份）'}`);
       }
     } else if (type === 'appointment_day_before') {
       // 查詢明天（台灣時區的日曆日）的預約，每天固定時間跑一次、提前一天提醒
@@ -163,14 +202,9 @@ Deno.serve(async (req) => {
       const dayStart = new Date(`${tomorrowDateStr}T00:00:00+08:00`).toISOString();
       const dayEnd = new Date(`${tomorrowDateStr}T23:59:59.999+08:00`).toISOString();
 
-      const { data: appts } = await supabase
-        .from('appointments')
-        .select('id, owner_id, customer_id, appointment_time, customers(name)')
-        .eq('status', 'pending')
-        .gte('appointment_time', dayStart)
-        .lte('appointment_time', dayEnd);
+      const due = await fetchDueAppointments(supabase, dayStart, dayEnd);
 
-      for (const a of appts ?? []) {
+      for (const a of due) {
         // 防重推送：用「今天」當 sent_date，同一筆預約這個提醒類型一天只發一次
         const { data: existing } = await supabase
           .from('notification_logs')
@@ -181,8 +215,7 @@ Deno.serve(async (req) => {
           .maybeSingle();
         if (existing) continue;
 
-        const customerName = (a as any).customers?.name ?? '顧客';
-        const apptTime = new Date(a.appointment_time as unknown as string);
+        const apptTime = new Date(a.appointment_time);
         const dateStr = apptTime.toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric' });
         const timeStr = apptTime.toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false });
 
@@ -207,7 +240,7 @@ Deno.serve(async (req) => {
           type: 'appointment_day_before',
           sent_date: todayDateStr,
         });
-        console.log(`📅 前一天預約提醒 → ${customerName}，${a.appointment_time}　${sent ? '已用 LINE 發送' : '僅記錄（無 LINE 身份）'}`);
+        console.log(`📅 前一天預約提醒 → ${a.customerName}，${a.appointment_time}　${sent ? '已用 LINE 發送' : '僅記錄（無 LINE 身份）'}`);
       }
     } else if (type === 'expire_pending_deposit') {
       // 匯款訂金流程：待確認匯款超過期限、店家一直沒標記已收訂金的訂單，
