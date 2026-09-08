@@ -9,15 +9,67 @@ import { useEffect } from 'react';
 import { SessionProvider, useSession } from '@/ctx';
 import "../global.css";
 
-// ── PWA：Service Worker 註冊（僅 Web）────────────────────────
+// ── PWA：Service Worker 註冊＋自動更新（僅 Web）──────────────
+//
+// ⚠️ 這段的存在理由：Service Worker 會讓使用者裝置沿用舊版程式，而
+// 「請你清快取」對真實使用者（店家、顧客）是不可行的要求——2026-09-08
+// 就因為這個，新增的路由在舊程式包裡不存在，使用者點信只看到
+// "Unmatched Route"，前後折騰了好幾輪。
+//
+// 所以這裡讓更新自己發生：偵測到新版 Service Worker 接手後，自動重新
+// 載入一次頁面。使用者不需要做任何事，也不需要知道有這回事。
+const RELOADED_FLAG = 'bcrm_sw_reloaded';
+
 function usePWA() {
   useEffect(() => {
     if (process.env.EXPO_OS !== 'web') return;
     if (!('serviceWorker' in navigator)) return;
+
+    let cancelled = false;
+
     navigator.serviceWorker
       .register('/sw.js', { scope: '/' })
+      .then((reg) => {
+        if (cancelled) return;
+        // 每次開啟頁面都主動問一次有沒有新版
+        reg.update().catch(() => { /* 檢查失敗就算了，不影響使用 */ });
+
+        reg.addEventListener('updatefound', () => {
+          const installing = reg.installing;
+          if (!installing) return;
+          installing.addEventListener('statechange', () => {
+            // 只有在「本來就已經被舊版 SW 控制」的情況才需要重載；
+            // 第一次安裝（controller 是 null）不用重載，避免多跳一次。
+            if (installing.state === 'activated' && navigator.serviceWorker.controller) {
+              reloadOnce();
+            }
+          });
+        });
+      })
       .catch(() => { /* SW 註冊失敗不影響主流程 */ });
+
+    // 舊版 SW 被新版取代、控制權轉移時也重載一次
+    const onControllerChange = () => reloadOnce();
+    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+
+    return () => {
+      cancelled = true;
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+    };
   }, []);
+}
+
+// 保險：整個分頁只自動重載一次，避免任何情況下變成無限重整
+function reloadOnce() {
+  try {
+    if (sessionStorage.getItem(RELOADED_FLAG)) return;
+    sessionStorage.setItem(RELOADED_FLAG, '1');
+  } catch {
+    // sessionStorage 不可用（私密瀏覽等）就直接放棄自動重載，
+    // 寧可讓使用者看到舊版，也不要冒無限重整的風險
+    return;
+  }
+  window.location.reload();
 }
 
 // ── PWA：注入 <head> meta tags（僅 Web）─────────────────────
