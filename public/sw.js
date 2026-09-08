@@ -1,7 +1,7 @@
 // 美業管家 Service Worker
 // 負責：離線快取、背景同步、推播通知基礎
 
-const CACHE_NAME = 'beauty-crm-v2';
+const CACHE_NAME = 'beauty-crm-v3';
 const STATIC_ASSETS = [
   '/offline.html',
   '/assets/icon.png',
@@ -28,7 +28,13 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// ── Fetch：Network First，失敗走快取，靜態資源走 Cache First ─
+// ── Fetch：程式碼一律先拿最新，圖片字型才走快取優先 ────────────
+//
+// ⚠️ 這裡原本把 script/style 也放進 Cache First，代價很大：只要部署新版，
+// 使用者裝置上的舊程式就會一直被沿用，畫面行為停在舊版本，而且完全看不出
+// 原因——2026-09-08 為了這個連續誤判了好幾輪（新版新增的路由在舊程式包裡
+// 不存在，直接顯示 Expo 的 "Unmatched Route"），還要一直教使用者清快取。
+// 程式碼改成 Network First：有網路就拿最新，沒網路才退回快取。
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -36,12 +42,24 @@ self.addEventListener('fetch', (event) => {
   // 非同源請求（Supabase API 等）不攔截
   if (url.origin !== self.location.origin) return;
 
-  // 靜態資源 Cache First
+  // 程式碼與樣式：Network First（拿到就順手更新快取，供離線時使用）
+  if (request.destination === 'script' || request.destination === 'style') {
+    event.respondWith(
+      fetch(request)
+        .then((res) => {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(request, clone));
+          return res;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // 圖片與字型：Cache First（內容不會變，快取能省流量、加快載入）
   if (
     request.destination === 'image' ||
-    request.destination === 'font' ||
-    request.destination === 'style' ||
-    request.destination === 'script'
+    request.destination === 'font'
   ) {
     event.respondWith(
       caches.match(request).then(
