@@ -73,7 +73,7 @@ export async function getCustomers(): Promise<Customer[]> {
     .from('customers')
     .select('*')
     .order('created_at', { ascending: false })
-    .limit(200);
+    .limit(5000);
   if (error) throw error;
   return Array.isArray(data) ? data : [];
 }
