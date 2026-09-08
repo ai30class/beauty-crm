@@ -43,6 +43,15 @@ export default function LandingScreen() {
       /* sessionStorage 不可用時，設定密碼頁會顯示連結失效並引導重新申請 */
     }
     router.replace('/reset-password' as any);
+
+    // 後備：萬一 router 沒把人帶過去（畫面就會停在轉圈圈），2.5 秒後直接用
+    // 瀏覽器硬導過去，不要讓使用者對著一個不動的轉圈圈猜發生什麼事。
+    const fallback = setTimeout(() => {
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('reset-password')) {
+        window.location.replace('/reset-password');
+      }
+    }, 2500);
+    return () => clearTimeout(fallback);
   }, [handingOver, router]);
 
   if (handingOver) {

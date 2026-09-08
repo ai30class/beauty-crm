@@ -25,6 +25,19 @@ export default function ResetPasswordScreen() {
   const [canEdit, setCanEdit] = useState(false);
 
   useEffect(() => {
+    // 逾時保護：這頁背後要跟 Supabase 換 session，如果那個請求卡住（實測遇過，
+    // 例如瀏覽器限制儲存空間時 supabase client 會一直不回來），畫面會永遠停在
+    // 轉圈圈。沒有說明的等待畫面會讓使用者以為當掉、回頭再點一次信，而
+    // recovery 連結是一次性的，等於自己把它燒掉。所以寧可逾時報錯也不要卡住。
+    const timer = setTimeout(() => {
+      setChecking(prev => {
+        if (prev) {
+          setError('驗證重設連結逾時。若你正在使用「私密瀏覽 / 無痕視窗」，請改用一般視窗再試一次——這個系統的登入狀態需要瀏覽器的儲存空間，私密模式會擋掉。');
+        }
+        return false;
+      });
+    }, 10000);
+
     (async () => {
       // 先用首頁交棒過來的憑證換 session（一次性，用完就清掉，避免重複使用）
       let handoff: { accessToken?: string; refreshToken?: string } | null = null;
@@ -42,6 +55,7 @@ export default function ResetPasswordScreen() {
           // 最常見的原因：這封信的連結已經點過一次了。recovery token 是
           // 一次性的，同一封信點第二次一定失敗，必須重新申請一封新的。
           setError('這個重設連結已經用過或已過期。請回登入頁重新申請一次，並且只點一次信裡的連結。');
+          clearTimeout(timer);
           setChecking(false);
           return;
         }
@@ -50,8 +64,11 @@ export default function ResetPasswordScreen() {
       const { data } = await supabase.auth.getSession();
       if (data.session) setCanEdit(true);
       else setError('這個重設連結已失效，請回登入頁重新申請一次。');
+      clearTimeout(timer);
       setChecking(false);
     })();
+
+    return () => clearTimeout(timer);
   }, []);
 
   const handleSave = async () => {
