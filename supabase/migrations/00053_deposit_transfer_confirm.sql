@@ -4,19 +4,12 @@
 -- 店家核對完銀行帳戶後，自己在後台把訂單標記「已收訂金」。
 
 -- 1. status 允許新的中繼狀態：pending_transfer_confirm（待確認匯款）
-DO $$
-DECLARE
-  con_name text;
-BEGIN
-  SELECT conname INTO con_name
-  FROM pg_constraint
-  WHERE conrelid = 'public.online_orders'::regclass
-    AND contype = 'c'
-    AND pg_get_constraintdef(oid) LIKE '%status%IN%';
-  IF con_name IS NOT NULL THEN
-    EXECUTE format('ALTER TABLE public.online_orders DROP CONSTRAINT %I', con_name);
-  END IF;
-END $$;
+-- migration 00006 建表時用 CHECK (status IN (...))，Postgres 內部會存成
+-- CHECK (status = ANY (ARRAY[...])) 的形式，但限制式名稱仍是預設的
+-- online_orders_status_check，直接用這個名稱刪除重建即可，兩步都是
+-- 冪等寫法（IF EXISTS / 重新 CREATE），可以重複執行。
+ALTER TABLE public.online_orders
+  DROP CONSTRAINT IF EXISTS online_orders_status_check;
 
 ALTER TABLE public.online_orders
   ADD CONSTRAINT online_orders_status_check
