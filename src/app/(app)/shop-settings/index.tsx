@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   ArrowLeft, Store, Phone, MapPin, FileText, Clock, ChevronDown,
-  Plus, Trash2, Ban, CreditCard, Eye, EyeOff, HelpCircle, X,
+  Plus, Trash2, Ban, CreditCard, Eye, EyeOff, HelpCircle, X, MessageCircle,
 } from 'lucide-react-native';
 import {
   getShopProfile, upsertShopProfile, DEFAULT_HOURS, getShopBlockedSlots, createShopBlockedSlot, deleteShopBlockedSlot,
@@ -135,6 +135,9 @@ export default function ShopSettingsScreen() {
   // 營業時間
   const [hours, setHours] = useState<BusinessHours>(DEFAULT_HOURS);
 
+  // LINE 官方帳號（訂金私訊確認用）
+  const [lineOaId, setLineOaId] = useState('');
+
   // LINE Pay（各店家自己的金鑰）
   const [linePayChannelId, setLinePayChannelId] = useState('');
   const [linePayChannelSecret, setLinePayChannelSecret] = useState('');
@@ -161,6 +164,7 @@ export default function ShopSettingsScreen() {
           setAddress(profile.address);
           setDescription(profile.description);
           setHours({ ...DEFAULT_HOURS, ...profile.business_hours });
+          setLineOaId(profile.line_oa_id ?? '');
         }
         const paymentSettings = await getShopPaymentSettings();
         if (paymentSettings) {
@@ -215,6 +219,7 @@ export default function ShopSettingsScreen() {
         address: address.trim(),
         description: description.trim(),
         business_hours: hours,
+        line_oa_id: lineOaId.trim() || null,
       });
       await upsertShopPaymentSettings({
         line_pay_channel_id: linePayChannelId.trim() || null,
@@ -350,6 +355,30 @@ export default function ShopSettingsScreen() {
           </View>
           <Text className="font-rounded text-xs text-muted-foreground mt-2 px-1">
             💡 關閉當天開關即代表公休，線上預約系統將自動封鎖該日
+          </Text>
+        </View>
+
+        {/* ── LINE 官方帳號（訂金私訊確認用） ── */}
+        <View>
+          <View className="flex-row items-center gap-2 mb-3">
+            <MessageCircle size={16} color="#e8789a" />
+            <Text className="font-rounded text-base font-bold text-foreground">LINE 官方帳號</Text>
+          </View>
+          <View className="bg-card border border-border rounded-2xl overflow-hidden">
+            <View className="px-4 py-3">
+              <Text className="font-rounded text-xs text-muted-foreground mb-1">Basic ID</Text>
+              <TextInput
+                className="font-rounded text-base text-foreground"
+                placeholder="例：@abc1234"
+                placeholderTextColor="#c4a0ae"
+                value={lineOaId}
+                onChangeText={setLineOaId}
+                autoCapitalize="none"
+              />
+            </View>
+          </View>
+          <Text className="font-rounded text-xs text-muted-foreground mt-2 px-1">
+            💡 顧客預約到需要訂金的服務時，會顯示「私訊 LINE 官方帳號」按鈕直接開啟跟這個帳號的對話，帳號核對、確認轉帳都在私訊裡人工處理，不會在公開預約頁顯示銀行帳號
           </Text>
         </View>
 

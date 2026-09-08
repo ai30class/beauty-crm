@@ -173,7 +173,7 @@ export interface Holiday {
 }
 
 export type OnlineOrderStatus =
-  | 'pending_payment' | 'paid' | 'confirmed'
+  | 'pending_payment' | 'pending_transfer_confirm' | 'paid' | 'confirmed'
   | 'completed' | 'cancelled' | 'refunded';
 
 export interface OnlineOrder {
@@ -198,6 +198,7 @@ export interface OnlineOrder {
   line_pay_order_id: string | null;
   line_pay_payment_url: string | null;
   line_pay_paid_at: string | null;
+  deposit_confirm_deadline: string | null;
   created_at: string;
   staff?: Pick<Staff, 'name' | 'color'>;
 }
@@ -372,6 +373,7 @@ export interface ShopProfile {
   address: string;
   description: string;
   business_hours: BusinessHours;
+  line_oa_id: string | null;
   created_at: string;
   updated_at: string;
 }

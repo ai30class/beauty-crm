@@ -14,7 +14,8 @@ import type { OnlineOrder, Staff } from '@/types/types';
 // ── 共用常數 ──────────────────────────────────────────────
 
 const STATUS_META: Record<string, { label: string; bg: string; text: string }> = {
-  pending_payment: { label: '待付款', bg: '#fef3e6', text: '#e8a000' },
+  pending_payment:          { label: '待付款', bg: '#fef3e6', text: '#e8a000' },
+  pending_transfer_confirm: { label: '待確認匯款', bg: '#fef3e6', text: '#e8a000' },
   paid:            { label: '已付訂金', bg: '#e6f5ef', text: '#2ea87e' },
   confirmed:       { label: '已確認', bg: '#e8f0ff', text: '#4a6cf7' },
   completed:       { label: '已完成', bg: '#f0f0f0', text: '#888' },
@@ -218,7 +219,7 @@ export default function OnlineOrdersScreen() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [addonsByOrder, setAddonsByOrder] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'paid' | 'pending_payment' | 'confirmed'>('all');
+  const [filter, setFilter] = useState<'all' | 'paid' | 'pending_payment' | 'pending_transfer_confirm' | 'confirmed'>('all');
   const [editingOrder, setEditingOrder] = useState<OnlineOrder | null>(null);
 
   const load = useCallback(async () => {
@@ -250,8 +251,15 @@ export default function OnlineOrdersScreen() {
     load();
   };
 
+  // 銀行轉帳流程：店家核對完銀行帳戶、確認真的收到訂金後才按這個
+  const handleConfirmTransfer = async (o: OnlineOrder) => {
+    await updateOnlineOrderStatus(o.id, 'paid');
+    load();
+  };
+
   const FILTERS: Array<{ key: typeof filter; label: string }> = [
     { key: 'all', label: '全部' },
+    { key: 'pending_transfer_confirm', label: '待確認匯款' },
     { key: 'pending_payment', label: '待付款' },
     { key: 'paid', label: '已付訂金' },
     { key: 'confirmed', label: '已確認' },
@@ -370,6 +378,24 @@ export default function OnlineOrdersScreen() {
                         <Text className="font-rounded text-xs font-medium text-muted-foreground">微調</Text>
                       </Pressable>
                     )}
+                    {item.status === 'pending_transfer_confirm' && (
+                      <>
+                        <Pressable
+                          className="flex-row items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-full active:opacity-70"
+                          onPress={() => handleConfirmTransfer(item)}
+                        >
+                          <Check size={13} color="#e8789a" />
+                          <Text className="font-rounded text-xs font-medium text-primary">確認已收訂金</Text>
+                        </Pressable>
+                        <Pressable
+                          className="flex-row items-center gap-1 bg-destructive/10 px-3 py-1.5 rounded-full active:opacity-70"
+                          onPress={() => handleCancel(item)}
+                        >
+                          <X size={13} color="#e85454" />
+                          <Text className="font-rounded text-xs font-medium text-destructive">取消</Text>
+                        </Pressable>
+                      </>
+                    )}
                     {item.status === 'paid' && (
                       <>
                         <Pressable
@@ -407,6 +433,11 @@ export default function OnlineOrdersScreen() {
                     </Text>
                   </Pressable>
                 )}
+                {item.status === 'pending_transfer_confirm' && item.deposit_confirm_deadline ? (
+                  <Text className="font-rounded text-xs" style={{ color: '#e8a000' }}>
+                    ⏳ {new Date(item.deposit_confirm_deadline).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })} 前沒確認會自動取消
+                  </Text>
+                ) : null}
                 {item.notes ? (
                   <Text className="font-rounded text-xs text-muted-foreground" numberOfLines={2}>備：{item.notes}</Text>
                 ) : null}

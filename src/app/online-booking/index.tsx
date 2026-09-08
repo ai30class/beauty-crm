@@ -7,9 +7,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, createOnlineOrderAddons } from '@/db/api';
+import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, createTransferDepositOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, createOnlineOrderAddons } from '@/db/api';
 import { supabase } from '@/client/supabase';
-import { fetch } from 'expo/fetch';
 import type { Staff, ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
 
 const DAY_KEYS: (keyof BusinessHours)[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -19,8 +18,6 @@ type Step = 'identity' | 'service' | 'addons' | 'staff' | 'datetime' | 'info' | 
 function toLocalDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 
 export default function OnlineBookingScreen() {
   const router = useRouter();
@@ -125,7 +122,7 @@ export default function OnlineBookingScreen() {
     if (typeof window === 'undefined') return '';
     try { return localStorage.getItem('bcrm_pending_owner_id') ?? ''; } catch { return ''; }
   });
-  const [shopProfile, setShopProfile] = useState<Pick<ShopProfile, 'shop_name' | 'phone' | 'address' | 'description' | 'business_hours'> | null>(null);
+  const [shopProfile, setShopProfile] = useState<Pick<ShopProfile, 'shop_name' | 'phone' | 'address' | 'description' | 'business_hours' | 'line_oa_id'> | null>(null);
 
   // presetOwnerId 之後才解析出來（或改變）的話，同步更新 ownerId，同時把
   // 這把 key 存進 localStorage（跟 customer-auth.tsx 共用），供下次兜底用
@@ -294,34 +291,26 @@ export default function OnlineBookingScreen() {
         return;
       }
 
-      // ── 需付訂金 → LINE Pay ────────────────────────────
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/line-pay/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '' },
-        body: JSON.stringify({
-          owner_id:            resolvedOwnerId,
-          customer_name:       customerName.trim(),
-          customer_phone:      customerPhone.trim(),
-          customer_id:         customerId,
-          customer_user_id:    customerUserId,
-          staff_id:            selectedStaff?.id ?? null,
-          service_template_id: selectedTemplate.id,
-          service_name:        selectedTemplate.name,
-          duration_minutes:    totalDuration,
-          total_amount:        totalAmount,
-          appointment_time:    apptTime.toISOString(),
-          notes:               notes.trim() || null,
-        }),
+      // ── 需付訂金 → 銀行轉帳＋私訊確認（帳號、核對都在 LINE 私訊裡人工處理，
+      //    不在公開預約頁顯示銀行帳號）─────────────────────────────
+      const order = await createTransferDepositOrder({
+        owner_id:            resolvedOwnerId,
+        customer_name:       customerName.trim(),
+        customer_phone:      customerPhone.trim(),
+        customer_id:         customerId,
+        customer_user_id:    customerUserId,
+        staff_id:            selectedStaff?.id ?? null,
+        service_template_id: selectedTemplate.id,
+        service_name:        selectedTemplate.name,
+        duration_minutes:    totalDuration,
+        total_amount:        totalAmount,
+        deposit_amount:      depositAmount,
+        appointment_time:    apptTime.toISOString(),
+        end_time:            endTime.toISOString(),
+        notes:               notes.trim() || null,
       });
-
-      if (!res.ok) {
-        const err = await res.json() as { error?: string };
-        throw new Error(err.error ?? '建立失敗');
-      }
-
-      const { orderId, paymentUrl, orderDbId } = await res.json() as { orderId: string; paymentUrl: string; orderDbId: string };
-      await createOnlineOrderAddons(orderDbId, resolvedOwnerId, addonRows);
-      router.push(`/online-booking/payment?orderId=${orderId}&paymentUrl=${encodeURIComponent(paymentUrl)}` as any);
+      await createOnlineOrderAddons(order.id, resolvedOwnerId, addonRows);
+      router.push(`/online-booking/deposit-transfer?orderId=${order.id}` as any);
     } catch (e: any) {
       setError(e.message ?? '提交失敗，請重試');
     } finally {

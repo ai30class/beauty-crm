@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const { type } = await req.json() as { type: 'birthday' | 'appointment' | 'appointment_day_before' };
+    const { type } = await req.json() as { type: 'birthday' | 'appointment' | 'appointment_day_before' | 'expire_pending_deposit' };
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -208,6 +208,24 @@ Deno.serve(async (req) => {
           sent_date: todayDateStr,
         });
         console.log(`📅 前一天預約提醒 → ${customerName}，${a.appointment_time}　${sent ? '已用 LINE 發送' : '僅記錄（無 LINE 身份）'}`);
+      }
+    } else if (type === 'expire_pending_deposit') {
+      // 匯款訂金流程：待確認匯款超過期限、店家一直沒標記已收訂金的訂單，
+      // 自動取消、釋出時段，避免顧客佔著時段卻遲遲沒下文
+      const nowIso = new Date().toISOString();
+      const { data: expired } = await supabase
+        .from('online_orders')
+        .select('id, owner_id, customer_name, appointment_time')
+        .eq('status', 'pending_transfer_confirm')
+        .lt('deposit_confirm_deadline', nowIso);
+
+      for (const o of expired ?? []) {
+        await supabase
+          .from('online_orders')
+          .update({ status: 'cancelled' })
+          .eq('id', o.id)
+          .eq('status', 'pending_transfer_confirm'); // 樂觀鎖：避免跟店家剛好同時標記已收訂金互相打架
+        console.log(`⏳ 待確認匯款逾期自動取消 → ${o.customer_name}，${o.appointment_time}`);
       }
     }
 

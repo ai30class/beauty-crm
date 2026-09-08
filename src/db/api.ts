@@ -844,6 +844,41 @@ export async function createDirectOnlineOrder(payload: {
   return data as OnlineOrder;
 }
 
+// 需訂金但走「銀行轉帳＋私訊確認」（不經 LINE Pay）——建立訂單為
+// pending_transfer_confirm，帳號核對／確認轉帳都在 LINE 私訊裡人工處理，
+// 店家核對完銀行帳戶後自己在後台標記已收訂金（見 updateOnlineOrderStatus）。
+// deadlineHours 內沒被標記，會被排程自動取消釋出時段（見 send-reminders）。
+export async function createTransferDepositOrder(payload: {
+  owner_id: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_id: string;
+  customer_user_id: string | null;
+  staff_id: string | null;
+  service_template_id: string;
+  service_name: string;
+  duration_minutes: number;
+  total_amount: number;
+  deposit_amount: number;
+  appointment_time: string;
+  end_time: string;
+  notes: string | null;
+}, deadlineHours = 48): Promise<OnlineOrder> {
+  const deadline = new Date(Date.now() + deadlineHours * 3600_000).toISOString();
+  const { data, error } = await supabase
+    .from('online_orders')
+    .insert({
+      ...payload,
+      status: 'pending_transfer_confirm',
+      booking_mode: 'deposit',
+      deposit_confirm_deadline: deadline,
+    })
+    .select('*, staff:staff!staff_id(name, color)')
+    .single();
+  if (error) throw error;
+  return data as OnlineOrder;
+}
+
 // ─── 加購服務 ─────────────────────────────────────────────────────────────────
 
 export async function createOnlineOrderAddons(
@@ -1111,10 +1146,10 @@ export async function getShopProfile(): Promise<ShopProfile | null> {
   return data ?? null;
 }
 
-export async function getShopProfileByOwner(ownerId: string): Promise<Pick<ShopProfile, 'shop_name' | 'phone' | 'address' | 'description' | 'business_hours'> | null> {
+export async function getShopProfileByOwner(ownerId: string): Promise<Pick<ShopProfile, 'shop_name' | 'phone' | 'address' | 'description' | 'business_hours' | 'line_oa_id'> | null> {
   const { data, error } = await supabase
     .from('shop_profiles')
-    .select('shop_name, phone, address, description, business_hours')
+    .select('shop_name, phone, address, description, business_hours, line_oa_id')
     .eq('owner_id', ownerId)
     .maybeSingle();
   if (error) throw error;
@@ -1127,6 +1162,7 @@ export async function upsertShopProfile(payload: {
   address: string;
   description: string;
   business_hours: BusinessHours;
+  line_oa_id?: string | null;
 }): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('未登入');
