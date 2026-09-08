@@ -3,8 +3,10 @@ import { ActivityIndicator, Text, View, Pressable } from 'react-native';
 import { useRouter, Redirect } from 'expo-router';
 import { Heart, Scissors, CalendarDays } from 'lucide-react-native';
 import { StatusBar } from 'expo-status-bar';
-import { supabase } from '@/client/supabase';
 import { useSession } from '@/ctx';
+
+// 首頁把信裡的憑證交給設定密碼頁時共用的暫存 key
+export const RECOVERY_TOKENS_KEY = 'bcrm_recovery_tokens';
 
 export default function LandingScreen() {
   const router = useRouter();
@@ -15,36 +17,39 @@ export default function LandingScreen() {
   // 從 App 內按忘記密碼寄的信會帶 redirectTo 指向 /auth/callback，但從
   // Supabase 後台按 Send password recovery 寄的信一律用專案的 Site URL，
   // 也就是首頁——token 帶在網址 hash 上。而這個專案的 supabase client 是
-  // detectSessionInUrl: false，不會自動處理網址上的 token，所以那段 hash
-  // 會被整個忽略：本來就還留著登入狀態的人被直接丟進後台，沒登入的人則
-  // 停在首頁，兩種情況都找不到可以設定新密碼的地方（實際發生過）。
-  // 這裡認出 type=recovery，用信裡的 token 換好 session 再帶去設定密碼頁。
-  const [handlingRecovery, setHandlingRecovery] = useState(
+  // detectSessionInUrl: false，不會自動處理網址上的 token。
+  //
+  // 這裡只做一件事：把信裡的憑證搬進 sessionStorage、清掉網址上的 hash、
+  // 帶去設定密碼頁。**不要在這裡 setSession**——之前那版在這裡等 setSession
+  // 跑完才導頁，實際使用時卡在轉圈圈出不來，使用者以為沒反應就回頭再點一次
+  // 信，而 recovery token 是一次性的、第一次已經用掉，第二次反而換不到身分，
+  // 掉回原本的登入狀態（實際發生過，見開發筆記三十四）。
+  const [handingOver] = useState(
     () => typeof window !== 'undefined' && window.location.hash.includes('type=recovery'),
   );
 
   useEffect(() => {
-    if (!handlingRecovery) return;
-    (async () => {
-      try {
-        const params = new URLSearchParams(window.location.hash.substring(1));
-        const accessToken = params.get('access_token');
-        const refreshToken = params.get('refresh_token');
-        if (accessToken && refreshToken) {
-          await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-        }
-        router.replace('/(auth)/reset-password' as any);
-      } catch {
-        // 換 session 失敗就讓他停在首頁，不要卡在轉圈圈
-        setHandlingRecovery(false);
+    if (!handingOver) return;
+    try {
+      const params = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+      if (accessToken && refreshToken) {
+        sessionStorage.setItem(RECOVERY_TOKENS_KEY, JSON.stringify({ accessToken, refreshToken }));
       }
-    })();
-  }, [handlingRecovery, router]);
+      // 清掉網址上的憑證，免得它留在網址列或被再次誤用
+      window.history.replaceState(null, '', window.location.pathname);
+    } catch {
+      /* sessionStorage 不可用時，設定密碼頁會顯示連結失效並引導重新申請 */
+    }
+    router.replace('/reset-password' as any);
+  }, [handingOver, router]);
 
-  if (handlingRecovery) {
+  if (handingOver) {
     return (
-      <View className="flex-1 bg-background items-center justify-center">
+      <View className="flex-1 bg-background items-center justify-center gap-3">
         <ActivityIndicator size="large" color="#e8789a" />
+        <Text className="font-rounded text-sm text-muted-foreground">正在開啟設定密碼頁…</Text>
       </View>
     );
   }

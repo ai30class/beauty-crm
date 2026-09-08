@@ -6,8 +6,13 @@ import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-nativ
 import { supabase } from '@/client/supabase';
 
 // 「忘記密碼」信件點進來後的最後一步：設定新密碼。
-// auth/callback.tsx 會先用信裡的 token 建立 session，再把人導來這裡，
-// 所以這頁進來時應該已經是登入狀態，直接 updateUser 就能換密碼。
+//
+// 進來的方式有兩種，這頁都要能接：
+//   1. 首頁認出信裡的 recovery token，塞進 sessionStorage 再導過來
+//   2. 已經是登入狀態的人自己開這個網址（不需要知道舊密碼）
+// 換 session 這件事放在這頁做，不放在首頁——首頁那版會卡在轉圈圈出不來。
+const RECOVERY_TOKENS_KEY = 'bcrm_recovery_tokens';  // 與 src/app/index.tsx 同一把 key
+
 export default function ResetPasswordScreen() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
@@ -17,14 +22,34 @@ export default function ResetPasswordScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
 
-  // 沒有 session 代表不是從有效的重設連結進來的（連結過期、或直接打網址）
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) {
-        setError('這個重設連結已失效，請回登入頁重新申請一次。');
+      // 先用首頁交棒過來的憑證換 session（一次性，用完就清掉，避免重複使用）
+      let handoff: { accessToken?: string; refreshToken?: string } | null = null;
+      try {
+        const raw = sessionStorage.getItem(RECOVERY_TOKENS_KEY);
+        if (raw) { handoff = JSON.parse(raw); sessionStorage.removeItem(RECOVERY_TOKENS_KEY); }
+      } catch { /* sessionStorage 不可用，往下走既有 session 的判斷 */ }
+
+      if (handoff?.accessToken && handoff?.refreshToken) {
+        const { error: e } = await supabase.auth.setSession({
+          access_token: handoff.accessToken,
+          refresh_token: handoff.refreshToken,
+        });
+        if (e) {
+          // 最常見的原因：這封信的連結已經點過一次了。recovery token 是
+          // 一次性的，同一封信點第二次一定失敗，必須重新申請一封新的。
+          setError('這個重設連結已經用過或已過期。請回登入頁重新申請一次，並且只點一次信裡的連結。');
+          setChecking(false);
+          return;
+        }
       }
+
+      const { data } = await supabase.auth.getSession();
+      if (data.session) setCanEdit(true);
+      else setError('這個重設連結已失效，請回登入頁重新申請一次。');
       setChecking(false);
     })();
   }, []);
@@ -45,8 +70,9 @@ export default function ResetPasswordScreen() {
 
   if (checking) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff5f7' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff5f7', gap: 12 }}>
         <ActivityIndicator size="large" color="#e8789a" />
+        <Text style={{ fontSize: 14, color: '#7a6a70' }}>正在驗證重設連結…</Text>
       </View>
     );
   }
@@ -57,7 +83,17 @@ export default function ResetPasswordScreen() {
       <View style={{ width: '100%', maxWidth: 420, backgroundColor: '#fff', borderRadius: 20, padding: 24, gap: 14 }}>
         <Text style={{ fontSize: 18, fontWeight: '700', color: '#3d2b32' }}>設定新密碼</Text>
 
-        {done ? (
+        {!canEdit && !done ? (
+          <>
+            <Text style={{ fontSize: 14, lineHeight: 22, color: '#d1495b' }}>{error}</Text>
+            <Pressable
+              onPress={() => router.replace('/(auth)/sign-in' as any)}
+              style={{ backgroundColor: '#e8789a', borderRadius: 999, paddingVertical: 14, alignItems: 'center', marginTop: 4 }}
+            >
+              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>回登入頁重新申請</Text>
+            </Pressable>
+          </>
+        ) : done ? (
           <>
             <Text style={{ fontSize: 14, lineHeight: 22, color: '#7a6a70' }}>
               密碼已更新完成，之後請用新密碼登入。
