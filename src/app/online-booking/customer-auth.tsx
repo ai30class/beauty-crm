@@ -164,6 +164,25 @@ export default function CustomerAuthScreen() {
     }
   };
 
+  // 從 LINE 跳轉回來、自動偵測到已登入而觸發 completeLineLogin() 時，
+  // 顯示整頁等待畫面（不是只有按鈕裡的小轉圈圈）——顧客剛跳出 LINE 加好友
+  // 畫面回來，需要明確的畫面告訴他「還在處理，不是卡住了」
+  if (lineLoading) {
+    return (
+      <View className="flex-1 bg-background items-center justify-center px-8 gap-4">
+        <StatusBar style="dark" backgroundColor="#fff5f7" />
+        <View className="w-20 h-20 rounded-full items-center justify-center" style={{ backgroundColor: '#e8f9ee' }}>
+          <MessageCircle size={40} color="#06C755" />
+        </View>
+        <Text className="font-rounded text-xl font-bold text-foreground">登入中，請稍候</Text>
+        <Text className="font-rounded text-sm text-muted-foreground text-center">
+          正在跟 LINE 同步您的帳號{'\n'}這步驟由 LINE 處理，通常幾秒鐘內就會完成
+        </Text>
+        <ActivityIndicator size="large" color="#06C755" style={{ marginTop: 8 }} />
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       behavior={process.env.EXPO_OS === 'ios' ? 'padding' : 'height'}
