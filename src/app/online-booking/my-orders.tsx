@@ -70,9 +70,12 @@ export default function MyOrdersScreen() {
 
   const now = Date.now();
   const in24h = now + 24 * 60 * 60 * 1000;
+  // pending_payment／pending_transfer_confirm 是還沒付訂金／還沒私訊確認的
+  // 中繼狀態，不該顯示「即將到來」提醒——顧客根本還沒真的訂成功
+  const NOT_YET_REAL = ['cancelled', 'refunded', 'pending_payment', 'pending_transfer_confirm'];
   const upcomingSoon = orders.filter(o => {
     const t = new Date(o.appointment_time).getTime();
-    return t >= now && t <= in24h && o.status !== 'cancelled' && o.status !== 'refunded';
+    return t >= now && t <= in24h && !NOT_YET_REAL.includes(o.status);
   });
 
   if (loading) {

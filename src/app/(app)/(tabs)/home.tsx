@@ -61,12 +61,16 @@ export default function HomeScreen() {
       setCustomers(data);
       setTemplates(tpls);
       setOwnerId(user?.id ?? null);
-      // 24 小時內即將到來、尚未取消的預約提醒
+      // 24 小時內即將到來、真的算數的預約提醒——online_orders 的
+      // pending_payment／pending_transfer_confirm 是顧客還沒付訂金／
+      // 還沒私訊確認前的中繼狀態，不該算進「即將到來的預約」嚇到商家
+      // （manual 的 appointments 沒有這兩個狀態值，不受影響）
       const now = Date.now();
       const in24h = now + 24 * 60 * 60 * 1000;
+      const NOT_YET_REAL = ['cancelled', 'refunded', 'pending_payment', 'pending_transfer_confirm'];
       setUpcomingSoon(appts.filter(a => {
         const t = new Date(a.appointment_time).getTime();
-        return t >= now && t <= in24h && a.status !== 'cancelled' && a.status !== 'refunded';
+        return t >= now && t <= in24h && !NOT_YET_REAL.includes(a.status);
       }));
       // 判斷今日是否公休
       if (user) {
