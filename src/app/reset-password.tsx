@@ -11,6 +11,10 @@ import { supabase } from '@/client/supabase';
 //   1. 首頁認出信裡的 recovery token，塞進 sessionStorage 再導過來
 //   2. 已經是登入狀態的人自己開這個網址（不需要知道舊密碼）
 // 換 session 這件事放在這頁做，不放在首頁——首頁那版會卡在轉圈圈出不來。
+//
+// ⚠️ 這個檔案必須放在 src/app/ 底下（公開路由），不能放進 (auth)：
+// (auth) 的 guard 是 !session，只有未登入才進得去，而點信進來的人身上
+// 一定帶著 recovery session，放進 (auth) 這頁就永遠打不開。
 const RECOVERY_TOKENS_KEY = 'bcrm_recovery_tokens';  // 與 src/app/index.tsx 同一把 key
 
 export default function ResetPasswordScreen() {
@@ -71,6 +75,13 @@ export default function ResetPasswordScreen() {
     return () => clearTimeout(timer);
   }, []);
 
+  // 回登入頁之前一定要先登出：點信進來的人身上帶著 recovery session，
+  // 而 (auth) 群組是 guard={!session}，沒登出就導不過去（會彈回來）。
+  const backToSignIn = async () => {
+    try { await supabase.auth.signOut(); } catch { /* 登出失敗也照樣導回去 */ }
+    router.replace('/(auth)/sign-in' as any);
+  };
+
   const handleSave = async () => {
     setError('');
     if (password.length < 6) { setError('密碼至少 6 個字元'); return; }
@@ -104,7 +115,7 @@ export default function ResetPasswordScreen() {
           <>
             <Text style={{ fontSize: 14, lineHeight: 22, color: '#d1495b' }}>{error}</Text>
             <Pressable
-              onPress={() => router.replace('/(auth)/sign-in' as any)}
+              onPress={backToSignIn}
               style={{ backgroundColor: '#e8789a', borderRadius: 999, paddingVertical: 14, alignItems: 'center', marginTop: 4 }}
             >
               <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>回登入頁重新申請</Text>
@@ -171,7 +182,7 @@ export default function ResetPasswordScreen() {
               </Text>
             </Pressable>
 
-            <Pressable onPress={() => router.replace('/(auth)/sign-in' as any)} style={{ paddingVertical: 10, alignItems: 'center' }}>
+            <Pressable onPress={backToSignIn} style={{ paddingVertical: 10, alignItems: 'center' }}>
               <Text style={{ color: '#e8789a', fontSize: 14, fontWeight: '600' }}>回登入頁</Text>
             </Pressable>
           </>

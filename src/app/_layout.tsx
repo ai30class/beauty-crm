@@ -81,6 +81,12 @@ function RootLayoutNav() {
       <Stack.Screen name="index" />
       <Stack.Screen name="online-booking" />
       <Stack.Screen name="customer-lookup" />
+      {/* 設定新密碼：⚠️ 一定要放在這裡，不能放進 (auth)。
+          (auth) 有 guard={!session}，只有「未登入」才進得去；而重設密碼的
+          前提本來就是「點信之後已經拿到 recovery session」＝已登入，
+          放進 (auth) 會讓這頁在唯一會用到它的情境下直接不存在
+          （實際發生過：點信後畫面一直轉圈圈出不來）。 */}
+      <Stack.Screen name="reset-password" />
       {/* 未登入才能訪問 auth */}
       <Stack.Protected guard={!session}>
         <Stack.Screen name="(auth)" />
