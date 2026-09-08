@@ -698,7 +698,7 @@ export async function getOnlineOrders(): Promise<OnlineOrder[]> {
     .from('online_orders')
     .select('*, staff:staff!staff_id(name, color)')
     .order('appointment_time', { ascending: false })
-    .limit(200);
+    .limit(5000);
   if (error) throw error;
   return Array.isArray(data) ? data : [];
 }
