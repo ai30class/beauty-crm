@@ -1,7 +1,14 @@
-import { View, Text, ScrollView, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft } from 'lucide-react-native';
+import { getShopProfileByOwner } from '@/db/api';
+
+// 同一份條款文字給所有商家共用，只有店名/聯絡方式依 ownerId 換成該店家自己的資料——
+// 跟 customer-auth.tsx 共用同一把 localStorage key 當 ownerId 兜底
+// （LIFF 跳轉常常弄丟網址上的 query string，見 customer-auth.tsx 的說明）
+const PENDING_OWNER_ID_KEY = 'bcrm_pending_owner_id';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -20,6 +27,30 @@ function Para({ children }: { children: React.ReactNode }) {
 
 export default function PrivacyPolicyScreen() {
   const router = useRouter();
+  const { ownerId } = useLocalSearchParams<{ ownerId?: string }>();
+  const [loading, setLoading] = useState(true);
+  const [shopName, setShopName] = useState('本服務');
+  const [contactLine, setContactLine] = useState('請透過商家提供之聯絡方式');
+
+  useEffect(() => {
+    (async () => {
+      let resolvedOwnerId = ownerId ?? '';
+      if (!resolvedOwnerId && typeof window !== 'undefined') {
+        try { resolvedOwnerId = localStorage.getItem(PENDING_OWNER_ID_KEY) ?? ''; } catch { /* ignore */ }
+      }
+      if (!resolvedOwnerId) { setLoading(false); return; }
+      const profile = await getShopProfileByOwner(resolvedOwnerId).catch(() => null);
+      if (profile?.shop_name) setShopName(profile.shop_name);
+      const contacts: string[] = [];
+      if (profile?.phone) contacts.push(`電話 ${profile.phone}`);
+      if (profile?.line_oa_id) {
+        const id = profile.line_oa_id.startsWith('@') ? profile.line_oa_id : `@${profile.line_oa_id}`;
+        contacts.push(`LINE 官方帳號（${id}）`);
+      }
+      if (contacts.length > 0) setContactLine(contacts.join(' 或 '));
+      setLoading(false);
+    })();
+  }, [ownerId]);
 
   return (
     <View className="flex-1 bg-background">
@@ -36,6 +67,11 @@ export default function PrivacyPolicyScreen() {
         <Text className="font-rounded text-xl font-bold text-foreground">服務條款及隱私權政策</Text>
       </View>
 
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator color="#e8789a" />
+        </View>
+      ) : (
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerClassName="px-5 py-6 pb-16"
@@ -46,7 +82,7 @@ export default function PrivacyPolicyScreen() {
         </View>
 
         <Para>
-          歡迎使用椏椏眉睫藝術（以下簡稱「本服務」），由椏椏眉睫藝術（以下簡稱「本公司」）提供。請於預約或使用本服務前詳閱下列內容；您完成預約、註冊或以任何方式使用本服務，即表示您已閱讀、理解並同意本頁全部內容。
+          歡迎使用{shopName}（以下簡稱「本服務」），由{shopName}（以下簡稱「本公司」）提供。請於預約或使用本服務前詳閱下列內容；您完成預約、註冊或以任何方式使用本服務，即表示您已閱讀、理解並同意本頁全部內容。
         </Para>
 
         <Section title="一、服務內容與帳號">
@@ -88,7 +124,7 @@ export default function PrivacyPolicyScreen() {
 
         <Section title="七、您的權利與聯絡方式">
           <Para>
-            您得請求查閱、複製、補充更正、停止處理或刪除您的個人資料，請透過電話 0975 273 176 或 LINE 官方帳號（@hzw4396n）與我們聯繫，我們將於受理後合理期間內處理。
+            您得請求查閱、複製、補充更正、停止處理或刪除您的個人資料，請透過{contactLine}與我們聯繫，我們將於受理後合理期間內處理。
           </Para>
         </Section>
 
@@ -104,6 +140,7 @@ export default function PrivacyPolicyScreen() {
           </Para>
         </Section>
       </ScrollView>
+      )}
     </View>
   );
 }

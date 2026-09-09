@@ -250,7 +250,7 @@ export default function CustomerAuthScreen() {
                 按下去、把 LINE 資料交出去之前就能先看到、點進去閱讀 */}
             <Text className="font-rounded text-xs text-muted-foreground text-center leading-5">
               點選下方「用 LINE 一鍵登入」或註冊帳號，即表示您已閱讀並同意本服務{' '}
-              <Text className="text-primary" onPress={() => router.push('/online-booking/privacy-policy' as any)}>服務條款及隱私政策(簡明版)</Text>
+              <Text className="text-primary" onPress={() => router.push(`/online-booking/privacy-policy?ownerId=${resolveOwnerId()}` as any)}>服務條款及隱私政策(簡明版)</Text>
             </Text>
 
             {/* LINE 一鍵登入 */}
@@ -321,7 +321,7 @@ export default function CustomerAuthScreen() {
                   我已閱讀並同意{' '}
                   <Text
                     className="text-primary"
-                    onPress={() => router.push('/online-booking/privacy-policy' as any)}
+                    onPress={() => router.push(`/online-booking/privacy-policy?ownerId=${resolveOwnerId()}` as any)}
                   >服務條款及隱私政策(簡明版)</Text>
                 </Text>
               </Pressable>
