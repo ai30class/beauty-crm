@@ -12,7 +12,7 @@ import {
 import {
   getCustomerById, getServiceRecordsByCustomer,
   getAppointmentsByCustomer, deleteCustomer, deleteServiceRecord,
-  getPackagesByCustomer, updateCustomer
+  getPackagesByCustomer, updateCustomer, getShopProfile
 } from '@/db/api';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -34,6 +34,9 @@ export default function CustomerDetailScreen() {
   // 預約時段限制
   const [restricted, setRestricted] = useState(false);
   const [allowedHours, setAllowedHours] = useState<{ start: string; end: string }[]>([]);
+
+  // 未到場提醒門檻（商家在設定頁自訂，預設 3）
+  const [noShowThreshold, setNoShowThreshold] = useState(3);
   const [savingRestrict, setSavingRestrict] = useState(false);
   const [showAddHour, setShowAddHour] = useState(false);
   const [newHourStart, setNewHourStart] = useState('09:00');
@@ -60,6 +63,8 @@ export default function CustomerDetailScreen() {
         setRestricted(c.booking_restricted ?? false);
         setAllowedHours(Array.isArray(c.booking_allowed_hours) ? c.booking_allowed_hours : []);
       }
+      const profile = await getShopProfile().catch(() => null);
+      setNoShowThreshold(profile?.no_show_alert_threshold ?? 3);
     } finally {
       setLoading(false);
     }
@@ -190,11 +195,22 @@ export default function CustomerDetailScreen() {
                 </Text>
               </View>
             )}
+            {customer.no_show_count >= noShowThreshold && (
+              <View className="mt-2 flex-row items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ backgroundColor: '#fff0f0' }}>
+                <Ban size={12} color="#e85454" />
+                <Text className="font-rounded text-xs font-semibold" style={{ color: '#e85454' }}>
+                  已累計 {customer.no_show_count} 次未到場
+                </Text>
+              </View>
+            )}
           </View>
           <View className="gap-2">
             <InfoRow icon={<Phone size={14} color="#e8789a" />} label="電話" value={customer.phone} />
             <InfoRow icon={<Cake size={14} color="#e8789a" />} label="生日" value={customer.birthday ?? '未設定'} />
             <InfoRow icon={<DollarSign size={14} color="#e8789a" />} label="累計消費" value={`$${totalSpent.toLocaleString()}`} />
+            {customer.no_show_count > 0 && (
+              <InfoRow icon={<Ban size={14} color="#e8789a" />} label="未到場次數" value={`${customer.no_show_count} 次`} />
+            )}
             {customer.notes && (
               <InfoRow icon={<FileText size={14} color="#e8789a" />} label="備註" value={customer.notes} />
             )}

@@ -138,6 +138,9 @@ export default function ShopSettingsScreen() {
   // LINE 官方帳號（訂金私訊確認用）
   const [lineOaId, setLineOaId] = useState('');
 
+  // 未到場提醒門檻（累計達此次數，顧客詳情頁會顯示警示標籤）
+  const [noShowThreshold, setNoShowThreshold] = useState('3');
+
   // LINE Pay（各店家自己的金鑰）
   const [linePayChannelId, setLinePayChannelId] = useState('');
   const [linePayChannelSecret, setLinePayChannelSecret] = useState('');
@@ -165,6 +168,7 @@ export default function ShopSettingsScreen() {
           setDescription(profile.description);
           setHours({ ...DEFAULT_HOURS, ...profile.business_hours });
           setLineOaId(profile.line_oa_id ?? '');
+          setNoShowThreshold(String(profile.no_show_alert_threshold ?? 3));
         }
         const paymentSettings = await getShopPaymentSettings();
         if (paymentSettings) {
@@ -211,6 +215,8 @@ export default function ShopSettingsScreen() {
     setError('');
     setSuccess(false);
     if (!shopName.trim()) { setError('請填寫商家名稱'); return; }
+    const threshold = noShowThreshold.trim() ? Number(noShowThreshold) : 3;
+    if (!Number.isInteger(threshold) || threshold < 1) { setError('未到場提醒門檻請輸入 1 以上的整數'); return; }
     setSaving(true);
     try {
       await upsertShopProfile({
@@ -220,6 +226,7 @@ export default function ShopSettingsScreen() {
         description: description.trim(),
         business_hours: hours,
         line_oa_id: lineOaId.trim() || null,
+        no_show_alert_threshold: threshold,
       });
       await upsertShopPaymentSettings({
         line_pay_channel_id: linePayChannelId.trim() || null,
@@ -379,6 +386,30 @@ export default function ShopSettingsScreen() {
           </View>
           <Text className="font-rounded text-xs text-muted-foreground mt-2 px-1">
             💡 顧客預約到需要訂金的服務時，會顯示「私訊 LINE 官方帳號」按鈕直接開啟跟這個帳號的對話，帳號核對、確認轉帳都在私訊裡人工處理，不會在公開預約頁顯示銀行帳號
+          </Text>
+        </View>
+
+        {/* ── 未到場提醒門檻 ── */}
+        <View>
+          <View className="flex-row items-center gap-2 mb-3">
+            <Ban size={16} color="#e8789a" />
+            <Text className="font-rounded text-base font-bold text-foreground">未到場提醒門檻</Text>
+          </View>
+          <View className="bg-card border border-border rounded-2xl overflow-hidden">
+            <View className="px-4 py-3">
+              <Text className="font-rounded text-xs text-muted-foreground mb-1">累計未到場次數達到多少，顧客詳情頁要顯示警示</Text>
+              <TextInput
+                className="font-rounded text-base text-foreground"
+                placeholder="例：3"
+                placeholderTextColor="#c4a0ae"
+                value={noShowThreshold}
+                onChangeText={setNoShowThreshold}
+                keyboardType="number-pad"
+              />
+            </View>
+          </View>
+          <Text className="font-rounded text-xs text-muted-foreground mt-2 px-1">
+            💡 商家在取消預約時可勾選「同時標記未到場」累計次數，達到這個門檻只會在顧客詳情頁顯示警示標籤，不會自動限制或取消該顧客的預約權限，要不要拒絕仍由商家自行判斷
           </Text>
         </View>
 

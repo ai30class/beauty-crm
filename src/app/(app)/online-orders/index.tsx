@@ -6,9 +6,9 @@ import {
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, Check, X, ShoppingBag, Pencil } from 'lucide-react-native';
+import { ArrowLeft, Check, X, ShoppingBag, Pencil, Ban } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getOnlineOrders, updateOnlineOrderStatus, updateOnlineOrder, getStaff, getOnlineOrderAddonsByOrderIds } from '@/db/api';
+import { getOnlineOrders, updateOnlineOrderStatus, updateOnlineOrder, getStaff, getOnlineOrderAddonsByOrderIds, incrementCustomerNoShow } from '@/db/api';
 import type { OnlineOrder, Staff } from '@/types/types';
 
 // ── 共用常數 ──────────────────────────────────────────────
@@ -251,6 +251,13 @@ export default function OnlineOrdersScreen() {
     load();
   };
 
+  // 已付訂金/已確認的預約，顧客當天沒出現：取消訂單並累計該顧客未到場次數
+  const handleNoShow = async (o: OnlineOrder) => {
+    await updateOnlineOrderStatus(o.id, 'cancelled');
+    if (o.customer_id) await incrementCustomerNoShow(o.customer_id).catch(() => {});
+    load();
+  };
+
   // 銀行轉帳流程：店家核對完銀行帳戶、確認真的收到訂金後才按這個
   const handleConfirmTransfer = async (o: OnlineOrder) => {
     await updateOnlineOrderStatus(o.id, 'paid');
@@ -413,6 +420,15 @@ export default function OnlineOrdersScreen() {
                           <Text className="font-rounded text-xs font-medium text-destructive">取消</Text>
                         </Pressable>
                       </>
+                    )}
+                    {(item.status === 'paid' || item.status === 'confirmed') && (
+                      <Pressable
+                        className="flex-row items-center gap-1 bg-destructive/10 px-3 py-1.5 rounded-full active:opacity-70"
+                        onPress={() => handleNoShow(item)}
+                      >
+                        <Ban size={13} color="#e85454" />
+                        <Text className="font-rounded text-xs font-medium text-destructive">未到場</Text>
+                      </Pressable>
                     )}
                   </View>
                 </View>

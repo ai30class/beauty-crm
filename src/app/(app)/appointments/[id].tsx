@@ -7,7 +7,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Trash2, Clock, CheckCircle, XCircle, Clock3, AlertTriangle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getAppointmentById, updateAppointment, deleteAppointment } from '@/db/api';
+import { getAppointmentById, updateAppointment, deleteAppointment, incrementCustomerNoShow } from '@/db/api';
 import type { Appointment } from '@/types/types';
 
 const REMINDER_OPTIONS = [
@@ -34,6 +34,7 @@ export default function AppointmentDetailScreen() {
   const [error, setError] = useState('');
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [markNoShow, setMarkNoShow] = useState(false);
 
   // 編輯狀態
   const [apptDate, setApptDate] = useState<Date>(new Date());
@@ -316,6 +317,23 @@ export default function AppointmentDetailScreen() {
                 取消後此預約將無法復原，{'\n'}請確認是否要取消。
               </Text>
             </View>
+
+            {/* 同時標記未到場 */}
+            <Pressable
+              className="flex-row items-center gap-2.5 active:opacity-70"
+              onPress={() => setMarkNoShow(v => !v)}
+            >
+              <View
+                className="w-5 h-5 rounded-md border-2 items-center justify-center"
+                style={{ borderColor: markNoShow ? '#e85454' : '#d0b0be', backgroundColor: markNoShow ? '#e85454' : 'transparent' }}
+              >
+                {markNoShow && <Text className="text-white text-xs font-bold">✓</Text>}
+              </View>
+              <Text className="font-rounded text-xs text-muted-foreground flex-1">
+                同時標記為未到場（列入顧客未到場次數統計）
+              </Text>
+            </Pressable>
+
             {/* 按鈕 */}
             <View className="flex-row gap-3 mt-2">
               <Pressable
@@ -335,6 +353,9 @@ export default function AppointmentDetailScreen() {
                   setSaving(true);
                   try {
                     await updateAppointment(id, { status: 'cancelled' });
+                    if (markNoShow && appt?.customer_id) {
+                      await incrementCustomerNoShow(appt.customer_id).catch(() => {});
+                    }
                     router.back();
                   } catch (e: any) {
                     setError(e.message ?? '取消失敗');

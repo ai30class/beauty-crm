@@ -17,6 +17,7 @@ export interface Customer {
   updated_at: string;
   booking_restricted: boolean;
   booking_allowed_hours: { start: string; end: string }[];
+  no_show_count: number;
 }
 
 // 全店封閉時段
@@ -375,6 +376,7 @@ export interface ShopProfile {
   description: string;
   business_hours: BusinessHours;
   line_oa_id: string | null;
+  no_show_alert_threshold: number;
   created_at: string;
   updated_at: string;
 }

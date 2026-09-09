@@ -56,7 +56,7 @@ export default function CustomerFormScreen() {
       if (isEdit) {
         await updateCustomer(id!, { name: name.trim(), phone: phone.trim(), birthday: birthdayStr, notes: notes.trim() || null });
       } else {
-        await createCustomer({ name: name.trim(), phone: phone.trim(), birthday: birthdayStr, notes: notes.trim() || null, booking_restricted: false, booking_allowed_hours: [] });
+        await createCustomer({ name: name.trim(), phone: phone.trim(), birthday: birthdayStr, notes: notes.trim() || null, booking_restricted: false, booking_allowed_hours: [], no_show_count: 0 });
       }
       router.back();
     } catch (e: any) {

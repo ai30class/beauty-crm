@@ -97,6 +97,21 @@ export async function updateCustomer(id: string, payload: Partial<Pick<Customer,
   if (error) throw error;
 }
 
+// 標記顧客一次未到場，累加 no_show_count（用於商家取消預約時勾選「同時標記未到場」）
+export async function incrementCustomerNoShow(customerId: string): Promise<void> {
+  const { data, error: selErr } = await supabase
+    .from('customers')
+    .select('no_show_count')
+    .eq('id', customerId)
+    .single();
+  if (selErr) throw selErr;
+  const { error } = await supabase
+    .from('customers')
+    .update({ no_show_count: (data?.no_show_count ?? 0) + 1 })
+    .eq('id', customerId);
+  if (error) throw error;
+}
+
 export async function deleteCustomer(id: string): Promise<void> {
   const { error } = await supabase.from('customers').delete().eq('id', id);
   if (error) throw error;
@@ -1163,6 +1178,7 @@ export async function upsertShopProfile(payload: {
   description: string;
   business_hours: BusinessHours;
   line_oa_id?: string | null;
+  no_show_alert_threshold?: number;
 }): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('未登入');
