@@ -3,11 +3,12 @@ import {
   View, Text, ScrollView, Pressable, TextInput,
   KeyboardAvoidingView, ActivityIndicator, Modal, Linking
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing, AlertTriangle, MessageCircle, Sparkles } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing, AlertTriangle, MessageCircle, Sparkles, HelpCircle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, createTransferDepositOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, createOnlineOrderAddons } from '@/db/api';
+import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, createTransferDepositOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, createOnlineOrderAddons, getPhotoUrl } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import type { Staff, ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
 
@@ -65,6 +66,7 @@ export default function OnlineBookingScreen() {
   // 記錄每個時段有哪些人員有空，選定時段後才從裡面挑一位實際指派
   const [anyStaffMode, setAnyStaffMode] = useState(false);
   const [slotStaffMap, setSlotStaffMap] = useState<Record<string, Staff[]>>({});
+  const [staffInfoModal, setStaffInfoModal] = useState<Staff | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const d = new Date(); d.setDate(d.getDate() + 1); return d;
   });
@@ -826,11 +828,22 @@ export default function OnlineBookingScreen() {
                 style={{ borderColor: !anyStaffMode && selectedStaff?.id === s.id ? s.color : '#f0e0e8' }}
                 onPress={() => { setAnyStaffMode(false); setSelectedStaff(s); }}
               >
-                <View className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: s.color + '22' }}>
-                  <Text className="font-rounded text-base font-bold" style={{ color: s.color }}>{s.name.charAt(0)}</Text>
-                </View>
+                {s.avatar_url ? (
+                  <Image source={{ uri: getPhotoUrl(s.avatar_url) ?? undefined }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+                ) : (
+                  <View className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: s.color + '22' }}>
+                    <Text className="font-rounded text-base font-bold" style={{ color: s.color }}>{s.name.charAt(0)}</Text>
+                  </View>
+                )}
                 <View className="flex-1">
-                  <Text className="font-rounded text-base font-semibold text-foreground">{s.name}</Text>
+                  <View className="flex-row items-center gap-1.5">
+                    <Text className="font-rounded text-base font-semibold text-foreground">{s.name}</Text>
+                    {s.bio ? (
+                      <Pressable hitSlop={8} onPress={() => setStaffInfoModal(s)}>
+                        <HelpCircle size={14} color="#c4a0ae" />
+                      </Pressable>
+                    ) : null}
+                  </View>
                   {s.bio ? (
                     <Text className="font-rounded text-xs text-muted-foreground mt-0.5" numberOfLines={2}>{s.bio}</Text>
                   ) : null}
@@ -1096,11 +1109,9 @@ export default function OnlineBookingScreen() {
                 <Text className="font-rounded text-sm font-semibold" style={{ color: '#9a6400' }}>預約注意事項</Text>
               </View>
               <Text className="font-rounded text-xs leading-5" style={{ color: '#9a6400' }}>
-                預約僅保留 15 分鐘，為了不影響下一位顧客，逾時我們將直接取消您的預約。{'\n'}
-                如需取消或改期，請於預約時間前 24 小時來電與我們聯繫：0975 273 176，逾期未聯繫視為未到場{'\n'}
-                如需更進一步的諮詢，您可點選下方「一對一諮詢」，營業時間將有專人為您服務
+                逾 15 分鐘未到場，恕不保留預約。如有異動請提前 24 小時致電 0975273176。
                 {selectedTemplate?.require_deposit && isRegisteredCustomer !== true
-                  ? '\n未到場或逾期取消，已支付之訂金恕不退還'
+                  ? '\n未到場或逾期取消，訂金恕不退還'
                   : ''}
               </Text>
               <Pressable
@@ -1158,6 +1169,30 @@ export default function OnlineBookingScreen() {
       )}
         </>
       )}
+      {/* 服務人員詳細資料 */}
+      <Modal visible={!!staffInfoModal} transparent animationType="fade" onRequestClose={() => setStaffInfoModal(null)}>
+        <Pressable className="flex-1 bg-black/30 items-center justify-center px-8" onPress={() => setStaffInfoModal(null)}>
+          <Pressable className="bg-card w-full rounded-3xl p-5 gap-3" onPress={() => {/* 阻止冒泡 */}}>
+            <View className="flex-row items-center gap-3">
+              {staffInfoModal?.avatar_url ? (
+                <Image source={{ uri: getPhotoUrl(staffInfoModal.avatar_url) ?? undefined }} style={{ width: 48, height: 48, borderRadius: 24 }} />
+              ) : (
+                <View className="w-12 h-12 rounded-full items-center justify-center" style={{ backgroundColor: (staffInfoModal?.color ?? '#e8789a') + '22' }}>
+                  <Text className="font-rounded text-lg font-bold" style={{ color: staffInfoModal?.color ?? '#e8789a' }}>{staffInfoModal?.name.charAt(0)}</Text>
+                </View>
+              )}
+              <Text className="font-rounded text-base font-bold text-foreground flex-1">{staffInfoModal?.name}</Text>
+              <Pressable className="w-7 h-7 items-center justify-center rounded-full active:bg-muted" onPress={() => setStaffInfoModal(null)}>
+                <X size={16} color="#c4a0ae" />
+              </Pressable>
+            </View>
+            <Text className="font-rounded text-sm text-muted-foreground leading-6">
+              {staffInfoModal?.bio}
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* 候補名單登記 */}
       <Modal visible={!!waitlistModalTime} transparent animationType="fade" onRequestClose={() => setWaitlistModalTime(null)}>
         <Pressable className="flex-1 bg-black/30 items-center justify-center px-8" onPress={() => setWaitlistModalTime(null)}>

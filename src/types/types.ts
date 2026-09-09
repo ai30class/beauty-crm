@@ -161,6 +161,7 @@ export interface Staff {
   is_active: boolean;
   commission_rate: number;
   bio: string | null;
+  avatar_url: string | null;
   created_at: string;
 }
 
