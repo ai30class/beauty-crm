@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  KeyboardAvoidingView, ActivityIndicator, Modal
+  KeyboardAvoidingView, ActivityIndicator, Modal, Linking
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing, AlertTriangle } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing, AlertTriangle, MessageCircle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
 import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, createTransferDepositOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, createOnlineOrderAddons } from '@/db/api';
 import { supabase } from '@/client/supabase';
@@ -949,18 +949,27 @@ export default function OnlineBookingScreen() {
             </View>
 
             {/* 預約注意事項 */}
-            <View className="rounded-2xl p-4 gap-2" style={{ backgroundColor: '#fff8e0', borderWidth: 1, borderColor: '#f5d87a' }}>
+            <View className="rounded-2xl p-4 gap-2.5" style={{ backgroundColor: '#fff8e0', borderWidth: 1, borderColor: '#f5d87a' }}>
               <View className="flex-row items-center gap-2">
                 <AlertTriangle size={15} color="#c4860a" />
                 <Text className="font-rounded text-sm font-semibold" style={{ color: '#9a6400' }}>預約注意事項</Text>
               </View>
               <Text className="font-rounded text-xs leading-5" style={{ color: '#9a6400' }}>
-                • 請準時到場，逾預約時間 15 分鐘尚未到場且未事先聯繫，店家將視情況釋出該時段{'\n'}
-                • 如需取消或改期，請儘早透過 LINE 官方帳號或電話主動告知店家
+                預約僅保留 15 分鐘，為了不影響下一位顧客，逾時我們將直接取消您的預約。{'\n'}
+                如需取消或改期，請務必來電與我們聯繫：0975 273 176{'\n'}
+                如需更進一步的諮詢，您可點選下方「一對一諮詢」，營業時間將有專人為您服務
                 {selectedTemplate?.require_deposit && isRegisteredCustomer !== true
-                  ? '\n• 未到場或逾期取消，已支付之訂金恕不退還'
+                  ? '\n未到場或逾期取消，已支付之訂金恕不退還'
                   : ''}
               </Text>
+              <Pressable
+                className="flex-row items-center justify-center gap-2 rounded-xl py-2.5 mt-1 active:opacity-80"
+                style={{ backgroundColor: '#06C755' }}
+                onPress={() => Linking.openURL('https://line.me/R/ti/p/@hzw4396n')}
+              >
+                <MessageCircle size={16} color="#fff" />
+                <Text className="font-rounded text-sm font-semibold text-white">一對一諮詢</Text>
+              </Pressable>
             </View>
 
             {/* 同意勾選 */}
