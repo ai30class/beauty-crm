@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing, AlertTriangle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
 import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, createTransferDepositOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, createOnlineOrderAddons } from '@/db/api';
 import { supabase } from '@/client/supabase';
@@ -107,6 +107,7 @@ export default function OnlineBookingScreen() {
       setWaitlistSubmitting(false);
     }
   };
+  const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [directSuccess, setDirectSuccess] = useState(false);
@@ -239,6 +240,7 @@ export default function OnlineBookingScreen() {
     if (!/^09\d{8}$/.test(customerPhone)) { setError('請輸入正確的手機號碼（09 開頭 10 碼）'); return; }
     if (!customerBirthday) { setError('請選擇生日'); return; }
     if (!selectedTemplate || !selectedTime) { setError('請完成所有選擇'); return; }
+    if (!agreedToPolicy) { setError('請詳閱並勾選同意預約注意事項'); return; }
 
     // 優先從已選員工直接取 owner_id，避免 race condition
     const resolvedOwnerId = selectedStaff?.owner_id || ownerId;
@@ -946,12 +948,44 @@ export default function OnlineBookingScreen() {
               </View>
             </View>
 
+            {/* 預約注意事項 */}
+            <View className="rounded-2xl p-4 gap-2" style={{ backgroundColor: '#fff8e0', borderWidth: 1, borderColor: '#f5d87a' }}>
+              <View className="flex-row items-center gap-2">
+                <AlertTriangle size={15} color="#c4860a" />
+                <Text className="font-rounded text-sm font-semibold" style={{ color: '#9a6400' }}>預約注意事項</Text>
+              </View>
+              <Text className="font-rounded text-xs leading-5" style={{ color: '#9a6400' }}>
+                • 請準時到場，逾預約時間 15 分鐘尚未到場且未事先聯繫，店家將視情況釋出該時段{'\n'}
+                • 如需取消或改期，請儘早透過 LINE 官方帳號或電話主動告知店家
+                {selectedTemplate?.require_deposit && isRegisteredCustomer !== true
+                  ? '\n• 未到場或逾期取消，已支付之訂金恕不退還'
+                  : ''}
+              </Text>
+            </View>
+
+            {/* 同意勾選 */}
+            <Pressable
+              className="flex-row items-start gap-2.5 active:opacity-70"
+              onPress={() => setAgreedToPolicy(a => !a)}
+            >
+              <View
+                className="w-5 h-5 rounded-md border-2 items-center justify-center mt-0.5"
+                style={{ borderColor: agreedToPolicy ? '#e8789a' : '#d0b0be', backgroundColor: agreedToPolicy ? '#e8789a' : 'transparent' }}
+              >
+                {agreedToPolicy && <Text className="text-white text-xs font-bold">✓</Text>}
+              </View>
+              <Text className="font-rounded text-xs text-muted-foreground flex-1 leading-5">
+                我已詳閱並同意上述預約注意事項
+              </Text>
+            </Pressable>
+
             {error ? <Text className="font-rounded text-xs text-destructive">{error}</Text> : null}
 
             <Pressable
               className="bg-primary rounded-2xl h-14 items-center justify-center flex-row gap-2 active:opacity-80"
               onPress={handleSubmit}
-              disabled={submitting}
+              disabled={submitting || !agreedToPolicy}
+              style={{ opacity: agreedToPolicy ? 1 : 0.5 }}
             >
               {submitting
                 ? <ActivityIndicator color="#fff" />
