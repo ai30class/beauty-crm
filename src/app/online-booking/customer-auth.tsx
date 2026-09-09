@@ -21,7 +21,8 @@ const PENDING_OWNER_ID_KEY = 'bcrm_pending_owner_id';
 
 export default function CustomerAuthScreen() {
   const router = useRouter();
-  const { ownerId } = useLocalSearchParams<{ ownerId?: string }>();
+  const { ownerId, logout } = useLocalSearchParams<{ ownerId?: string; logout?: string }>();
+  const justLoggedOut = logout === '1';
 
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -73,6 +74,17 @@ export default function CustomerAuthScreen() {
       try {
         const liff = (await import('@line/liff')).default;
         await liff.init({ liffId: LIFF_ID });
+
+        // 顧客剛從「我的預約」按了登出（帶 ?logout=1 導過來）：這一頁本來就是
+        // LIFF App 的入口頁，一定在 LIFF 註冊的 Endpoint URL 範圍內，把
+        // liff.logout() 放在這裡做才能確保真的執行到（在 my-orders 那種
+        // 非 LIFF 入口頁呼叫，liff.init() 可能直接失敗、logout 永遠不會跑到）。
+        // 這次也刻意跳過下面的自動登入偵測，不然清掉的瞬間又被撿回來。
+        if (justLoggedOut) {
+          if (liff.isLoggedIn()) liff.logout();
+          return;
+        }
+
         const urlOwnerId = resolveOwnerId();
         if (urlOwnerId) {
           try { localStorage.setItem(PENDING_OWNER_ID_KEY, urlOwnerId); } catch { /* ignore */ }

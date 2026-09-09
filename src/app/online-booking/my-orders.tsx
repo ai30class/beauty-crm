@@ -10,13 +10,6 @@ import { supabase } from '@/client/supabase';
 import { getMyPackages } from '@/db/api';
 import type { OnlineOrder, ServicePackage } from '@/types/types';
 
-// 跟 customer-auth.tsx 用同一個 LIFF ID——單純呼叫 supabase.auth.signOut()
-// 只會清掉 Supabase 這邊的 session，LINE 自己的登入狀態（LIFF SDK 存的）完全
-// 不受影響；顧客登出後只要一回到 customer-auth 頁，那邊會偵測到
-// liff.isLoggedIn() 還是 true，就自動用 LINE 重新登入一次，顧客會感覺
-// 「登出馬上又被登入」。登出時要連 LIFF 這邊也一起登出才是真的登出
-const LIFF_ID = '2011486633-e6gmiIWk';
-
 type MyPackage = Pick<ServicePackage,
   'id' | 'package_type' | 'name' | 'total_sessions' | 'used_sessions' |
   'initial_amount' | 'remaining_amount' | 'purchase_date' | 'expire_date' | 'is_active'
@@ -61,23 +54,18 @@ export default function MyOrdersScreen() {
   }, []));
 
   const handleLogout = async () => {
-    try {
-      const liff = (await import('@line/liff')).default;
-      await liff.init({ liffId: LIFF_ID });
-      if (liff.isLoggedIn()) liff.logout();
-    } catch {
-      // 非 LINE 登入（Email 帳號）或 LIFF 環境不可用時忽略，不影響 Supabase 登出
-    }
     await supabase.auth.signOut();
-    // 這裡故意不用 router.replace()：LIFF SDK 是這個分頁 JS 執行環境裡的單例，
-    // 只用前端路由跳轉不會真的重新載入頁面，liff.logout() 清掉的登入狀態在
-    // 記憶體裡的舊物件可能沒有真的重置，導致下一頁 liff.init() 讀到的還是
-    // 舊的「已登入」狀態，登出馬上又被登入。改用整頁重新整理，讓 LIFF 這次
-    // 真的從乾淨狀態重新初始化（LINE 官方文件也建議登出後要 reload 整頁）
+    // LIFF 的登出（liff.logout()）故意不在這一頁做——這一頁的網址
+    // （/online-booking/my-orders）不一定在 LIFF App 註冊的 Endpoint URL
+    // 範圍內，liff.init() 在這種頁面上可能直接失敗（被 catch 悄悄吞掉），
+    // 導致 liff.logout() 根本沒執行到，看起來就是「登出沒有用」。
+    // 改成整頁導到 customer-auth（那一頁本來就是 LIFF 的入口頁，一定在
+    // Endpoint URL 範圍內），帶 logout=1 讓那邊在自己的頁面情境下，
+    // 真正把 LIFF 的登入狀態也清掉、並且這次不要自動重新登入。
     if (typeof window !== 'undefined') {
-      window.location.href = '/online-booking';
+      window.location.href = '/online-booking/customer-auth?logout=1';
     } else {
-      router.replace('/online-booking' as any);
+      router.replace('/online-booking/customer-auth' as any);
     }
   };
 
