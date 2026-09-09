@@ -127,8 +127,10 @@ function ApptCard({ item }: { item: UnifiedAppointment }) {
 // 週視圖時間軸：固定假設範圍 9:00–21:00，涵蓋大多數美業診所的營業時段
 const TIMELINE_START_MIN = 9 * 60;
 const TIMELINE_END_MIN = 21 * 60;
-const TRACK_HEIGHT = 260;
-const HOUR_MARKS = [9, 12, 15, 18, 21];
+const TRACK_HEIGHT = 320;
+const HOUR_MARKS = Array.from({ length: (TIMELINE_END_MIN - TIMELINE_START_MIN) / 60 + 1 }, (_, i) => 9 + i);
+// 每 30 分鐘一條刻度線（含整點），整點另外顯示數字，半點只畫線不顯示文字
+const GRID_LINES = Array.from({ length: (TIMELINE_END_MIN - TIMELINE_START_MIN) / 30 + 1 }, (_, i) => TIMELINE_START_MIN + i * 30);
 
 // ── 主頁面 ────────────────────────────────────────────────────────────────────
 export default function StaffScheduleScreen() {
@@ -322,6 +324,21 @@ export default function StaffScheduleScreen() {
                       {d.getDate()}
                     </Text>
                     <View style={{ height: TRACK_HEIGHT, backgroundColor: shopClosed ? '#f5f0f2' : '#fdf1f5', borderRadius: 8, overflow: 'hidden', position: 'relative', flexDirection: 'row', gap: 1 }}>
+                      {/* 每 30 分鐘一條刻度線，整點線稍深、半點線較淡 */}
+                      {GRID_LINES.map(m => (
+                        <View
+                          key={m}
+                          pointerEvents="none"
+                          style={{
+                            position: 'absolute',
+                            left: 0,
+                            right: 0,
+                            top: ((m - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT,
+                            height: 1,
+                            backgroundColor: m % 60 === 0 ? '#e8c8d4' : '#f0dde4',
+                          }}
+                        />
+                      ))}
                       {shopClosed ? (
                         <Text className="font-rounded" style={{ position: 'absolute', top: '46%', left: 0, right: 0, textAlign: 'center', fontSize: 10, color: '#c4a0ae' }}>休</Text>
                       ) : selectedStaffId === null ? (
