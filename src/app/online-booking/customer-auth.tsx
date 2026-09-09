@@ -27,6 +27,7 @@ export default function CustomerAuthScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [lineLoading, setLineLoading] = useState(false);
+  const [oauthProvider, setOauthProvider] = useState<'line' | 'google'>('line');
   const [error, setError] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [showPw, setShowPw] = useState(false);
@@ -105,6 +106,7 @@ export default function CustomerAuthScreen() {
 
   const completeLineLogin = async (ownerIdOverride?: string) => {
     const targetOwnerId = ownerIdOverride || resolveOwnerId();
+    setOauthProvider('line');
     setLineLoading(true);
     setError('');
     try {
@@ -149,6 +151,36 @@ export default function CustomerAuthScreen() {
     }
   };
 
+  // Gmail 一鍵登入：跟商家後台 (auth)/sign-in.tsx 用同一個 Supabase Google
+  // provider，但顧客這邊回呼要落在專屬的 google-callback 頁（帶著 ownerId），
+  // 不能共用商家的 /auth/callback——那一頁登入成功後一律導去 /(app)/home，
+  // 顧客帳號會被送進商家後台（雖然會被 _layout.tsx 的身分守門擋下，但體驗
+  // 是直接卡住，不是完成預約）。這裡只做網頁版，顧客預約流程本來就是純網頁，
+  // 不像商家後台原生 App 還要走系統瀏覽器 + deep link 那一套。
+  const handleGoogleLogin = async () => {
+    if (typeof window === 'undefined') return;
+    setError('');
+    setOauthProvider('google');
+    setLineLoading(true);
+    try {
+      const targetOwnerId = resolveOwnerId();
+      const redirectUrl = `${window.location.origin}/online-booking/google-callback?ownerId=${targetOwnerId}`;
+      const { data, error: e } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
+      });
+      if (e || !data.url) {
+        setError(e?.message ?? '無法取得 Google 登入連結');
+        setLineLoading(false);
+        return;
+      }
+      window.location.href = data.url;
+    } catch {
+      setError('Google 登入初始化失敗，請稍後再試');
+      setLineLoading(false);
+    }
+  };
+
   const handleAuth = async () => {
     setError('');
     if (!email.trim() || !password) { setError('請填寫 Email 與密碼'); return; }
@@ -180,17 +212,24 @@ export default function CustomerAuthScreen() {
   // 顯示整頁等待畫面（不是只有按鈕裡的小轉圈圈）——顧客剛跳出 LINE 加好友
   // 畫面回來，需要明確的畫面告訴他「還在處理，不是卡住了」
   if (lineLoading) {
+    const isGoogle = oauthProvider === 'google';
     return (
       <View className="flex-1 bg-background items-center justify-center px-8 gap-4">
         <StatusBar style="dark" backgroundColor="#fff5f7" />
-        <View className="w-20 h-20 rounded-full items-center justify-center" style={{ backgroundColor: '#e8f9ee' }}>
-          <MessageCircle size={40} color="#06C755" />
+        <View className="w-20 h-20 rounded-full items-center justify-center" style={{ backgroundColor: isGoogle ? '#eef2fc' : '#e8f9ee' }}>
+          {isGoogle
+            ? <Text style={{ fontSize: 32, fontWeight: '700', color: '#4285F4' }}>G</Text>
+            : <MessageCircle size={40} color="#06C755" />
+          }
         </View>
         <Text className="font-rounded text-xl font-bold text-foreground">登入中，請稍候</Text>
         <Text className="font-rounded text-sm text-muted-foreground text-center">
-          正在跟 LINE 同步您的帳號{'\n'}這步驟由 LINE 處理，通常幾秒鐘內就會完成
+          {isGoogle
+            ? <>正在跟 Google 同步您的帳號{'\n'}這步驟由 Google 處理，通常幾秒鐘內就會完成</>
+            : <>正在跟 LINE 同步您的帳號{'\n'}這步驟由 LINE 處理，通常幾秒鐘內就會完成</>
+          }
         </Text>
-        <ActivityIndicator size="large" color="#06C755" style={{ marginTop: 8 }} />
+        <ActivityIndicator size="large" color={isGoogle ? '#4285F4' : '#06C755'} style={{ marginTop: 8 }} />
       </View>
     );
   }
@@ -249,7 +288,7 @@ export default function CustomerAuthScreen() {
             {/* 隱私權/服務條款告知：放在 LINE 一鍵登入按鈕之前，讓顧客在
                 按下去、把 LINE 資料交出去之前就能先看到、點進去閱讀 */}
             <Text className="font-rounded text-xs text-muted-foreground text-center leading-5">
-              點選下方「用 LINE 一鍵登入」或註冊帳號，即表示您已閱讀並同意本服務{' '}
+              點選下方一鍵登入或註冊帳號，即表示您已閱讀並同意本服務{' '}
               <Text className="text-primary" onPress={() => router.push(`/online-booking/privacy-policy?ownerId=${resolveOwnerId()}` as any)}>服務條款及隱私政策</Text>
             </Text>
 
@@ -260,11 +299,26 @@ export default function CustomerAuthScreen() {
               onPress={handleLineLogin}
               disabled={lineLoading}
             >
-              {lineLoading
+              {lineLoading && oauthProvider === 'line'
                 ? <ActivityIndicator color="#fff" />
                 : <>
                     <MessageCircle size={18} color="#fff" />
                     <Text className="font-rounded text-base text-white font-semibold">用 LINE 一鍵登入</Text>
+                  </>
+              }
+            </Pressable>
+
+            {/* Gmail 一鍵登入 */}
+            <Pressable
+              className="rounded-2xl h-14 items-center justify-center active:opacity-70 flex-row gap-3 border border-border bg-card"
+              onPress={handleGoogleLogin}
+              disabled={lineLoading}
+            >
+              {lineLoading && oauthProvider === 'google'
+                ? <ActivityIndicator color="#4285F4" />
+                : <>
+                    <Text style={{ fontSize: 18, fontWeight: '700', color: '#4285F4' }}>G</Text>
+                    <Text className="font-rounded text-base text-foreground font-semibold">用 Gmail 一鍵登入</Text>
                   </>
               }
             </Pressable>
