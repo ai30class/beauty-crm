@@ -10,6 +10,13 @@ import { supabase } from '@/client/supabase';
 import { getMyPackages } from '@/db/api';
 import type { OnlineOrder, ServicePackage } from '@/types/types';
 
+// 跟 customer-auth.tsx 用同一個 LIFF ID——單純呼叫 supabase.auth.signOut()
+// 只會清掉 Supabase 這邊的 session，LINE 自己的登入狀態（LIFF SDK 存的）完全
+// 不受影響；顧客登出後只要一回到 customer-auth 頁，那邊會偵測到
+// liff.isLoggedIn() 還是 true，就自動用 LINE 重新登入一次，顧客會感覺
+// 「登出馬上又被登入」。登出時要連 LIFF 這邊也一起登出才是真的登出
+const LIFF_ID = '2011486633-e6gmiIWk';
+
 type MyPackage = Pick<ServicePackage,
   'id' | 'package_type' | 'name' | 'total_sessions' | 'used_sessions' |
   'initial_amount' | 'remaining_amount' | 'purchase_date' | 'expire_date' | 'is_active'
@@ -54,6 +61,13 @@ export default function MyOrdersScreen() {
   }, []));
 
   const handleLogout = async () => {
+    try {
+      const liff = (await import('@line/liff')).default;
+      await liff.init({ liffId: LIFF_ID });
+      if (liff.isLoggedIn()) liff.logout();
+    } catch {
+      // 非 LINE 登入（Email 帳號）或 LIFF 環境不可用時忽略，不影響 Supabase 登出
+    }
     await supabase.auth.signOut();
     router.replace('/online-booking' as any);
   };
