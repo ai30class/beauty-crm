@@ -956,7 +956,7 @@ export default function OnlineBookingScreen() {
               </View>
               <Text className="font-rounded text-xs leading-5" style={{ color: '#9a6400' }}>
                 預約僅保留 15 分鐘，為了不影響下一位顧客，逾時我們將直接取消您的預約。{'\n'}
-                如需取消或改期，請務必來電與我們聯繫：0975 273 176{'\n'}
+                如需取消或改期，請於預約時間前 24 小時來電與我們聯繫：0975 273 176，逾期未聯繫視為未到場{'\n'}
                 如需更進一步的諮詢，您可點選下方「一對一諮詢」，營業時間將有專人為您服務
                 {selectedTemplate?.require_deposit && isRegisteredCustomer !== true
                   ? '\n未到場或逾期取消，已支付之訂金恕不退還'
