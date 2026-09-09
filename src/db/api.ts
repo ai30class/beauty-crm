@@ -629,14 +629,15 @@ export async function getAvailableSlots(
     end: new Date(o.end_time).getTime(),
   }));
 
-  // 取得全店封閉時段
+  // 取得全店封閉時段——specific_date 有設定時是「只有某一天」的單次封鎖，
+  // 只在那一天生效，忽略 applies_to；沒設定則照原本的每週固定規則
   const dayKey = ['sun','mon','tue','wed','thu','fri','sat'][new Date(dateStr + 'T12:00:00').getDay()];
   const { data: blockedRows } = await supabase
     .from('shop_blocked_slots')
-    .select('start_time, end_time, applies_to')
+    .select('start_time, end_time, applies_to, specific_date')
     .eq('owner_id', ownerId);
-  const blockedSlots = (blockedRows ?? []).filter((b: { applies_to: string[]; start_time: string; end_time: string }) =>
-    b.applies_to.length === 0 || b.applies_to.includes(dayKey)
+  const blockedSlots = (blockedRows ?? []).filter((b: { applies_to: string[]; start_time: string; end_time: string; specific_date: string | null }) =>
+    b.specific_date ? b.specific_date === dateStr : (b.applies_to.length === 0 || b.applies_to.includes(dayKey))
   );
 
   // 取得顧客限制（若有傳 customerPhone）
@@ -1396,7 +1397,7 @@ export async function getShopBlockedSlots(): Promise<ShopBlockedSlot[]> {
 }
 
 export async function createShopBlockedSlot(
-  payload: Pick<ShopBlockedSlot, 'label' | 'start_time' | 'end_time' | 'applies_to'>
+  payload: Pick<ShopBlockedSlot, 'label' | 'start_time' | 'end_time' | 'applies_to' | 'specific_date'>
 ): Promise<void> {
   const { error } = await supabase.from('shop_blocked_slots').insert(payload);
   if (error) throw error;

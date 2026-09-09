@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, ScrollView, Pressable,
   ActivityIndicator, KeyboardAvoidingView, Switch, Modal,
 } from 'react-native';
+import DateTimePicker from 'react-native-ui-datepicker';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -154,6 +155,10 @@ export default function ShopSettingsScreen() {
   const [newStart, setNewStart] = useState('12:00');
   const [newEnd, setNewEnd] = useState('13:00');
   const [newDays, setNewDays] = useState<string[]>([]);
+  // 新增封閉時段的套用方式：every=每週固定重複；once=只封鎖某一天，隔天自動恢復
+  const [newRepeatMode, setNewRepeatMode] = useState<'every' | 'once'>('every');
+  const [newOnceDate, setNewOnceDate] = useState<Date>(new Date());
+  const [showOnceDatePicker, setShowOnceDatePicker] = useState(false);
   const [addingSlot, setAddingSlot] = useState(false);
   const [showAddSlot, setShowAddSlot] = useState(false);
 
@@ -191,10 +196,18 @@ export default function ShopSettingsScreen() {
     if (!newStart || !newEnd || newStart >= newEnd) { setError('請選擇正確的開始與結束時間'); return; }
     setAddingSlot(true);
     try {
-      await createShopBlockedSlot({ label: newLabel.trim(), start_time: newStart, end_time: newEnd, applies_to: newDays });
+      const onceDateStr = `${newOnceDate.getFullYear()}-${String(newOnceDate.getMonth() + 1).padStart(2, '0')}-${String(newOnceDate.getDate()).padStart(2, '0')}`;
+      await createShopBlockedSlot({
+        label: newLabel.trim(),
+        start_time: newStart,
+        end_time: newEnd,
+        applies_to: newRepeatMode === 'once' ? [] : newDays,
+        specific_date: newRepeatMode === 'once' ? onceDateStr : null,
+      });
       const bs = await getShopBlockedSlots();
       setBlockedSlots(bs);
-      setNewLabel(''); setNewStart('12:00'); setNewEnd('13:00'); setNewDays([]); setShowAddSlot(false);
+      setNewLabel(''); setNewStart('12:00'); setNewEnd('13:00'); setNewDays([]);
+      setNewRepeatMode('every'); setNewOnceDate(new Date()); setShowAddSlot(false);
     } catch (e: any) {
       setError(e.message ?? '新增失敗');
     } finally {
@@ -520,22 +533,69 @@ export default function ShopSettingsScreen() {
                 <Text className="font-rounded text-xs text-muted-foreground">至</Text>
                 <TimeSelector value={newEnd} onChange={setNewEnd} />
               </View>
-              {/* 適用星期 */}
-              <View className="flex-row flex-wrap gap-1 mt-1">
-                {DAY_KEYS.map(d => (
+
+              {/* 套用方式：每週固定 or 只有某一天 */}
+              <View className="flex-row gap-2 mt-1">
+                {(['every', 'once'] as const).map(mode => (
                   <Pressable
-                    key={d}
-                    onPress={() => toggleDay(d)}
-                    className="px-2 py-1 rounded-full border active:opacity-70"
-                    style={{ borderColor: newDays.includes(d) ? '#e8789a' : '#e8d5dc', backgroundColor: newDays.includes(d) ? '#fce9f0' : 'transparent' }}
+                    key={mode}
+                    className="flex-1 py-2 rounded-xl items-center active:opacity-70"
+                    style={{ backgroundColor: newRepeatMode === mode ? '#e8789a' : '#f5e6ec' }}
+                    onPress={() => setNewRepeatMode(mode)}
                   >
-                    <Text className="font-rounded text-xs" style={{ color: newDays.includes(d) ? '#e8789a' : '#c4a0ae' }}>
-                      {DAY_LABELS[d]}
+                    <Text className="font-rounded text-xs font-medium" style={{ color: newRepeatMode === mode ? '#fff' : '#c4a0ae' }}>
+                      {mode === 'every' ? '每週固定' : '只有某一天'}
                     </Text>
                   </Pressable>
                 ))}
-                <Text className="font-rounded text-xs text-muted-foreground self-center ml-1">（不選=每天）</Text>
               </View>
+
+              {newRepeatMode === 'every' ? (
+                /* 適用星期 */
+                <View className="flex-row flex-wrap gap-1 mt-1">
+                  {DAY_KEYS.map(d => (
+                    <Pressable
+                      key={d}
+                      onPress={() => toggleDay(d)}
+                      className="px-2 py-1 rounded-full border active:opacity-70"
+                      style={{ borderColor: newDays.includes(d) ? '#e8789a' : '#e8d5dc', backgroundColor: newDays.includes(d) ? '#fce9f0' : 'transparent' }}
+                    >
+                      <Text className="font-rounded text-xs" style={{ color: newDays.includes(d) ? '#e8789a' : '#c4a0ae' }}>
+                        {DAY_LABELS[d]}
+                      </Text>
+                    </Pressable>
+                  ))}
+                  <Text className="font-rounded text-xs text-muted-foreground self-center ml-1">（不選=每天）</Text>
+                </View>
+              ) : (
+                /* 選定日期，只封鎖這一天 */
+                <View className="mt-1">
+                  <Pressable
+                    className="flex-row items-center justify-between bg-card border border-border rounded-xl px-3 h-10 active:opacity-70"
+                    onPress={() => setShowOnceDatePicker(v => !v)}
+                  >
+                    <Text className="font-rounded text-sm text-foreground">
+                      {`${newOnceDate.getFullYear()}-${String(newOnceDate.getMonth() + 1).padStart(2, '0')}-${String(newOnceDate.getDate()).padStart(2, '0')}`}
+                    </Text>
+                    <ChevronDown size={14} color="#c4a0ae" />
+                  </Pressable>
+                  {showOnceDatePicker && (
+                    <View className="bg-card border border-border rounded-xl mt-2 overflow-hidden">
+                      <DateTimePicker locale="zh-tw"
+                        mode="single"
+                        date={newOnceDate}
+                        minDate={new Date()}
+                        onChange={(params) => {
+                          if (params.date) setNewOnceDate(params.date as Date);
+                          setShowOnceDatePicker(false);
+                        }}
+                      />
+                    </View>
+                  )}
+                  <Text className="font-rounded text-xs text-muted-foreground mt-1.5">只封鎖這一天，隔天自動恢復正常</Text>
+                </View>
+              )}
+
               <Pressable
                 className="bg-primary rounded-xl items-center justify-center active:opacity-80 mt-1"
                 style={{ height: 38 }}
@@ -557,7 +617,9 @@ export default function ShopSettingsScreen() {
                   <Text className="font-rounded text-sm font-semibold text-foreground">{s.label || '封閉時段'}</Text>
                   <Text className="font-rounded text-xs text-muted-foreground">
                     {s.start_time} – {s.end_time}
-                    {s.applies_to.length > 0 ? `　${s.applies_to.map(d => DAY_LABELS[d as keyof BusinessHours]).join('、')}` : '　每天'}
+                    {s.specific_date
+                      ? `　${s.specific_date}（單次）`
+                      : s.applies_to.length > 0 ? `　${s.applies_to.map(d => DAY_LABELS[d as keyof BusinessHours]).join('、')}` : '　每天'}
                   </Text>
                 </View>
                 <Pressable className="w-8 h-8 items-center justify-center active:opacity-70" onPress={() => handleDeleteSlot(s.id)}>

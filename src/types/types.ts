@@ -27,7 +27,8 @@ export interface ShopBlockedSlot {
   label: string;
   start_time: string;   // "HH:MM"
   end_time: string;     // "HH:MM"
-  applies_to: string[]; // ["mon","tue",...] 空=每天
+  applies_to: string[]; // ["mon","tue",...] 空=每天（僅在 specific_date 為 null 時生效）
+  specific_date: string | null; // "YYYY-MM-DD"，設定時只封鎖這一天，忽略 applies_to
   created_at: string;
   updated_at: string;
 }
