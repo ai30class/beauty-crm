@@ -1109,7 +1109,7 @@ export default function OnlineBookingScreen() {
                 <Text className="font-rounded text-sm font-semibold" style={{ color: '#9a6400' }}>預約注意事項</Text>
               </View>
               <Text className="font-rounded text-xs leading-5" style={{ color: '#9a6400' }}>
-                逾 15 分鐘未到場，恕不保留預約。如有異動請提前 24 小時致電 0975273176。
+                逾 15 分鐘未到場，恕不保留預約。如有異動請提前 24 小時致電{shopProfile?.phone ? ` ${shopProfile.phone}` : ''}。
                 {selectedTemplate?.require_deposit && isRegisteredCustomer !== true
                   ? '\n未到場或逾期取消，訂金恕不退還'
                   : ''}
