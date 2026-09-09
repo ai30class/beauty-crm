@@ -775,22 +775,6 @@ export default function OnlineBookingScreen() {
             {staffList.length === 0 && (
               <Text className="font-rounded text-sm text-muted-foreground">店家尚未指定服務人員，將由店家統一安排</Text>
             )}
-            {staffList.length > 1 && (
-              <Pressable
-                className="bg-card rounded-2xl p-4 border active:opacity-80 flex-row items-center gap-3"
-                style={{ borderColor: anyStaffMode ? '#e8789a' : '#f0e0e8' }}
-                onPress={() => { setAnyStaffMode(true); setSelectedStaff(null); }}
-              >
-                <View className="w-10 h-10 rounded-full items-center justify-center bg-primary/10">
-                  <Sparkles size={18} color="#e8789a" />
-                </View>
-                <View className="flex-1">
-                  <Text className="font-rounded text-base font-semibold text-foreground">不指定人員</Text>
-                  <Text className="font-rounded text-xs text-muted-foreground mt-0.5">直接看所有人員合併後的空檔，最快能約到的時段</Text>
-                </View>
-                {anyStaffMode && <CheckCircle size={18} color="#e8789a" />}
-              </Pressable>
-            )}
             {staffList.map(s => (
               <Pressable
                 key={s.id}
@@ -810,6 +794,22 @@ export default function OnlineBookingScreen() {
                 {!anyStaffMode && selectedStaff?.id === s.id && <CheckCircle size={18} color={s.color} />}
               </Pressable>
             ))}
+            {staffList.length > 1 && (
+              <Pressable
+                className="bg-card rounded-2xl p-4 border active:opacity-80 flex-row items-center gap-3"
+                style={{ borderColor: anyStaffMode ? '#e8789a' : '#f0e0e8' }}
+                onPress={() => { setAnyStaffMode(true); setSelectedStaff(null); }}
+              >
+                <View className="w-10 h-10 rounded-full items-center justify-center bg-primary/10">
+                  <Sparkles size={18} color="#e8789a" />
+                </View>
+                <View className="flex-1">
+                  <Text className="font-rounded text-base font-semibold text-foreground">不指定人員</Text>
+                  <Text className="font-rounded text-xs text-muted-foreground mt-0.5">直接看所有人員合併後的空檔，最快能約到的時段</Text>
+                </View>
+                {anyStaffMode && <CheckCircle size={18} color="#e8789a" />}
+              </Pressable>
+            )}
             <Pressable
               className="bg-primary rounded-2xl h-14 items-center justify-center flex-row gap-2 mt-2 active:opacity-80"
               onPress={() => { if (selectedStaff || anyStaffMode || staffList.length === 0) { setError(''); setStep('datetime'); } else setError('請選擇服務人員'); }}
