@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing, AlertTriangle, MessageCircle } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing, AlertTriangle, MessageCircle, Sparkles } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
 import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, createTransferDepositOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, createOnlineOrderAddons } from '@/db/api';
 import { supabase } from '@/client/supabase';
@@ -61,6 +61,10 @@ export default function OnlineBookingScreen() {
   const [selectedTemplate, setSelectedTemplate] = useState<ServiceTemplate | null>(null);
   const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
+  // 「不指定人員，直接看空檔」：合併所有服務人員的可預約時段，slotStaffMap
+  // 記錄每個時段有哪些人員有空，選定時段後才從裡面挑一位實際指派
+  const [anyStaffMode, setAnyStaffMode] = useState(false);
+  const [slotStaffMap, setSlotStaffMap] = useState<Record<string, Staff[]>>({});
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const d = new Date(); d.setDate(d.getDate() + 1); return d;
   });
@@ -204,22 +208,52 @@ export default function OnlineBookingScreen() {
     (async () => {
       setSlotsLoading(true);
       try {
-        const s = await getAvailableSlots(
-          ownerId,
-          selectedStaff?.id ?? null,
-          toLocalDateStr(selectedDate),
-          totalDuration,
-          selectedTemplate.break_after_minutes,
-          customerPhone || undefined,
-          shopProfile?.business_hours,
-        );
-        setSlots(s);
+        if (anyStaffMode && staffList.length > 0) {
+          // 逐一查每位人員自己的空檔，再合併——只要有任何一位有空，這個時段就算可預約
+          const perStaff = await Promise.all(staffList.map(st =>
+            getAvailableSlots(
+              ownerId,
+              st.id,
+              toLocalDateStr(selectedDate),
+              totalDuration,
+              selectedTemplate.break_after_minutes,
+              customerPhone || undefined,
+              shopProfile?.business_hours,
+            ).then(slots => ({ staff: st, slots }))
+          ));
+          const merged = new Map<string, TimeSlot>();
+          const staffMap: Record<string, Staff[]> = {};
+          for (const { staff, slots: staffSlots } of perStaff) {
+            for (const slot of staffSlots) {
+              if (!merged.has(slot.time)) merged.set(slot.time, { ...slot, available: false });
+              if (slot.available) {
+                merged.get(slot.time)!.available = true;
+                (staffMap[slot.time] ??= []).push(staff);
+              }
+            }
+          }
+          const mergedSlots = Array.from(merged.values()).sort((a, b) => a.time.localeCompare(b.time));
+          setSlots(mergedSlots);
+          setSlotStaffMap(staffMap);
+        } else {
+          const s = await getAvailableSlots(
+            ownerId,
+            selectedStaff?.id ?? null,
+            toLocalDateStr(selectedDate),
+            totalDuration,
+            selectedTemplate.break_after_minutes,
+            customerPhone || undefined,
+            shopProfile?.business_hours,
+          );
+          setSlots(s);
+          setSlotStaffMap({});
+        }
         setSelectedTime('');
       } finally {
         setSlotsLoading(false);
       }
     })();
-  }, [selectedStaff, selectedTemplate, selectedDate, ownerId, shopProfile, totalDuration]);
+  }, [selectedStaff, anyStaffMode, staffList, selectedTemplate, selectedDate, ownerId, shopProfile, totalDuration]);
 
   const isHoliday = (d: Date) => holidays.includes(toLocalDateStr(d));
 
@@ -741,12 +775,28 @@ export default function OnlineBookingScreen() {
             {staffList.length === 0 && (
               <Text className="font-rounded text-sm text-muted-foreground">店家尚未指定服務人員，將由店家統一安排</Text>
             )}
+            {staffList.length > 1 && (
+              <Pressable
+                className="bg-card rounded-2xl p-4 border active:opacity-80 flex-row items-center gap-3"
+                style={{ borderColor: anyStaffMode ? '#e8789a' : '#f0e0e8' }}
+                onPress={() => { setAnyStaffMode(true); setSelectedStaff(null); }}
+              >
+                <View className="w-10 h-10 rounded-full items-center justify-center bg-primary/10">
+                  <Sparkles size={18} color="#e8789a" />
+                </View>
+                <View className="flex-1">
+                  <Text className="font-rounded text-base font-semibold text-foreground">不指定人員</Text>
+                  <Text className="font-rounded text-xs text-muted-foreground mt-0.5">直接看所有人員合併後的空檔，最快能約到的時段</Text>
+                </View>
+                {anyStaffMode && <CheckCircle size={18} color="#e8789a" />}
+              </Pressable>
+            )}
             {staffList.map(s => (
               <Pressable
                 key={s.id}
                 className="bg-card rounded-2xl p-4 border active:opacity-80 flex-row items-center gap-3"
-                style={{ borderColor: selectedStaff?.id === s.id ? s.color : '#f0e0e8' }}
-                onPress={() => setSelectedStaff(s)}
+                style={{ borderColor: !anyStaffMode && selectedStaff?.id === s.id ? s.color : '#f0e0e8' }}
+                onPress={() => { setAnyStaffMode(false); setSelectedStaff(s); }}
               >
                 <View className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: s.color + '22' }}>
                   <Text className="font-rounded text-base font-bold" style={{ color: s.color }}>{s.name.charAt(0)}</Text>
@@ -757,12 +807,12 @@ export default function OnlineBookingScreen() {
                     <Text className="font-rounded text-xs text-muted-foreground mt-0.5" numberOfLines={2}>{s.bio}</Text>
                   ) : null}
                 </View>
-                {selectedStaff?.id === s.id && <CheckCircle size={18} color={s.color} />}
+                {!anyStaffMode && selectedStaff?.id === s.id && <CheckCircle size={18} color={s.color} />}
               </Pressable>
             ))}
             <Pressable
               className="bg-primary rounded-2xl h-14 items-center justify-center flex-row gap-2 mt-2 active:opacity-80"
-              onPress={() => { if (selectedStaff || staffList.length === 0) { setError(''); setStep('datetime'); } else setError('請選擇服務人員'); }}
+              onPress={() => { if (selectedStaff || anyStaffMode || staffList.length === 0) { setError(''); setStep('datetime'); } else setError('請選擇服務人員'); }}
             >
               <Text className="font-rounded text-base text-white font-semibold">下一步</Text>
               <ArrowRight size={18} color="#fff" />
@@ -875,6 +925,12 @@ export default function OnlineBookingScreen() {
                 setError('');
                 if (isHoliday(selectedDate)) { setError('請選擇非公休日'); return; }
                 if (!selectedTime) { setError('請選擇時段'); return; }
+                // 不指定人員模式：從這個時段有空的人員裡挑一位，實際指派給這筆預約
+                if (anyStaffMode) {
+                  const available = slotStaffMap[selectedTime];
+                  if (!available || available.length === 0) { setError('這個時段目前沒有人員有空，請重新選擇'); return; }
+                  setSelectedStaff(available[0]);
+                }
                 setStep('info');
               }}
             >

@@ -239,7 +239,19 @@ export default function OnlineOrdersScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const filtered = filter === 'all' ? orders : orders.filter(o => o.status === filter);
+  // 待確認匯款的訂單有 48 小時到期自動取消的壓力，容易被埋在一堆已確認訂單
+  // 裡漏掉——排到最前面，彼此之間再依到期時間排，最快到期的最先看到
+  const sortByUrgency = (list: OnlineOrder[]) => [...list].sort((a, b) => {
+    const aUrgent = a.status === 'pending_transfer_confirm';
+    const bUrgent = b.status === 'pending_transfer_confirm';
+    if (aUrgent !== bUrgent) return aUrgent ? -1 : 1;
+    if (aUrgent && bUrgent) {
+      return (a.deposit_confirm_deadline ?? '').localeCompare(b.deposit_confirm_deadline ?? '');
+    }
+    return 0;
+  });
+
+  const filtered = sortByUrgency(filter === 'all' ? orders : orders.filter(o => o.status === filter));
 
   const handleConfirm = async (o: OnlineOrder) => {
     await updateOnlineOrderStatus(o.id, 'confirmed');
@@ -321,11 +333,20 @@ export default function OnlineOrdersScreen() {
             const meta = STATUS_META[item.status] ?? STATUS_META.cancelled;
             const d = new Date(item.appointment_time);
             const apptStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+            const isPendingTransfer = item.status === 'pending_transfer_confirm';
 
             return (
               <View
-                className="bg-card rounded-2xl p-4 border border-border gap-2"
-                style={{ shadowColor: '#e8789a', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 }}
+                className="bg-card rounded-2xl p-4 gap-2"
+                style={{
+                  borderWidth: isPendingTransfer ? 2 : 1,
+                  borderColor: isPendingTransfer ? '#e8a000' : '#eee2e8',
+                  shadowColor: isPendingTransfer ? '#e8a000' : '#e8789a',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: isPendingTransfer ? 0.18 : 0.06,
+                  shadowRadius: 8,
+                  elevation: isPendingTransfer ? 4 : 2,
+                }}
               >
                 <View className="flex-row items-start justify-between">
                   <View className="flex-1">
