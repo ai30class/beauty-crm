@@ -69,7 +69,16 @@ export default function MyOrdersScreen() {
       // 非 LINE 登入（Email 帳號）或 LIFF 環境不可用時忽略，不影響 Supabase 登出
     }
     await supabase.auth.signOut();
-    router.replace('/online-booking' as any);
+    // 這裡故意不用 router.replace()：LIFF SDK 是這個分頁 JS 執行環境裡的單例，
+    // 只用前端路由跳轉不會真的重新載入頁面，liff.logout() 清掉的登入狀態在
+    // 記憶體裡的舊物件可能沒有真的重置，導致下一頁 liff.init() 讀到的還是
+    // 舊的「已登入」狀態，登出馬上又被登入。改用整頁重新整理，讓 LIFF 這次
+    // 真的從乾淨狀態重新初始化（LINE 官方文件也建議登出後要 reload 整頁）
+    if (typeof window !== 'undefined') {
+      window.location.href = '/online-booking';
+    } else {
+      router.replace('/online-booking' as any);
+    }
   };
 
   const statusLabel = (s: string) => {
