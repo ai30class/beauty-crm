@@ -264,6 +264,50 @@ export default function OnlineBookingScreen() {
     return !shopProfile.business_hours[dayKey]?.open;
   };
 
+  // 日期速覽列：讓顧客一眼掃過去未來幾天哪幾天還有空，不用一天一天手動翻。
+  // 只算「有沒有空」的布林值，不算完整時段，換頁選到那天才會再查一次完整時段
+  // （下面既有的 slots useEffect），避免這裡的預覽跟正式選時段的資料邏輯重複。
+  const DATE_STRIP_DAYS = 10;
+  const [dateOverview, setDateOverview] = useState<Record<string, boolean>>({});
+  const [dateOverviewLoading, setDateOverviewLoading] = useState(false);
+
+  useEffect(() => {
+    if (step !== 'datetime' || !selectedTemplate || !ownerId) return;
+    if (anyStaffMode && staffList.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      setDateOverviewLoading(true);
+      try {
+        const today = new Date();
+        const days: Date[] = [];
+        for (let i = 0; i < DATE_STRIP_DAYS; i++) {
+          days.push(new Date(today.getFullYear(), today.getMonth(), today.getDate() + i));
+        }
+        const staffToCheck = anyStaffMode ? staffList : ([selectedStaff].filter(Boolean) as Staff[]);
+        const results = await Promise.all(days.map(async d => {
+          const dateStr = toLocalDateStr(d);
+          if (isHoliday(d) || isBusinessHoliday(d)) return { dateStr, available: false };
+          if (staffToCheck.length === 0) {
+            const s = await getAvailableSlots(ownerId, null, dateStr, totalDuration, selectedTemplate.break_after_minutes, customerPhone || undefined, shopProfile?.business_hours);
+            return { dateStr, available: s.some(x => x.available) };
+          }
+          const perStaff = await Promise.all(staffToCheck.map(st =>
+            getAvailableSlots(ownerId, st.id, dateStr, totalDuration, selectedTemplate.break_after_minutes, customerPhone || undefined, shopProfile?.business_hours)
+          ));
+          return { dateStr, available: perStaff.some(s => s.some(x => x.available)) };
+        }));
+        if (cancelled) return;
+        const map: Record<string, boolean> = {};
+        for (const r of results) map[r.dateStr] = r.available;
+        setDateOverview(map);
+      } finally {
+        if (!cancelled) setDateOverviewLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, anyStaffMode, selectedStaff, staffList, selectedTemplate, ownerId, shopProfile, totalDuration, holidays]);
+
   const depositAmount = selectedTemplate
     ? Math.round(totalAmount * 0.5)
     : 0;
@@ -825,6 +869,47 @@ export default function OnlineBookingScreen() {
         {step === 'datetime' && (
           <View className="gap-4">
             <Text className="font-rounded text-base font-semibold text-foreground">選擇預約日期</Text>
+
+            {/* 日期速覽列：一眼掃過去 10 天哪幾天還有空，綠點=有空、灰點=已滿或公休 */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
+              <View className="flex-row gap-2 px-1 pb-1">
+                {Array.from({ length: DATE_STRIP_DAYS }).map((_, i) => {
+                  const today = new Date();
+                  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+                  const dateStr = toLocalDateStr(d);
+                  const isSelected = dateStr === toLocalDateStr(selectedDate);
+                  const dayOff = isHoliday(d) || isBusinessHoliday(d);
+                  const hasSlot = dateOverview[dateStr];
+                  return (
+                    <Pressable
+                      key={dateStr}
+                      className="items-center rounded-2xl px-3 py-2 active:opacity-70"
+                      style={{
+                        minWidth: 56,
+                        backgroundColor: isSelected ? '#e8789a' : '#fce9f0',
+                        opacity: dayOff ? 0.5 : 1,
+                      }}
+                      onPress={() => setSelectedDate(d)}
+                    >
+                      <Text className="font-rounded text-xs font-medium" style={{ color: isSelected ? '#fff' : '#e8789a' }}>
+                        {['日','一','二','三','四','五','六'][d.getDay()]}
+                      </Text>
+                      <Text className="font-rounded text-base font-bold mt-0.5" style={{ color: isSelected ? '#fff' : '#e8789a' }}>
+                        {d.getDate()}
+                      </Text>
+                      {dateOverviewLoading ? (
+                        <View className="w-1.5 h-1.5 rounded-full mt-1" style={{ backgroundColor: isSelected ? '#ffffff88' : '#d0b0be' }} />
+                      ) : (
+                        <View
+                          className="w-1.5 h-1.5 rounded-full mt-1"
+                          style={{ backgroundColor: dayOff ? '#c4a0ae' : hasSlot ? '#5dc0a0' : '#e85454' }}
+                        />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
 
             <Pressable
               className="bg-card border border-border rounded-2xl px-4 flex-row items-center justify-between h-14 active:opacity-80"
