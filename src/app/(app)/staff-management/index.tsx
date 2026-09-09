@@ -21,6 +21,7 @@ export default function StaffManagementScreen() {
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState(COLORS[0]);
   const [newCommissionRate, setNewCommissionRate] = useState('');
+  const [newBio, setNewBio] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -28,6 +29,7 @@ export default function StaffManagementScreen() {
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
   const [editCommissionRate, setEditCommissionRate] = useState('');
+  const [editBio, setEditBio] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,8 +46,8 @@ export default function StaffManagementScreen() {
     if (Number.isNaN(rate) || rate < 0 || rate > 100) { setError('抽成比例請輸入 0–100 之間的數字'); return; }
     setSaving(true);
     try {
-      await createStaff({ name: newName.trim(), role: 'therapist', color: newColor, is_active: true, commission_rate: rate });
-      setNewName(''); setNewCommissionRate(''); setShowAdd(false); load();
+      await createStaff({ name: newName.trim(), role: 'therapist', color: newColor, is_active: true, commission_rate: rate, bio: newBio.trim() || null });
+      setNewName(''); setNewCommissionRate(''); setNewBio(''); setShowAdd(false); load();
     } catch (e: any) { setError(e.message); }
     finally { setSaving(false); }
   };
@@ -54,7 +56,7 @@ export default function StaffManagementScreen() {
     if (!editName.trim()) return;
     const rate = editCommissionRate.trim() ? Number(editCommissionRate) : 0;
     if (Number.isNaN(rate) || rate < 0 || rate > 100) return;
-    await updateStaff(id, { name: editName.trim(), color: editColor, commission_rate: rate });
+    await updateStaff(id, { name: editName.trim(), color: editColor, commission_rate: rate, bio: editBio.trim() || null });
     setEditId(null); load();
   };
 
@@ -123,13 +125,26 @@ export default function StaffManagementScreen() {
                 keyboardType="decimal-pad"
               />
             </View>
+            <View>
+              <Text className="font-rounded text-xs text-muted-foreground mb-2">資歷簡介（選填，顧客線上預約選人員時會看到）</Text>
+              <TextInput
+                className="bg-background border border-border rounded-xl px-4 py-2.5 font-rounded text-base text-foreground"
+                placeholder="例：美睫證照 5 年經驗，擅長韓式霧眉..."
+                placeholderTextColor="#c4a0ae"
+                value={newBio}
+                onChangeText={setNewBio}
+                multiline
+                numberOfLines={3}
+                style={{ minHeight: 72, textAlignVertical: 'top' }}
+              />
+            </View>
             {error ? <Text className="font-rounded text-xs text-destructive">{error}</Text> : null}
             <View className="flex-row gap-2">
               <Pressable className="flex-1 bg-primary rounded-xl py-2.5 items-center active:opacity-80" onPress={handleAdd} disabled={saving}>
                 {saving ? <ActivityIndicator size="small" color="#fff" /> : <Text className="font-rounded text-sm text-white font-medium">確認新增</Text>}
               </Pressable>
               <Pressable className="flex-1 bg-muted rounded-xl py-2.5 items-center active:opacity-70"
-                onPress={() => { setShowAdd(false); setNewName(''); setNewCommissionRate(''); setError(''); }}>
+                onPress={() => { setShowAdd(false); setNewName(''); setNewCommissionRate(''); setNewBio(''); setError(''); }}>
                 <Text className="font-rounded text-sm text-muted-foreground">取消</Text>
               </Pressable>
             </View>
@@ -180,6 +195,17 @@ export default function StaffManagementScreen() {
                       keyboardType="decimal-pad"
                     />
                   </View>
+                  <View>
+                    <Text className="font-rounded text-xs text-muted-foreground mb-2">資歷簡介（顧客線上預約選人員時會看到）</Text>
+                    <TextInput
+                      className="bg-background border border-border rounded-xl px-4 py-2.5 font-rounded text-base text-foreground"
+                      value={editBio}
+                      onChangeText={setEditBio}
+                      multiline
+                      numberOfLines={3}
+                      style={{ minHeight: 72, textAlignVertical: 'top' }}
+                    />
+                  </View>
                   <View className="flex-row gap-2">
                     <Pressable className="flex-1 bg-primary rounded-xl py-2 items-center active:opacity-80" onPress={() => handleSaveEdit(s.id)}>
                       <Text className="font-rounded text-sm text-white font-medium">儲存</Text>
@@ -201,6 +227,9 @@ export default function StaffManagementScreen() {
                       <View className="w-2 h-2 rounded-full" style={{ backgroundColor: s.is_active ? '#5dc0a0' : '#c4a0ae' }} />
                       <Text className="font-rounded text-xs text-muted-foreground">{s.is_active ? '服務中' : '暫停服務'}　抽成 {s.commission_rate}%</Text>
                     </View>
+                    {s.bio ? (
+                      <Text className="font-rounded text-xs text-muted-foreground mt-1" numberOfLines={2}>{s.bio}</Text>
+                    ) : null}
                   </View>
                   <Pressable
                     className="px-2 py-1 rounded-full mr-1 active:opacity-70"
@@ -212,7 +241,7 @@ export default function StaffManagementScreen() {
                     </Text>
                   </Pressable>
                   <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted mr-1"
-                    onPress={() => { setEditId(s.id); setEditName(s.name); setEditColor(s.color); setEditCommissionRate(String(s.commission_rate)); }}>
+                    onPress={() => { setEditId(s.id); setEditName(s.name); setEditColor(s.color); setEditCommissionRate(String(s.commission_rate)); setEditBio(s.bio ?? ''); }}>
                     <Pencil size={15} color="#c4a0ae" />
                   </Pressable>
                   <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted"

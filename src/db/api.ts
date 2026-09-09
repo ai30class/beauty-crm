@@ -524,7 +524,7 @@ export async function createStaff(payload: Omit<Staff, 'id' | 'owner_id' | 'crea
   if (error) throw error;
 }
 
-export async function updateStaff(id: string, payload: Partial<Pick<Staff, 'name' | 'role' | 'color' | 'is_active' | 'commission_rate'>>): Promise<void> {
+export async function updateStaff(id: string, payload: Partial<Pick<Staff, 'name' | 'role' | 'color' | 'is_active' | 'commission_rate' | 'bio'>>): Promise<void> {
   const { error } = await supabase.from('staff').update(payload).eq('id', id);
   if (error) throw error;
 }

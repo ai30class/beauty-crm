@@ -749,7 +749,12 @@ export default function OnlineBookingScreen() {
                 <View className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: s.color + '22' }}>
                   <Text className="font-rounded text-base font-bold" style={{ color: s.color }}>{s.name.charAt(0)}</Text>
                 </View>
-                <Text className="font-rounded text-base font-semibold text-foreground flex-1">{s.name}</Text>
+                <View className="flex-1">
+                  <Text className="font-rounded text-base font-semibold text-foreground">{s.name}</Text>
+                  {s.bio ? (
+                    <Text className="font-rounded text-xs text-muted-foreground mt-0.5" numberOfLines={2}>{s.bio}</Text>
+                  ) : null}
+                </View>
                 {selectedStaff?.id === s.id && <CheckCircle size={18} color={s.color} />}
               </Pressable>
             ))}

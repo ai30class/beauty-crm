@@ -159,6 +159,7 @@ export interface Staff {
   color: string;
   is_active: boolean;
   commission_rate: number;
+  bio: string | null;
   created_at: string;
 }
 
