@@ -318,8 +318,12 @@ export default function StaffScheduleScreen() {
                 const shopClosed = dayHours?.open === false || holidays.some(h => h.holiday_date === dateStr && !h.staff_id);
                 const dayAppointments = allAppts.filter(a => toApptDateStr(a.appointment_time) === dateStr);
 
+                const weekdayLabels = ['日', '一', '二', '三', '四', '五', '六'];
                 return (
                   <View key={dateStr} style={{ flex: 1, gap: 4 }}>
+                    <Text className="font-rounded text-center" style={{ fontSize: 10, color: dateStr === today ? '#e8789a' : '#c4a0ae', fontWeight: dateStr === today ? '700' : '400' }}>
+                      週{weekdayLabels[d.getDay()]}
+                    </Text>
                     <Text className="font-rounded text-center" style={{ fontSize: 11, color: dateStr === today ? '#e8789a' : '#7a6a70', fontWeight: dateStr === today ? '700' : '400' }}>
                       {d.getDate()}
                     </Text>
