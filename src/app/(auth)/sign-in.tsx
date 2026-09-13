@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Heart, Mail, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
 import { supabase } from '@/client/supabase';
+import { acceptMerchantTerms } from '@/db/api';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 
@@ -62,11 +63,17 @@ export default function SignIn() {
         });
         if (e) { setError(e.message); return; }
       } else {
-        const { error: e } = await supabase.auth.signUp({
+        const { data, error: e } = await supabase.auth.signUp({
           email: email.trim(),
           password,
         });
         if (e) { setError(e.message); return; }
+        // 有 session 才代表信箱驗證非強制、已直接登入——這裡先記一次同意，
+        // 之後 (app)/_layout.tsx 的商家條款關卡就不會再攔一次；如果專案改成
+        // 強制信箱驗證、這裡沒有 session，那個關卡會在驗證完登入後接手補問。
+        if (data.session) {
+          await acceptMerchantTerms().catch(() => { /* 記錄失敗不擋註冊，交給後台關卡補問 */ });
+        }
       }
       router.replace('/(app)/home' as any);
     } finally {
@@ -251,17 +258,19 @@ export default function SignIn() {
 
             {/* 同意條款（僅註冊時顯示） */}
             {mode === 'register' && (
-              <Pressable className="flex-row items-start mb-6" onPress={() => setAgreed(!agreed)}>
-                <View className={`w-5 h-5 rounded-md border-2 mr-2 mt-0.5 items-center justify-center ${agreed ? 'bg-primary border-primary' : 'border-border'}`}>
-                  {agreed && <Text className="text-white text-xs font-bold">✓</Text>}
-                </View>
-                <Text className="font-rounded text-sm text-muted-foreground flex-1">
-                  我已閱讀並同意{' '}
-                  <Text className="text-primary">用戶協議</Text>
-                  {' '}和{' '}
-                  <Text className="text-primary">隱私政策</Text>
-                </Text>
-              </Pressable>
+              <View className="flex-row items-start mb-6">
+                <Pressable className="flex-row items-start flex-1" onPress={() => setAgreed(!agreed)}>
+                  <View className={`w-5 h-5 rounded-md border-2 mr-2 mt-0.5 items-center justify-center ${agreed ? 'bg-primary border-primary' : 'border-border'}`}>
+                    {agreed && <Text className="text-white text-xs font-bold">✓</Text>}
+                  </View>
+                  <Text className="font-rounded text-sm text-muted-foreground flex-1">
+                    我已閱讀並同意
+                    <Text className="text-primary" onPress={() => router.push('/(auth)/merchant-terms' as any)}>
+                      {' '}商家服務條款{' '}
+                    </Text>
+                  </Text>
+                </Pressable>
+              </View>
             )}
 
             {/* 操作按鈕 */}

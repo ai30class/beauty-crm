@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { View, ActivityIndicator, Text, Pressable } from 'react-native';
 import { Stack, useRouter, usePathname } from 'expo-router';
 import { supabase } from '@/client/supabase';
-import { getOnboardingStatus, getAccountType } from '@/db/api';
+import { getOnboardingStatus, getAccountType, getMerchantTermsAccepted } from '@/db/api';
 
 // 商家/顧客帳號共用同一張登入表，沒有角色區分：顧客帳號如果直接打開
 // 商家後台網址，過去會被放行（RLS 讓他們只看到空資料，不是外洩，但
@@ -37,6 +37,37 @@ function useAccountTypeGate() {
   }, [router]);
 
   return { checking, blocked };
+}
+
+// 商家服務條款關卡：sign-in.tsx 註冊時勾選同意會直接記錄，這裡是補漏——
+// 涵蓋 Google 一鍵註冊（沒有經過那個勾選框）、以及條款版本更新後既有商家
+// 尚未同意新版的情形。查到未同意就導去 (app)/accept-terms，同意後才放行。
+function useTermsGate(enabled: boolean) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [checking, setChecking] = useState(true);
+  const [accepted, setAccepted] = useState(true);
+  const checked = useRef(false);
+
+  useEffect(() => {
+    if (!enabled || checked.current) return;
+    checked.current = true;
+    (async () => {
+      try {
+        const ok = await getMerchantTermsAccepted();
+        setAccepted(ok);
+        if (!ok && !pathname.includes('/accept-terms')) {
+          router.replace('/(app)/accept-terms' as any);
+        }
+      } catch {
+        /* 查詢失敗不擋住正常使用 */
+      } finally {
+        setChecking(false);
+      }
+    })();
+  }, [enabled, router, pathname]);
+
+  return { checking, accepted };
 }
 
 // 首次登入才顯示新手引導：檢查一次 profiles.onboarding_completed，
@@ -115,7 +146,8 @@ function CustomerBlockedNotice() {
 
 export default function AppLayout() {
   const { checking, blocked } = useAccountTypeGate();
-  useOnboardingGate(!checking && !blocked);
+  const { checking: termsChecking, accepted: termsAccepted } = useTermsGate(!checking && !blocked);
+  useOnboardingGate(!checking && !blocked && !termsChecking && termsAccepted);
 
   if (checking) {
     return (
@@ -127,10 +159,19 @@ export default function AppLayout() {
 
   if (blocked) return <CustomerBlockedNotice />;
 
+  if (termsChecking) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff5f7' }}>
+        <ActivityIndicator size="large" color="#e8789a" />
+      </View>
+    );
+  }
+
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="onboarding" />
+      <Stack.Screen name="accept-terms" />
       <Stack.Screen name="customers" />
       <Stack.Screen name="service-records" />
       <Stack.Screen name="appointments" />

@@ -1155,6 +1155,33 @@ export async function markOnboardingCompleted(): Promise<void> {
   if (error) throw error;
 }
 
+// ─── 商家服務條款同意 ───────────────────────────────────────────────────────────
+// 版本字串每次條款內容有實質修改就要更新；已同意舊版本的商家會被視為未同意，
+// 下次進後台會再被攔下來簽一次。
+export const MERCHANT_TERMS_VERSION = '2026-09-13';
+
+export async function getMerchantTermsAccepted(): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('merchant_terms_accepted_version')
+    .maybeSingle();
+  if (error) throw error;
+  return data?.merchant_terms_accepted_version === MERCHANT_TERMS_VERSION;
+}
+
+export async function acceptMerchantTerms(): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('未登入');
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      merchant_terms_accepted_version: MERCHANT_TERMS_VERSION,
+      merchant_terms_accepted_at: new Date().toISOString(),
+    })
+    .eq('id', user.id);
+  if (error) throw error;
+}
+
 export async function getShopProfile(): Promise<ShopProfile | null> {
   const { data, error } = await supabase
     .from('shop_profiles')
