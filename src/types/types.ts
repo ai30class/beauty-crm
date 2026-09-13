@@ -48,8 +48,13 @@ export interface ServiceRecord {
   status: 'completed' | 'pending';
   staff_id: string | null;
   created_at: string;
+  // 多人協作：co_staff_id 有值時，staff_share_percent 是 staff_id 拿的比例（0-100），
+  // 其餘給 co_staff_id；co_staff_id 為 null 時整筆都算 staff_id 的業績（原本行為）。
+  co_staff_id: string | null;
+  staff_share_percent: number | null;
   customer?: { name: string };
   staff?: { name: string; color: string } | null;
+  co_staff?: { name: string; color: string } | null;
 }
 
 export interface TrendPoint {

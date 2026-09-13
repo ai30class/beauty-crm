@@ -149,7 +149,7 @@ export async function createServiceRecord(payload: Omit<ServiceRecord, 'id' | 'o
 
 export async function updateServiceRecord(
   id: string,
-  payload: Partial<Pick<ServiceRecord, 'before_photo_path' | 'after_photo_path' | 'notes' | 'service_name' | 'amount'>>
+  payload: Partial<Pick<ServiceRecord, 'before_photo_path' | 'after_photo_path' | 'notes' | 'service_name' | 'amount' | 'co_staff_id' | 'staff_share_percent'>>
 ): Promise<void> {
   const { error } = await supabase.from('service_records').update(payload).eq('id', id);
   if (error) throw error;
@@ -158,7 +158,7 @@ export async function updateServiceRecord(
 export async function getServiceRecordById(id: string): Promise<ServiceRecord | null> {
   const { data } = await supabase
     .from('service_records')
-    .select('*, customer:customers!customer_id(name), staff:staff!staff_id(name, color)')
+    .select('*, customer:customers!customer_id(name), staff:staff!staff_id(name, color), co_staff:staff!co_staff_id(name, color)')
     .eq('id', id)
     .maybeSingle();
   return data;
@@ -1337,31 +1337,45 @@ export async function getStaffPerformance(year: number, month: number): Promise<
   const endDate = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
   const { data, error } = await supabase
     .from('service_records')
-    .select('staff_id, amount, staff:staff!staff_id(name, color, commission_rate)')
+    .select('staff_id, amount, co_staff_id, staff_share_percent, staff:staff!staff_id(name, color, commission_rate), co_staff:staff!co_staff_id(name, color, commission_rate)')
     .gte('service_date', startDate)
     .lt('service_date', endDate)
     .not('staff_id', 'is', null);
   if (error) throw error;
   const map = new Map<string, StaffPerformanceRow>();
+  const addToMap = (sid: string, name: string, color: string, rate: number, revenueShare: number) => {
+    const existing = map.get(sid);
+    const commission = revenueShare * rate / 100;
+    if (existing) {
+      existing.service_count += 1;
+      existing.total_revenue += revenueShare;
+      existing.commission_amount += commission;
+    } else {
+      map.set(sid, {
+        staff_id: sid,
+        staff_name: name,
+        staff_color: color,
+        service_count: 1,
+        total_revenue: revenueShare,
+        commission_rate: rate,
+        commission_amount: commission,
+      });
+    }
+  };
   for (const r of (data ?? []) as any[]) {
     const sid = r.staff_id as string;
     const amt = Number(r.amount ?? 0);
     const rate = Number(r.staff?.commission_rate ?? 0);
-    const existing = map.get(sid);
-    if (existing) {
-      existing.service_count += 1;
-      existing.total_revenue += amt;
-      existing.commission_amount += amt * rate / 100;
+    // 多人協作：有指定 co_staff 且拆分比例時，兩人各自依比例分營收＋算抽成，
+    // 不是整筆金額兩邊都算一次（那樣店家總營收報表會被灌水成兩倍）。
+    if (r.co_staff_id && r.staff_share_percent != null) {
+      const primaryShare = Number(r.staff_share_percent) / 100;
+      const coShare = 1 - primaryShare;
+      const coRate = Number(r.co_staff?.commission_rate ?? 0);
+      addToMap(sid, r.staff?.name ?? '—', r.staff?.color ?? '#e8789a', rate, amt * primaryShare);
+      addToMap(r.co_staff_id as string, r.co_staff?.name ?? '—', r.co_staff?.color ?? '#e8789a', coRate, amt * coShare);
     } else {
-      map.set(sid, {
-        staff_id: sid,
-        staff_name: r.staff?.name ?? '—',
-        staff_color: r.staff?.color ?? '#e8789a',
-        service_count: 1,
-        total_revenue: amt,
-        commission_rate: rate,
-        commission_amount: amt * rate / 100,
-      });
+      addToMap(sid, r.staff?.name ?? '—', r.staff?.color ?? '#e8789a', rate, amt);
     }
   }
   return Array.from(map.values()).sort((a, b) => b.total_revenue - a.total_revenue);
