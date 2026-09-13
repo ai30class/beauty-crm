@@ -48,10 +48,12 @@ export interface ServiceRecord {
   status: 'completed' | 'pending';
   staff_id: string | null;
   created_at: string;
-  // 多人協作：co_staff_id 有值時，staff_share_percent 是 staff_id 拿的比例（0-100），
-  // 其餘給 co_staff_id；co_staff_id 為 null 時整筆都算 staff_id 的業績（原本行為）。
+  // 多人協作：co_staff_id 有值時，staff_share_percent／co_staff_share_percent 是
+  // staff_id／co_staff_id 各自直接實拿佔總金額的%（直接輸入，不透過各自 commission_rate 計算），
+  // 兩者相加不必等於100，差額歸店家；co_staff_id 為 null 時整筆都算 staff_id 的業績（原本行為）。
   co_staff_id: string | null;
   staff_share_percent: number | null;
+  co_staff_share_percent: number | null;
   customer?: { name: string };
   staff?: { name: string; color: string } | null;
   co_staff?: { name: string; color: string } | null;
@@ -170,7 +172,53 @@ export interface Staff {
   commission_rate: number;
   bio: string | null;
   avatar_url: string | null;
+  // 底薪：可選，預設0（沒設底薪的員工完全靠抽成+獎金）
+  base_salary: number;
   created_at: string;
+}
+
+// ─── 階梯式抽成 ───────────────────────────────────────────────────────────────
+// 就高適用制：業績落在哪一階（min_revenue <= 業績，且 max_revenue 為 null 或 業績 <= max_revenue），
+// 整筆業績都用該階的 rate 計算。員工沒有設定任何階梯時，計薪退回沿用 staff.commission_rate。
+export interface StaffCommissionTier {
+  id: string;
+  owner_id: string;
+  staff_id: string;
+  min_revenue: number;
+  max_revenue: number | null; // null = 無上限（最高一階）
+  rate: number;
+  created_at: string;
+}
+
+// ─── 額外獎金 ─────────────────────────────────────────────────────────────────
+export interface StaffBonus {
+  id: string;
+  owner_id: string;
+  staff_id: string;
+  year: number;
+  month: number;
+  amount: number;
+  note: string | null;
+  created_at: string;
+  staff?: { name: string; color: string } | null;
+}
+
+// ─── 月結薪資快照 ─────────────────────────────────────────────────────────────
+// 按「產生本月薪資」寫入的鎖定記錄；之後原始資料再改，已產生的月份金額不會跟著變。
+export interface PayrollRecord {
+  id: string;
+  owner_id: string;
+  staff_id: string;
+  year: number;
+  month: number;
+  total_revenue: number;
+  commission_rate_applied: number;
+  commission_amount: number;
+  base_salary: number;
+  bonus_amount: number;
+  total_salary: number;
+  generated_at: string;
+  staff?: { name: string; color: string } | null;
 }
 
 export interface Holiday {

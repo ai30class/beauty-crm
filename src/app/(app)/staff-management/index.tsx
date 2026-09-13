@@ -7,7 +7,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, Plus, Trash2, Pencil, Check, X, User2, Camera } from 'lucide-react-native';
+import { ArrowLeft, Plus, Trash2, Pencil, Check, X, User2, Camera, Layers } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system';
@@ -52,6 +52,7 @@ export default function StaffManagementScreen() {
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState(COLORS[0]);
   const [newCommissionRate, setNewCommissionRate] = useState('');
+  const [newBaseSalary, setNewBaseSalary] = useState('');
   const [newBio, setNewBio] = useState('');
   const [newAvatarAsset, setNewAvatarAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [saving, setSaving] = useState(false);
@@ -61,6 +62,7 @@ export default function StaffManagementScreen() {
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
   const [editCommissionRate, setEditCommissionRate] = useState('');
+  const [editBaseSalary, setEditBaseSalary] = useState('');
   const [editBio, setEditBio] = useState('');
   const [editAvatarUrl, setEditAvatarUrl] = useState<string | null>(null);
   const [editAvatarAsset, setEditAvatarAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
@@ -88,13 +90,15 @@ export default function StaffManagementScreen() {
     if (!newName.trim()) { setError('請輸入姓名'); return; }
     const rate = newCommissionRate.trim() ? Number(newCommissionRate) : 0;
     if (Number.isNaN(rate) || rate < 0 || rate > 100) { setError('抽成比例請輸入 0–100 之間的數字'); return; }
+    const baseSalary = newBaseSalary.trim() ? Number(newBaseSalary) : 0;
+    if (Number.isNaN(baseSalary) || baseSalary < 0) { setError('底薪請輸入 0 以上的數字'); return; }
     setSaving(true);
     try {
       const avatarPath = newAvatarAsset
         ? await compressAndUploadAvatar(newAvatarAsset.uri, newAvatarAsset.mimeType ?? undefined, newAvatarAsset.width ?? undefined)
         : null;
-      await createStaff({ name: newName.trim(), role: 'therapist', color: newColor, is_active: true, commission_rate: rate, bio: newBio.trim() || null, avatar_url: avatarPath });
-      setNewName(''); setNewCommissionRate(''); setNewBio(''); setNewAvatarAsset(null); setShowAdd(false); load();
+      await createStaff({ name: newName.trim(), role: 'therapist', color: newColor, is_active: true, commission_rate: rate, base_salary: baseSalary, bio: newBio.trim() || null, avatar_url: avatarPath });
+      setNewName(''); setNewCommissionRate(''); setNewBaseSalary(''); setNewBio(''); setNewAvatarAsset(null); setShowAdd(false); load();
     } catch (e: any) { setError(e.message); }
     finally { setSaving(false); }
   };
@@ -103,10 +107,12 @@ export default function StaffManagementScreen() {
     if (!editName.trim()) return;
     const rate = editCommissionRate.trim() ? Number(editCommissionRate) : 0;
     if (Number.isNaN(rate) || rate < 0 || rate > 100) return;
+    const baseSalary = editBaseSalary.trim() ? Number(editBaseSalary) : 0;
+    if (Number.isNaN(baseSalary) || baseSalary < 0) return;
     const avatarPath = editAvatarAsset
       ? await compressAndUploadAvatar(editAvatarAsset.uri, editAvatarAsset.mimeType ?? undefined, editAvatarAsset.width ?? undefined)
       : editAvatarUrl;
-    await updateStaff(id, { name: editName.trim(), color: editColor, commission_rate: rate, bio: editBio.trim() || null, avatar_url: avatarPath });
+    await updateStaff(id, { name: editName.trim(), color: editColor, commission_rate: rate, base_salary: baseSalary, bio: editBio.trim() || null, avatar_url: avatarPath });
     setEditId(null); setEditAvatarAsset(null); load();
   };
 
@@ -175,13 +181,24 @@ export default function StaffManagementScreen() {
               </View>
             </View>
             <View>
-              <Text className="font-rounded text-xs text-muted-foreground mb-2">業績抽成比例（%，選填，用於員工業績報表試算獎金）</Text>
+              <Text className="font-rounded text-xs text-muted-foreground mb-2">業績抽成比例（%，選填，沒設定階梯抽成時用這個算薪水）</Text>
               <TextInput
                 className="bg-background border border-border rounded-xl px-4 h-11 font-rounded text-base text-foreground"
                 placeholder="例：30"
                 placeholderTextColor="#c4a0ae"
                 value={newCommissionRate}
                 onChangeText={setNewCommissionRate}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <View>
+              <Text className="font-rounded text-xs text-muted-foreground mb-2">底薪（選填，沒有底薪就留空，薪水完全靠抽成+獎金）</Text>
+              <TextInput
+                className="bg-background border border-border rounded-xl px-4 h-11 font-rounded text-base text-foreground"
+                placeholder="例：25000"
+                placeholderTextColor="#c4a0ae"
+                value={newBaseSalary}
+                onChangeText={setNewBaseSalary}
                 keyboardType="decimal-pad"
               />
             </View>
@@ -204,7 +221,7 @@ export default function StaffManagementScreen() {
                 {saving ? <ActivityIndicator size="small" color="#fff" /> : <Text className="font-rounded text-sm text-white font-medium">確認新增</Text>}
               </Pressable>
               <Pressable className="flex-1 bg-muted rounded-xl py-2.5 items-center active:opacity-70"
-                onPress={() => { setShowAdd(false); setNewName(''); setNewCommissionRate(''); setNewBio(''); setNewAvatarAsset(null); setError(''); }}>
+                onPress={() => { setShowAdd(false); setNewName(''); setNewCommissionRate(''); setNewBaseSalary(''); setNewBio(''); setNewAvatarAsset(null); setError(''); }}>
                 <Text className="font-rounded text-sm text-muted-foreground">取消</Text>
               </Pressable>
             </View>
@@ -259,7 +276,7 @@ export default function StaffManagementScreen() {
                     ))}
                   </View>
                   <View>
-                    <Text className="font-rounded text-xs text-muted-foreground mb-2">業績抽成比例（%）</Text>
+                    <Text className="font-rounded text-xs text-muted-foreground mb-2">業績抽成比例（%，沒設定階梯抽成時用這個算薪水）</Text>
                     <TextInput
                       className="bg-background border border-border rounded-xl px-4 h-10 font-rounded text-base text-foreground"
                       value={editCommissionRate}
@@ -267,6 +284,22 @@ export default function StaffManagementScreen() {
                       keyboardType="decimal-pad"
                     />
                   </View>
+                  <View>
+                    <Text className="font-rounded text-xs text-muted-foreground mb-2">底薪（沒有底薪就留空）</Text>
+                    <TextInput
+                      className="bg-background border border-border rounded-xl px-4 h-10 font-rounded text-base text-foreground"
+                      value={editBaseSalary}
+                      onChangeText={setEditBaseSalary}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                  <Pressable
+                    className="flex-row items-center gap-1.5 self-start active:opacity-70"
+                    onPress={() => router.push(`/(app)/staff-management/commission-tiers/${s.id}` as any)}
+                  >
+                    <Layers size={14} color="#e8789a" />
+                    <Text className="font-rounded text-sm font-semibold text-primary">設定階梯抽成（進階，選填）</Text>
+                  </Pressable>
                   <View>
                     <Text className="font-rounded text-xs text-muted-foreground mb-2">資歷簡介（顧客線上預約選人員時會看到）</Text>
                     <TextInput
@@ -301,7 +334,9 @@ export default function StaffManagementScreen() {
                     <Text className="font-rounded text-base font-semibold text-foreground">{s.name}</Text>
                     <View className="flex-row items-center gap-1.5 mt-0.5">
                       <View className="w-2 h-2 rounded-full" style={{ backgroundColor: s.is_active ? '#5dc0a0' : '#c4a0ae' }} />
-                      <Text className="font-rounded text-xs text-muted-foreground">{s.is_active ? '服務中' : '暫停服務'}　抽成 {s.commission_rate}%</Text>
+                      <Text className="font-rounded text-xs text-muted-foreground">
+                        {s.is_active ? '服務中' : '暫停服務'}　抽成 {s.commission_rate}%{s.base_salary > 0 ? `　底薪 $${s.base_salary.toLocaleString()}` : ''}
+                      </Text>
                     </View>
                     {s.bio ? (
                       <Text className="font-rounded text-xs text-muted-foreground mt-1" numberOfLines={2}>{s.bio}</Text>
@@ -317,7 +352,7 @@ export default function StaffManagementScreen() {
                     </Text>
                   </Pressable>
                   <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted mr-1"
-                    onPress={() => { setEditId(s.id); setEditName(s.name); setEditColor(s.color); setEditCommissionRate(String(s.commission_rate)); setEditBio(s.bio ?? ''); setEditAvatarUrl(s.avatar_url); setEditAvatarAsset(null); }}>
+                    onPress={() => { setEditId(s.id); setEditName(s.name); setEditColor(s.color); setEditCommissionRate(String(s.commission_rate)); setEditBaseSalary(String(s.base_salary ?? 0)); setEditBio(s.bio ?? ''); setEditAvatarUrl(s.avatar_url); setEditAvatarAsset(null); }}>
                     <Pencil size={15} color="#c4a0ae" />
                   </Pressable>
                   <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted"

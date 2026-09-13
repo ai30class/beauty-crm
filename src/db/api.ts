@@ -7,6 +7,7 @@ import type {
   Holiday, StaffReservedSlot, OnlineOrder, OnlineOrderAddon, Coupon, CustomerCoupon, ShopBlockedSlot,
   MonthlyStats, UnifiedAppointment, ProductSalesRow,
   BirthdayCustomer, CustomerRankRow, StaffPerformanceRow,
+  StaffCommissionTier, StaffBonus, PayrollRecord,
 } from '@/types/types';
 
 // ─── 顧客 ────────────────────────────────────────────────────────────────────
@@ -149,7 +150,7 @@ export async function createServiceRecord(payload: Omit<ServiceRecord, 'id' | 'o
 
 export async function updateServiceRecord(
   id: string,
-  payload: Partial<Pick<ServiceRecord, 'before_photo_path' | 'after_photo_path' | 'notes' | 'service_name' | 'amount' | 'co_staff_id' | 'staff_share_percent'>>
+  payload: Partial<Pick<ServiceRecord, 'before_photo_path' | 'after_photo_path' | 'notes' | 'service_name' | 'amount' | 'co_staff_id' | 'staff_share_percent' | 'co_staff_share_percent'>>
 ): Promise<void> {
   const { error } = await supabase.from('service_records').update(payload).eq('id', id);
   if (error) throw error;
@@ -539,7 +540,7 @@ export async function createStaff(payload: Omit<Staff, 'id' | 'owner_id' | 'crea
   if (error) throw error;
 }
 
-export async function updateStaff(id: string, payload: Partial<Pick<Staff, 'name' | 'role' | 'color' | 'is_active' | 'commission_rate' | 'bio' | 'avatar_url'>>): Promise<void> {
+export async function updateStaff(id: string, payload: Partial<Pick<Staff, 'name' | 'role' | 'color' | 'is_active' | 'commission_rate' | 'bio' | 'avatar_url' | 'base_salary'>>): Promise<void> {
   const { error } = await supabase.from('staff').update(payload).eq('id', id);
   if (error) throw error;
 }
@@ -1337,15 +1338,14 @@ export async function getStaffPerformance(year: number, month: number): Promise<
   const endDate = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
   const { data, error } = await supabase
     .from('service_records')
-    .select('staff_id, amount, co_staff_id, staff_share_percent, staff:staff!staff_id(name, color, commission_rate), co_staff:staff!co_staff_id(name, color, commission_rate)')
+    .select('staff_id, amount, co_staff_id, staff_share_percent, co_staff_share_percent, staff:staff!staff_id(name, color, commission_rate), co_staff:staff!co_staff_id(name, color, commission_rate)')
     .gte('service_date', startDate)
     .lt('service_date', endDate)
     .not('staff_id', 'is', null);
   if (error) throw error;
   const map = new Map<string, StaffPerformanceRow>();
-  const addToMap = (sid: string, name: string, color: string, rate: number, revenueShare: number) => {
+  const addToMap = (sid: string, name: string, color: string, rate: number, revenueShare: number, commission: number) => {
     const existing = map.get(sid);
-    const commission = revenueShare * rate / 100;
     if (existing) {
       existing.service_count += 1;
       existing.total_revenue += revenueShare;
@@ -1366,19 +1366,172 @@ export async function getStaffPerformance(year: number, month: number): Promise<
     const sid = r.staff_id as string;
     const amt = Number(r.amount ?? 0);
     const rate = Number(r.staff?.commission_rate ?? 0);
-    // 多人協作：有指定 co_staff 且拆分比例時，兩人各自依比例分營收＋算抽成，
-    // 不是整筆金額兩邊都算一次（那樣店家總營收報表會被灌水成兩倍）。
+    // 多人協作：staff_share_percent／co_staff_share_percent 是兩人各自直接實拿佔總金額的%，
+    // 不再乘以各自的 commission_rate（直接輸入就是實拿），店家實拿的差額不計入任何員工業績。
     if (r.co_staff_id && r.staff_share_percent != null) {
-      const primaryShare = Number(r.staff_share_percent) / 100;
-      const coShare = 1 - primaryShare;
+      const primaryTake = amt * Number(r.staff_share_percent) / 100;
+      const coTake = amt * Number(r.co_staff_share_percent ?? 0) / 100;
       const coRate = Number(r.co_staff?.commission_rate ?? 0);
-      addToMap(sid, r.staff?.name ?? '—', r.staff?.color ?? '#e8789a', rate, amt * primaryShare);
-      addToMap(r.co_staff_id as string, r.co_staff?.name ?? '—', r.co_staff?.color ?? '#e8789a', coRate, amt * coShare);
+      addToMap(sid, r.staff?.name ?? '—', r.staff?.color ?? '#e8789a', rate, primaryTake, primaryTake);
+      addToMap(r.co_staff_id as string, r.co_staff?.name ?? '—', r.co_staff?.color ?? '#e8789a', coRate, coTake, coTake);
     } else {
-      addToMap(sid, r.staff?.name ?? '—', r.staff?.color ?? '#e8789a', rate, amt);
+      addToMap(sid, r.staff?.name ?? '—', r.staff?.color ?? '#e8789a', rate, amt, amt * rate / 100);
     }
   }
   return Array.from(map.values()).sort((a, b) => b.total_revenue - a.total_revenue);
+}
+
+// ─── 階梯式抽成 ───────────────────────────────────────────────────────────────
+export async function getStaffCommissionTiers(staffId: string): Promise<StaffCommissionTier[]> {
+  const { data, error } = await supabase
+    .from('staff_commission_tiers')
+    .select('*')
+    .eq('staff_id', staffId)
+    .order('min_revenue', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createCommissionTier(
+  payload: Omit<StaffCommissionTier, 'id' | 'owner_id' | 'created_at'>
+): Promise<void> {
+  const { error } = await supabase.from('staff_commission_tiers').insert(payload);
+  if (error) throw error;
+}
+
+export async function deleteCommissionTier(id: string): Promise<void> {
+  const { error } = await supabase.from('staff_commission_tiers').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── 額外獎金 ─────────────────────────────────────────────────────────────────
+export async function getStaffBonuses(year: number, month: number): Promise<StaffBonus[]> {
+  const { data, error } = await supabase
+    .from('staff_bonuses')
+    .select('*, staff:staff!staff_id(name, color)')
+    .eq('year', year)
+    .eq('month', month)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createStaffBonus(
+  payload: Omit<StaffBonus, 'id' | 'owner_id' | 'created_at' | 'staff'>
+): Promise<void> {
+  const { error } = await supabase.from('staff_bonuses').insert(payload);
+  if (error) throw error;
+}
+
+export async function deleteStaffBonus(id: string): Promise<void> {
+  const { error } = await supabase.from('staff_bonuses').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── 月薪計算 ─────────────────────────────────────────────────────────────────
+// 就高適用制：業績落在哪一階（min_revenue <= 業績，且 max_revenue 為 null 或 業績 <= max_revenue），
+// 整筆業績都用該階的 rate，不是超額累進制。員工完全沒設定階梯時，退回沿用 commission_rate。
+function pickTierRate(revenue: number, tiers: StaffCommissionTier[], fallbackRate: number): number {
+  if (tiers.length === 0) return fallbackRate;
+  const matches = tiers.filter(t =>
+    revenue >= Number(t.min_revenue) && (t.max_revenue == null || revenue <= Number(t.max_revenue))
+  );
+  if (matches.length === 0) return 0;
+  return Number(matches.reduce((a, b) => (Number(a.min_revenue) >= Number(b.min_revenue) ? a : b)).rate);
+}
+
+export interface PayrollPreviewRow {
+  staff_id: string;
+  staff_name: string;
+  staff_color: string;
+  total_revenue: number;
+  commission_rate_applied: number;
+  commission_amount: number;
+  base_salary: number;
+  bonus_amount: number;
+  total_salary: number;
+}
+
+// 即時預覽（未鎖定）：產生本月薪資前先看數字用，套用階梯抽成規則＋底薪＋當月已登記的額外獎金。
+export async function computeMonthlyPayrollPreview(year: number, month: number): Promise<PayrollPreviewRow[]> {
+  const [performance, staffList, tiersRes, bonuses] = await Promise.all([
+    getStaffPerformance(year, month),
+    getStaff(),
+    supabase.from('staff_commission_tiers').select('*'),
+    getStaffBonuses(year, month),
+  ]);
+  if (tiersRes.error) throw tiersRes.error;
+
+  const tiersByStaff = new Map<string, StaffCommissionTier[]>();
+  for (const t of (tiersRes.data ?? []) as StaffCommissionTier[]) {
+    const arr = tiersByStaff.get(t.staff_id) ?? [];
+    arr.push(t);
+    tiersByStaff.set(t.staff_id, arr);
+  }
+  const bonusByStaff = new Map<string, number>();
+  for (const b of bonuses) {
+    bonusByStaff.set(b.staff_id, (bonusByStaff.get(b.staff_id) ?? 0) + Number(b.amount));
+  }
+  const perfByStaff = new Map(performance.map(p => [p.staff_id, p]));
+  const staffById = new Map(staffList.map(s => [s.id, s]));
+
+  // 涵蓋：目前在職員工（就算本月沒業績也列出，底薪+獎金仍要算），
+  // 加上本月有業績但已離職/停用的員工（避免漏算他們當月該拿的錢）。
+  const staffIds = new Set<string>([...staffList.filter(s => s.is_active).map(s => s.id), ...perfByStaff.keys()]);
+
+  return Array.from(staffIds).map(id => {
+    const s = staffById.get(id);
+    const perf = perfByStaff.get(id);
+    const revenue = perf?.total_revenue ?? 0;
+    const tiers = tiersByStaff.get(id) ?? [];
+    const rate = pickTierRate(revenue, tiers, Number(s?.commission_rate ?? 0));
+    const commissionAmount = revenue * rate / 100;
+    const bonusAmount = bonusByStaff.get(id) ?? 0;
+    const baseSalary = Number(s?.base_salary ?? 0);
+    return {
+      staff_id: id,
+      staff_name: s?.name ?? perf?.staff_name ?? '—',
+      staff_color: s?.color ?? perf?.staff_color ?? '#e8789a',
+      total_revenue: revenue,
+      commission_rate_applied: rate,
+      commission_amount: commissionAmount,
+      base_salary: baseSalary,
+      bonus_amount: bonusAmount,
+      total_salary: baseSalary + commissionAmount + bonusAmount,
+    };
+  }).sort((a, b) => b.total_salary - a.total_salary);
+}
+
+// 產生本月薪資：把預覽數字鎖定寫入 payroll_records（每位員工每月一筆，upsert 覆蓋）。
+// 之後即使原始服務記錄／抽成規則／獎金被修改，已產生的月份金額不會跟著變，
+// 除非再次呼叫本函式明確「重新產生」覆蓋。
+export async function generateMonthlyPayroll(year: number, month: number): Promise<void> {
+  const preview = await computeMonthlyPayrollPreview(year, month);
+  if (preview.length === 0) return;
+  const rows = preview.map(p => ({
+    staff_id: p.staff_id,
+    year,
+    month,
+    total_revenue: p.total_revenue,
+    commission_rate_applied: p.commission_rate_applied,
+    commission_amount: p.commission_amount,
+    base_salary: p.base_salary,
+    bonus_amount: p.bonus_amount,
+    total_salary: p.total_salary,
+  }));
+  const { error } = await supabase.from('payroll_records').upsert(rows, { onConflict: 'staff_id,year,month' });
+  if (error) throw error;
+}
+
+export async function getPayrollRecords(year: number, month: number): Promise<PayrollRecord[]> {
+  const { data, error } = await supabase
+    .from('payroll_records')
+    .select('*, staff:staff!staff_id(name, color)')
+    .eq('year', year)
+    .eq('month', month)
+    .order('total_salary', { ascending: false });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
 }
 
 // ─── 久未到店提醒 ─────────────────────────────────────────────────────────────

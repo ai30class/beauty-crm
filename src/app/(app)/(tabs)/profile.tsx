@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { supabase } from '@/client/supabase';
 import { useRouter } from 'expo-router';
 import { useSession } from '@/ctx';
-import { User, Mail, LogOut, ChevronRight, Scissors, Users2, CalendarOff, ShoppingBag, Users, TrendingDown, Package, Store, Cake, Trophy, BarChart2, Tag, TrendingUp, UserX, ListPlus } from 'lucide-react-native';
+import { User, Mail, LogOut, ChevronRight, Scissors, Users2, CalendarOff, ShoppingBag, Users, TrendingDown, Package, Store, Cake, Trophy, BarChart2, Tag, TrendingUp, UserX, ListPlus, Wallet } from 'lucide-react-native';
 
 export default function ProfileTab() {
   const router = useRouter();
@@ -146,6 +146,19 @@ export default function ProfileTab() {
             <View className="flex-1">
               <Text className="font-rounded text-base text-foreground">服務人員業績</Text>
               <Text className="font-rounded text-xs text-muted-foreground mt-0.5">月度服務次數與收入統計</Text>
+            </View>
+            <ChevronRight size={16} color="#c4a0ae" />
+          </Pressable>
+          <Pressable
+            className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
+            onPress={() => router.push('/(app)/analytics/payroll' as any)}
+          >
+            <View className="w-8 h-8 rounded-full items-center justify-center mr-3" style={{ backgroundColor: '#fef3e2' }}>
+              <Wallet size={16} color="#e8a87c" />
+            </View>
+            <View className="flex-1">
+              <Text className="font-rounded text-base text-foreground">月薪計算</Text>
+              <Text className="font-rounded text-xs text-muted-foreground mt-0.5">階梯抽成、底薪、獎金自動試算與鎖定</Text>
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>

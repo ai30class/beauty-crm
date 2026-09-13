@@ -75,6 +75,7 @@ export default function NewServiceRecordScreen() {
   const [showCoStaff, setShowCoStaff] = useState(false);
   const [coStaffId, setCoStaffId] = useState<string>('');
   const [staffSharePercent, setStaffSharePercent] = useState('50');
+  const [coStaffSharePercent, setCoStaffSharePercent] = useState('50');
 
   // 保養品明細
   const [products, setProducts] = useState<Product[]>([]);
@@ -174,9 +175,20 @@ export default function NewServiceRecordScreen() {
     if (!resolvedCustomerId) { setError('缺少顧客資料'); return; }
     if (paymentMethod === 'package' && !selectedPackageId) { setError('請選擇要使用的套票'); return; }
     const sharePercent = parseFloat(staffSharePercent);
-    if (coStaffId && (isNaN(sharePercent) || sharePercent <= 0 || sharePercent >= 100)) {
-      setError('拆分比例請輸入 1–99 之間的數字');
-      return;
+    const coSharePercent = parseFloat(coStaffSharePercent);
+    if (coStaffId) {
+      if (isNaN(sharePercent) || sharePercent <= 0 || sharePercent >= 100) {
+        setError('主要人員實拿% 請輸入 1–99 之間的數字');
+        return;
+      }
+      if (isNaN(coSharePercent) || coSharePercent <= 0 || coSharePercent >= 100) {
+        setError('協作人員實拿% 請輸入 1–99 之間的數字');
+        return;
+      }
+      if (sharePercent + coSharePercent > 100) {
+        setError('兩人實拿% 相加不能超過 100%');
+        return;
+      }
     }
     setLoading(true);
     try {
@@ -197,6 +209,7 @@ export default function NewServiceRecordScreen() {
         staff_id: selectedStaffId || null,
         co_staff_id: (selectedStaffId && coStaffId) ? coStaffId : null,
         staff_share_percent: (selectedStaffId && coStaffId) ? sharePercent : null,
+        co_staff_share_percent: (selectedStaffId && coStaffId) ? coSharePercent : null,
       });
       // 套票扣款
       if (paymentMethod === 'package' && selectedPackageId) {
@@ -380,7 +393,7 @@ export default function NewServiceRecordScreen() {
                 onPress={() => { setShowCoStaff(true); const first = staffList.find(s => s.id !== selectedStaffId); if (first) setCoStaffId(first.id); }}
               >
                 <Plus size={14} color="#e8789a" />
-                <Text className="font-rounded text-sm font-semibold text-primary">加入第二位協作人員（拆分業績）</Text>
+                <Text className="font-rounded text-sm font-semibold text-primary">加入第二位協作人員（拆分實拿金額）</Text>
               </Pressable>
             ) : (
               <View className="bg-card border border-border rounded-2xl p-4 gap-3">
@@ -411,23 +424,42 @@ export default function NewServiceRecordScreen() {
                     );
                   })}
                 </View>
-                <View>
-                  <Text className="font-rounded text-xs text-muted-foreground mb-1.5">
-                    拆分比例（{staffList.find(s => s.id === selectedStaffId)?.name ?? '主要人員'} 佔比 %，其餘歸協作人員）
-                  </Text>
-                  <View className="flex-row items-center gap-2">
-                    <TextInput
-                      className="bg-background border border-border rounded-xl px-3 font-rounded text-base text-foreground w-20 text-center"
-                      style={{ height: 44 }}
-                      value={staffSharePercent}
-                      onChangeText={setStaffSharePercent}
-                      keyboardType="numeric"
-                      maxLength={3}
-                    />
-                    <Text className="font-rounded text-sm text-muted-foreground">
-                      % ／ 協作人員 {100 - (parseFloat(staffSharePercent) || 0)}%
+                <View className="gap-3">
+                  <View>
+                    <Text className="font-rounded text-xs text-muted-foreground mb-1.5">
+                      {staffList.find(s => s.id === selectedStaffId)?.name ?? '主要人員'} 實拿 %（直接輸入實拿金額佔比，不透過抽成率計算）
                     </Text>
+                    <View className="flex-row items-center gap-2">
+                      <TextInput
+                        className="bg-background border border-border rounded-xl px-3 font-rounded text-base text-foreground w-20 text-center"
+                        style={{ height: 44 }}
+                        value={staffSharePercent}
+                        onChangeText={setStaffSharePercent}
+                        keyboardType="numeric"
+                        maxLength={3}
+                      />
+                      <Text className="font-rounded text-sm text-muted-foreground">%</Text>
+                    </View>
                   </View>
+                  <View>
+                    <Text className="font-rounded text-xs text-muted-foreground mb-1.5">
+                      {staffList.find(s => s.id === coStaffId)?.name ?? '協作人員'} 實拿 %
+                    </Text>
+                    <View className="flex-row items-center gap-2">
+                      <TextInput
+                        className="bg-background border border-border rounded-xl px-3 font-rounded text-base text-foreground w-20 text-center"
+                        style={{ height: 44 }}
+                        value={coStaffSharePercent}
+                        onChangeText={setCoStaffSharePercent}
+                        keyboardType="numeric"
+                        maxLength={3}
+                      />
+                      <Text className="font-rounded text-sm text-muted-foreground">%</Text>
+                    </View>
+                  </View>
+                  <Text className="font-rounded text-xs text-muted-foreground">
+                    店家實拿 {Math.max(0, 100 - (parseFloat(staffSharePercent) || 0) - (parseFloat(coStaffSharePercent) || 0))}%
+                  </Text>
                 </View>
               </View>
             )}

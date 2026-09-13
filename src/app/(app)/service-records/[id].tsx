@@ -111,7 +111,7 @@ export default function ServiceRecordDetailScreen() {
                 <Text className="font-rounded text-xs text-muted-foreground">服務人員</Text>
                 {record.co_staff && record.staff_share_percent != null ? (
                   <Text className="font-rounded text-base font-semibold text-foreground">
-                    {record.staff.name} {record.staff_share_percent}% ・ {record.co_staff.name} {100 - Number(record.staff_share_percent)}%
+                    {record.staff.name} {record.staff_share_percent}% ・ {record.co_staff.name} {record.co_staff_share_percent ?? 0}%
                   </Text>
                 ) : (
                   <Text className="font-rounded text-base font-semibold text-foreground">{record.staff.name}</Text>
