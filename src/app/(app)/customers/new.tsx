@@ -104,18 +104,19 @@ export default function CustomerFormScreen() {
                 : '選擇生日 *'}
             </Text>
           </Pressable>
-          {showDatePicker && (
-            <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden">
-              <DateTimePicker locale="zh-tw"
-                mode="single"
-                date={birthday ?? new Date(1990, 0, 1)}
-                onChange={(params) => {
-                  if (params.date) setBirthday(params.date as Date);
-                  setShowDatePicker(false);
-                }}
-              />
-            </View>
-          )}
+          {/* 用 display 切換顯示、不要條件式掛載/卸載——react-native-ui-datepicker
+              每次重新掛載都要重算日曆格線佈局，偶爾會在掛載當下還沒算完就畫出來，
+              使用者要再點一次才看得到內容。維持掛載、只切換可見度可以避免這個問題。 */}
+          <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden" style={{ display: showDatePicker ? 'flex' : 'none' }}>
+            <DateTimePicker locale="zh-tw"
+              mode="single"
+              date={birthday ?? new Date(1990, 0, 1)}
+              onChange={(params) => {
+                if (params.date) setBirthday(params.date as Date);
+                setShowDatePicker(false);
+              }}
+            />
+          </View>
         </View>
 
         {/* 備註 */}

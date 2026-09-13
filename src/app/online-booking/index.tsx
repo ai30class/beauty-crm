@@ -695,18 +695,19 @@ export default function OnlineBookingScreen() {
                     : '請選擇您的生日'}
                 </Text>
               </Pressable>
-              {showBirthdayPicker && (
-                <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden">
-                  <DateTimePicker locale="zh-tw"
-                    mode="single"
-                    date={customerBirthday ?? new Date(1990, 0, 1)}
-                    onChange={(params) => {
-                      if (params.date) setCustomerBirthday(params.date as Date);
-                      setShowBirthdayPicker(false);
-                    }}
-                  />
-                </View>
-              )}
+              {/* 用 display 切換顯示、不要條件式掛載/卸載——react-native-ui-datepicker
+                  每次重新掛載都要重算日曆格線佈局，偶爾會在掛載當下還沒算完就畫出來，
+                  使用者要再點一次才看得到內容。維持掛載、只切換可見度可以避免這個問題。 */}
+              <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden" style={{ display: showBirthdayPicker ? 'flex' : 'none' }}>
+                <DateTimePicker locale="zh-tw"
+                  mode="single"
+                  date={customerBirthday ?? new Date(1990, 0, 1)}
+                  onChange={(params) => {
+                    if (params.date) setCustomerBirthday(params.date as Date);
+                    setShowBirthdayPicker(false);
+                  }}
+                />
+              </View>
               <Text className="font-rounded text-xs text-muted-foreground mt-1.5 px-1">
                 用於生日優惠提醒，資料安全保存 🔒
               </Text>

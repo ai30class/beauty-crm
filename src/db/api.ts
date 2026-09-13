@@ -7,7 +7,7 @@ import type {
   Holiday, StaffReservedSlot, OnlineOrder, OnlineOrderAddon, Coupon, CustomerCoupon, ShopBlockedSlot,
   MonthlyStats, UnifiedAppointment, ProductSalesRow,
   BirthdayCustomer, CustomerRankRow, StaffPerformanceRow,
-  StaffCommissionTier, StaffBonus, PayrollRecord,
+  StaffCommissionTier, StaffBonus, PayrollRecord, DormantCustomer,
 } from '@/types/types';
 
 // ─── 顧客 ────────────────────────────────────────────────────────────────────

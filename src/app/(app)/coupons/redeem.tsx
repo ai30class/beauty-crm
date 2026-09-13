@@ -164,7 +164,7 @@ export default function RedeemCouponScreen() {
                     <Text className="font-rounded text-base font-semibold text-foreground">{cc.coupon?.name ?? '優惠券'}</Text>
                     <Text className="font-rounded text-xs text-muted-foreground">到期日：{cc.expire_date}</Text>
                     {(cc.coupon?.min_amount ?? 0) > 0 && (
-                      <Text className="font-rounded text-xs text-muted-foreground">最低消費：${cc.coupon.min_amount}</Text>
+                      <Text className="font-rounded text-xs text-muted-foreground">最低消費：${cc.coupon?.min_amount}</Text>
                     )}
                   </Pressable>
                 );
