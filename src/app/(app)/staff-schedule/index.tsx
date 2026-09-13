@@ -357,7 +357,29 @@ export default function StaffScheduleScreen() {
           {loading ? (
             <View className="items-center py-10"><ActivityIndicator color="#e8789a" /></View>
           ) : (
-            <View className="px-5 flex-row" style={{ gap: 2 }}>
+            <>
+              {/* 星期＋日期標題列：獨立一排，不會把下面的格子往下推——時間刻度跟格子本體
+                  才能真正對齊在同一個起點（之前這兩行文字長在每天欄位「裡面」、刻度尺
+                  卻沒有，導致刻度尺整體比格子高了一截，點空白處帶出來的時間跟點擊位置對不上）。 */}
+              <View className="px-5 flex-row mb-1" style={{ gap: 2 }}>
+                <View style={{ width: 28 }} />
+                {weekDays.map(d => {
+                  const dateStr = toDateStr(d);
+                  const weekdayLabels = ['日', '一', '二', '三', '四', '五', '六'];
+                  return (
+                    <View key={dateStr} style={{ flex: 1 }}>
+                      <Text className="font-rounded text-center" style={{ fontSize: 10, color: dateStr === today ? '#e8789a' : '#c4a0ae', fontWeight: dateStr === today ? '700' : '400' }}>
+                        週{weekdayLabels[d.getDay()]}
+                      </Text>
+                      <Text className="font-rounded text-center" style={{ fontSize: 11, color: dateStr === today ? '#e8789a' : '#7a6a70', fontWeight: dateStr === today ? '700' : '400' }}>
+                        {d.getDate()}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+
+              <View className="px-5 flex-row" style={{ gap: 2 }}>
               {/* 時間刻度 */}
               <View style={{ width: 28, height: TRACK_HEIGHT }}>
                 {HOUR_MARKS.map(h => (
@@ -384,15 +406,8 @@ export default function StaffScheduleScreen() {
                 const shopClosed = dayHours?.open === false || holidays.some(h => h.holiday_date === dateStr && !h.staff_id);
                 const dayAppointments = allAppts.filter(a => toApptDateStr(a.appointment_time) === dateStr);
 
-                const weekdayLabels = ['日', '一', '二', '三', '四', '五', '六'];
                 return (
-                  <View key={dateStr} style={{ flex: 1, gap: 4 }}>
-                    <Text className="font-rounded text-center" style={{ fontSize: 10, color: dateStr === today ? '#e8789a' : '#c4a0ae', fontWeight: dateStr === today ? '700' : '400' }}>
-                      週{weekdayLabels[d.getDay()]}
-                    </Text>
-                    <Text className="font-rounded text-center" style={{ fontSize: 11, color: dateStr === today ? '#e8789a' : '#7a6a70', fontWeight: dateStr === today ? '700' : '400' }}>
-                      {d.getDate()}
-                    </Text>
+                  <View key={dateStr} style={{ flex: 1 }}>
                     <View style={{ height: TRACK_HEIGHT, backgroundColor: shopClosed ? '#f5f0f2' : '#fdf1f5', borderRadius: 8, overflow: 'hidden', position: 'relative', flexDirection: 'row', gap: 1 }}>
                       {/* 每 30 分鐘一條刻度線，整點線稍深、半點線較淡 */}
                       {GRID_LINES.map(m => (
@@ -556,6 +571,7 @@ export default function StaffScheduleScreen() {
                 );
               })}
             </View>
+            </>
           )}
 
           {/* 人員色圖例：色塊外框顏色 = 人員，色塊本身顏色只用來區分同時段不同預約 */}
