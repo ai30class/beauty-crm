@@ -1169,17 +1169,24 @@ export async function getMerchantTermsAccepted(): Promise<boolean> {
   return data?.merchant_terms_accepted_version === MERCHANT_TERMS_VERSION;
 }
 
+// 走 Edge Function 而不是直接 update：同意當下的 IP／裝置資訊要當簽署佐證，
+// client-side JS 拿不到自己的公網 IP，一定要伺服器端讀 request header 才行。
 export async function acceptMerchantTerms(): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('未登入');
-  const { error } = await supabase
-    .from('profiles')
-    .update({
-      merchant_terms_accepted_version: MERCHANT_TERMS_VERSION,
-      merchant_terms_accepted_at: new Date().toISOString(),
-    })
-    .eq('id', user.id);
-  if (error) throw error;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('未登入');
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+  const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+  const res = await fetch(`${supabaseUrl}/functions/v1/accept-merchant-terms`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': supabaseAnonKey,
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ version: MERCHANT_TERMS_VERSION }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error ?? '同意條款失敗，請稍後再試');
 }
 
 export async function getShopProfile(): Promise<ShopProfile | null> {
