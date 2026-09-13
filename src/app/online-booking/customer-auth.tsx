@@ -14,6 +14,13 @@ const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 // LIFF ID 不是密鑰（前端本來就要帶著它去初始化 LIFF SDK），可以直接寫在前端
 const LIFF_ID = '2011486633-e6gmiIWk';
 
+// Facebook 一鍵登入的程式碼已經寫好（handleFacebookLogin、facebook-callback.tsx），
+// 但 Supabase 後台的 Facebook provider 還沒開通（要先在 Meta for Developers
+// 建 App 拿 App ID/Secret，見開發部署筆記七十節）——先隱藏這顆按鈕，不要讓
+// 真實顧客看到一個點下去只會出現「provider is not enabled」錯誤的按鈕。
+// 之後 Meta 那邊設定好、Supabase 也開通了，把這個改回 true 就會重新顯示。
+const FACEBOOK_LOGIN_ENABLED = false;
+
 // ownerId 暫存 key：LIFF 跳轉過程中網址列的 query string 常常不可靠（實測發現
 // 光靠 window.location.search 重建有時還是抓不到），改用 localStorage 當最後
 //一道保險——顧客一進頁面看到 ownerId 就先存起來，之後不管網址怎麼跳都讀得到
@@ -448,21 +455,23 @@ export default function CustomerAuthScreen() {
               }
             </Pressable>
 
-            {/* Facebook 一鍵登入 */}
-            <Pressable
-              className="rounded-2xl h-14 items-center justify-center active:opacity-80 flex-row gap-2"
-              style={{ backgroundColor: '#1877F2' }}
-              onPress={handleFacebookLogin}
-              disabled={lineLoading}
-            >
-              {lineLoading && oauthProvider === 'facebook'
-                ? <ActivityIndicator color="#fff" />
-                : <>
-                    <Text style={{ fontSize: 18, fontWeight: '700', color: '#fff' }}>f</Text>
-                    <Text className="font-rounded text-base text-white font-semibold">用 Facebook 一鍵登入</Text>
-                  </>
-              }
-            </Pressable>
+            {/* Facebook 一鍵登入（暫時隱藏，見上方 FACEBOOK_LOGIN_ENABLED 註解） */}
+            {FACEBOOK_LOGIN_ENABLED && (
+              <Pressable
+                className="rounded-2xl h-14 items-center justify-center active:opacity-80 flex-row gap-2"
+                style={{ backgroundColor: '#1877F2' }}
+                onPress={handleFacebookLogin}
+                disabled={lineLoading}
+              >
+                {lineLoading && oauthProvider === 'facebook'
+                  ? <ActivityIndicator color="#fff" />
+                  : <>
+                      <Text style={{ fontSize: 18, fontWeight: '700', color: '#fff' }}>f</Text>
+                      <Text className="font-rounded text-base text-white font-semibold">用 Facebook 一鍵登入</Text>
+                    </>
+                }
+              </Pressable>
+            )}
 
             <View className="flex-row items-center gap-3 my-1">
               <View className="flex-1 h-px bg-border" />
