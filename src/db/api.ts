@@ -190,7 +190,7 @@ export async function getServiceRecordsByMonth(year: number, month: number): Pro
 export async function getAppointments(): Promise<Appointment[]> {
   const { data, error } = await supabase
     .from('appointments')
-    .select('*, customer:customers!customer_id(name, phone)')
+    .select('*, customer:customers!customer_id(name, phone), staff:staff!staff_id(name, color)')
     .order('appointment_time', { ascending: true })
     .limit(200);
   if (error) throw error;
@@ -200,7 +200,7 @@ export async function getAppointments(): Promise<Appointment[]> {
 export async function getAppointmentsByCustomer(customerId: string): Promise<Appointment[]> {
   const { data, error } = await supabase
     .from('appointments')
-    .select('*, customer:customers!customer_id(name, phone)')
+    .select('*, customer:customers!customer_id(name, phone), staff:staff!staff_id(name, color)')
     .eq('customer_id', customerId)
     .order('appointment_time', { ascending: true })
     .limit(50);
@@ -208,7 +208,7 @@ export async function getAppointmentsByCustomer(customerId: string): Promise<App
   return Array.isArray(data) ? data : [];
 }
 
-export async function createAppointment(payload: Omit<Appointment, 'id' | 'owner_id' | 'created_at' | 'customer'>): Promise<void> {
+export async function createAppointment(payload: Omit<Appointment, 'id' | 'owner_id' | 'created_at' | 'customer' | 'staff'>): Promise<void> {
   const { error } = await supabase.from('appointments').insert(payload);
   if (error) throw error;
 }
@@ -216,7 +216,7 @@ export async function createAppointment(payload: Omit<Appointment, 'id' | 'owner
 export async function getAppointmentById(id: string): Promise<Appointment | null> {
   const { data, error } = await supabase
     .from('appointments')
-    .select('*, customer:customers!customer_id(name, phone)')
+    .select('*, customer:customers!customer_id(name, phone), staff:staff!staff_id(name, color)')
     .eq('id', id)
     .single();
   if (error) return null;
@@ -225,7 +225,7 @@ export async function getAppointmentById(id: string): Promise<Appointment | null
 
 export async function updateAppointment(
   id: string,
-  payload: Partial<Pick<Appointment, 'appointment_time' | 'reminder_minutes' | 'notes' | 'status'>>
+  payload: Partial<Pick<Appointment, 'appointment_time' | 'reminder_minutes' | 'notes' | 'status' | 'staff_id'>>
 ): Promise<void> {
   const { error } = await supabase.from('appointments').update(payload).eq('id', id);
   if (error) throw error;
@@ -1065,7 +1065,7 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
   const [appts, orders] = await Promise.all([
     supabase
       .from('appointments')
-      .select('*, customer:customers!customer_id(name, phone)')
+      .select('*, customer:customers!customer_id(name, phone), staff:staff!staff_id(name, color)')
       .order('appointment_time', { ascending: true })
       .limit(500)
       .then(r => r.data ?? []),
@@ -1088,6 +1088,8 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
     total_amount: 0,
     status: a.status,
     notes: a.notes,
+    staff_name: (a.staff as any)?.name,
+    staff_color: (a.staff as any)?.color,
   }));
 
   const online: UnifiedAppointment[] = (orders as OnlineOrder[]).map(o => ({

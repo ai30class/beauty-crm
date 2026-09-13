@@ -7,9 +7,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Search, Clock, AlertTriangle, UserCheck, Cake } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { createAppointment, getCustomers, getCustomerById, getServiceTemplates, updateCustomer } from '@/db/api';
+import { createAppointment, getCustomers, getCustomerById, getServiceTemplates, updateCustomer, getActiveStaff } from '@/db/api';
 import { supabase } from '@/client/supabase';
-import type { Customer, ServiceTemplate } from '@/types/types';
+import type { Customer, ServiceTemplate, Staff } from '@/types/types';
 
 const REMINDER_OPTIONS = [
   { label: '15 分鐘前', value: 15 },
@@ -20,8 +20,12 @@ const REMINDER_OPTIONS = [
 ];
 
 export default function NewAppointmentScreen() {
-  const { customerId: presetCustomerId } = useLocalSearchParams<{ customerId?: string }>();
+  const { customerId: presetCustomerId, date: presetDate, time: presetTime, staffId: presetStaffId } =
+    useLocalSearchParams<{ customerId?: string; date?: string; time?: string; staffId?: string }>();
   const router = useRouter();
+
+  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(presetStaffId ?? null);
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -41,6 +45,11 @@ export default function NewAppointmentScreen() {
   const [selectedTemplate, setSelectedTemplate] = useState<ServiceTemplate | null>(null);
 
   const [apptDate, setApptDate] = useState<Date>(() => {
+    if (presetDate) {
+      const [y, m, day] = presetDate.split('-').map(Number);
+      const [hh, mm] = (presetTime ?? '10:00').split(':').map(Number);
+      return new Date(y, m - 1, day, hh, mm, 0, 0);
+    }
     const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0); return d;
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -54,12 +63,14 @@ export default function NewAppointmentScreen() {
 
   useEffect(() => {
     (async () => {
-      const [all, tpls] = await Promise.all([
+      const [all, tpls, staff] = await Promise.all([
         getCustomers(),
         getServiceTemplates(),
+        getActiveStaff(),
       ]);
       setCustomers(all);
       setTemplates(tpls);
+      setStaffList(staff);
       if (presetCustomerId) {
         const c = await getCustomerById(presetCustomerId);
         if (c) selectCustomer(c);
@@ -187,6 +198,7 @@ export default function NewAppointmentScreen() {
         reminder_minutes: reminderMinutes,
         notes: notes.trim() || null,
         status: 'pending',
+        staff_id: selectedStaffId,
       });
       router.back();
     } catch (e: any) {
@@ -376,6 +388,44 @@ export default function NewAppointmentScreen() {
                     </Pressable>
                   );
                 })}
+              </View>
+            </ScrollView>
+          </View>
+        )}
+
+        {/* 服務人員 */}
+        {staffList.length > 0 && (
+          <View>
+            <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">服務人員（選填）</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
+              <View className="flex-row gap-2 px-1 pb-1">
+                <Pressable
+                  className="rounded-xl px-3 py-2 active:opacity-70"
+                  style={{
+                    backgroundColor: selectedStaffId === null ? '#e8789a' : '#f5e6ec',
+                  }}
+                  onPress={() => setSelectedStaffId(null)}
+                >
+                  <Text className="font-rounded text-sm font-medium" style={{ color: selectedStaffId === null ? '#fff' : '#c4a0ae' }}>
+                    不指定
+                  </Text>
+                </Pressable>
+                {staffList.map(s => (
+                  <Pressable
+                    key={s.id}
+                    className="rounded-xl px-3 py-2 active:opacity-70"
+                    style={{
+                      backgroundColor: selectedStaffId === s.id ? s.color : s.color + '22',
+                      borderWidth: 1.5,
+                      borderColor: selectedStaffId === s.id ? s.color : s.color + '44',
+                    }}
+                    onPress={() => setSelectedStaffId(s.id)}
+                  >
+                    <Text className="font-rounded text-sm font-medium" style={{ color: selectedStaffId === s.id ? '#fff' : s.color }}>
+                      {s.name}
+                    </Text>
+                  </Pressable>
+                ))}
               </View>
             </ScrollView>
           </View>

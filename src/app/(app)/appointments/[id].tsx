@@ -7,8 +7,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Trash2, Clock, CheckCircle, XCircle, Clock3, AlertTriangle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getAppointmentById, updateAppointment, deleteAppointment, incrementCustomerNoShow } from '@/db/api';
-import type { Appointment } from '@/types/types';
+import { getAppointmentById, updateAppointment, deleteAppointment, incrementCustomerNoShow, getActiveStaff } from '@/db/api';
+import type { Appointment, Staff } from '@/types/types';
 
 const REMINDER_OPTIONS = [
   { label: '15 分鐘前', value: 15 },
@@ -42,17 +42,21 @@ export default function AppointmentDetailScreen() {
   const [reminderMinutes, setReminderMinutes] = useState(30);
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<Appointment['status']>('pending');
+  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       if (!id) return;
-      const a = await getAppointmentById(id);
+      const [a, staff] = await Promise.all([getAppointmentById(id), getActiveStaff()]);
+      setStaffList(staff);
       if (a) {
         setAppt(a);
         setApptDate(new Date(a.appointment_time));
         setReminderMinutes(a.reminder_minutes);
         setNotes(a.notes ?? '');
         setStatus(a.status);
+        setSelectedStaffId(a.staff_id);
       }
       setLoading(false);
     })();
@@ -71,6 +75,7 @@ export default function AppointmentDetailScreen() {
         reminder_minutes: reminderMinutes,
         notes: notes.trim() || null,
         status,
+        staff_id: selectedStaffId,
       });
       router.back();
     } catch (e: any) {
@@ -155,6 +160,42 @@ export default function AppointmentDetailScreen() {
             ))}
           </View>
         </View>
+
+        {/* 服務人員 */}
+        {staffList.length > 0 && (
+          <View>
+            <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">服務人員</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
+              <View className="flex-row gap-2 px-1 pb-1">
+                <Pressable
+                  className="rounded-xl px-3 py-2 active:opacity-70"
+                  style={{ backgroundColor: selectedStaffId === null ? '#e8789a' : '#f5e6ec' }}
+                  onPress={() => setSelectedStaffId(null)}
+                >
+                  <Text className="font-rounded text-sm font-medium" style={{ color: selectedStaffId === null ? '#fff' : '#c4a0ae' }}>
+                    不指定
+                  </Text>
+                </Pressable>
+                {staffList.map(s => (
+                  <Pressable
+                    key={s.id}
+                    className="rounded-xl px-3 py-2 active:opacity-70"
+                    style={{
+                      backgroundColor: selectedStaffId === s.id ? s.color : s.color + '22',
+                      borderWidth: 1.5,
+                      borderColor: selectedStaffId === s.id ? s.color : s.color + '44',
+                    }}
+                    onPress={() => setSelectedStaffId(s.id)}
+                  >
+                    <Text className="font-rounded text-sm font-medium" style={{ color: selectedStaffId === s.id ? '#fff' : s.color }}>
+                      {s.name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        )}
 
         {/* 預約日期 */}
         <View>

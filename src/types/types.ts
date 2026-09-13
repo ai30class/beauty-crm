@@ -68,7 +68,9 @@ export interface Appointment {
   notes: string | null;
   status: 'pending' | 'completed' | 'cancelled';
   created_at: string;
+  staff_id: string | null;
   customer?: { name: string; phone: string };
+  staff?: { name: string; color: string } | null;
 }
 
 // 合併手動預約 + 線上預約的統一格式

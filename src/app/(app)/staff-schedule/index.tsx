@@ -132,6 +132,12 @@ const HOUR_MARKS = Array.from({ length: (TIMELINE_END_MIN - TIMELINE_START_MIN) 
 // 每 30 分鐘一條刻度線（含整點），整點另外顯示數字，半點只畫線不顯示文字
 const GRID_LINES = Array.from({ length: (TIMELINE_END_MIN - TIMELINE_START_MIN) / 30 + 1 }, (_, i) => TIMELINE_START_MIN + i * 30);
 
+// 色塊顏色只用來區分「同一位人員當天的不同預約」，跟人員本身的識別色（外框）是兩件事——
+// 同一人員背靠背兩筆預約如果都用人員色，會黏成一塊看不出是兩個人
+const APPT_BLOCK_COLORS = ['#e8789a', '#4a6cf7', '#2ea87e', '#e8a000', '#a78bfa', '#22b8c0'];
+// 空檔可點的時段（整點為單位，比 30 分鐘刻度大方便點擊；實際時間可在建立畫面微調）
+const TAP_SLOT_HOURS = HOUR_MARKS.slice(0, -1);
+
 // ── 主頁面 ────────────────────────────────────────────────────────────────────
 export default function StaffScheduleScreen() {
   const router = useRouter();
@@ -349,15 +355,44 @@ export default function StaffScheduleScreen() {
                         // 全部模式：一人一條細軌道，不重疊混色
                         staffList.map(s => {
                           const staffOff = holidays.some(h => h.holiday_date === dateStr && h.staff_id === s.id);
+                          const staffDayAppts = dayAppointments.filter(a => a.staff_name === s.name);
                           return (
                             <View key={s.id} style={{ flex: 1, height: '100%', position: 'relative' }}>
-                              {staffOff ? null : dayAppointments.filter(a => a.staff_name === s.name).map(a => {
+                              {/* 空檔可點：整點分段，點了帶著日期/時間/人員直接去新增預約 */}
+                              {!staffOff && TAP_SLOT_HOURS.map(hr => {
+                                const top = ((hr * 60 - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
+                                const slotH = (60 / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
+                                const timeStr = `${String(hr).padStart(2, '0')}:00`;
+                                return (
+                                  <Pressable
+                                    key={`slot-${hr}`}
+                                    style={{ position: 'absolute', left: 0, right: 0, top, height: slotH }}
+                                    onPress={() => router.push(`/(app)/appointments/new?date=${dateStr}&time=${timeStr}&staffId=${s.id}` as any)}
+                                  />
+                                );
+                              })}
+                              {staffOff ? null : staffDayAppts.map((a, idx) => {
                                 const startMin = Math.max(timeToMinutes(a.appointment_time), TIMELINE_START_MIN);
                                 const endMin = Math.min(startMin + (a.duration_minutes || 30), TIMELINE_END_MIN);
                                 const top = ((startMin - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
                                 const h = Math.max(((endMin - startMin) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT, 4);
                                 return (
-                                  <View key={a.id} style={{ position: 'absolute', left: 1, right: 1, top, height: h, backgroundColor: s.color, borderRadius: 3 }} />
+                                  <Pressable
+                                    key={a.id}
+                                    style={({ pressed }) => ({
+                                      position: 'absolute', left: 1, right: 1, top, height: h,
+                                      backgroundColor: APPT_BLOCK_COLORS[idx % APPT_BLOCK_COLORS.length],
+                                      borderRadius: 3, borderWidth: 1.5, borderColor: s.color,
+                                      opacity: pressed ? 0.7 : 1,
+                                    })}
+                                    onPress={() => {
+                                      if (a.source === 'manual') {
+                                        router.push(`/(app)/appointments/${a.id.replace('manual-', '')}` as any);
+                                      } else {
+                                        router.push('/(app)/online-orders' as any);
+                                      }
+                                    }}
+                                  />
                                 );
                               })}
                             </View>
@@ -373,15 +408,43 @@ export default function StaffScheduleScreen() {
                               <Text className="font-rounded" style={{ position: 'absolute', top: '46%', left: 0, right: 0, textAlign: 'center', fontSize: 10, color: '#c4a0ae' }}>休</Text>
                             ) : null;
                           }
+                          const staffDayAppts = dayAppointments.filter(a => a.staff_name === staff.name);
                           return (
                             <View style={{ flex: 1, height: '100%', position: 'relative' }}>
-                              {dayAppointments.filter(a => a.staff_name === staff.name).map(a => {
+                              {TAP_SLOT_HOURS.map(hr => {
+                                const top = ((hr * 60 - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
+                                const slotH = (60 / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
+                                const timeStr = `${String(hr).padStart(2, '0')}:00`;
+                                return (
+                                  <Pressable
+                                    key={`slot-${hr}`}
+                                    style={{ position: 'absolute', left: 0, right: 0, top, height: slotH }}
+                                    onPress={() => router.push(`/(app)/appointments/new?date=${dateStr}&time=${timeStr}&staffId=${staff.id}` as any)}
+                                  />
+                                );
+                              })}
+                              {staffDayAppts.map((a, idx) => {
                                 const startMin = Math.max(timeToMinutes(a.appointment_time), TIMELINE_START_MIN);
                                 const endMin = Math.min(startMin + (a.duration_minutes || 30), TIMELINE_END_MIN);
                                 const top = ((startMin - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
                                 const h = Math.max(((endMin - startMin) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT, 4);
                                 return (
-                                  <View key={a.id} style={{ position: 'absolute', left: 2, right: 2, top, height: h, backgroundColor: staff.color, borderRadius: 4 }} />
+                                  <Pressable
+                                    key={a.id}
+                                    style={({ pressed }) => ({
+                                      position: 'absolute', left: 2, right: 2, top, height: h,
+                                      backgroundColor: APPT_BLOCK_COLORS[idx % APPT_BLOCK_COLORS.length],
+                                      borderRadius: 4, borderWidth: 1.5, borderColor: staff.color,
+                                      opacity: pressed ? 0.7 : 1,
+                                    })}
+                                    onPress={() => {
+                                      if (a.source === 'manual') {
+                                        router.push(`/(app)/appointments/${a.id.replace('manual-', '')}` as any);
+                                      } else {
+                                        router.push('/(app)/online-orders' as any);
+                                      }
+                                    }}
+                                  />
                                 );
                               })}
                             </View>
@@ -395,17 +458,20 @@ export default function StaffScheduleScreen() {
             </View>
           )}
 
-          {/* 人員色圖例 */}
+          {/* 人員色圖例：色塊外框顏色 = 人員，色塊本身顏色只用來區分同時段不同預約 */}
           {selectedStaffId === null && staffList.length > 0 && (
             <View className="flex-row flex-wrap gap-3 px-5 mt-4">
               {staffList.map(s => (
                 <View key={s.id} className="flex-row items-center gap-1.5">
-                  <View className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                  <View className="w-2.5 h-2.5 rounded-full border-2" style={{ borderColor: s.color, backgroundColor: 'transparent' }} />
                   <Text className="font-rounded text-xs text-muted-foreground">{s.name}</Text>
                 </View>
               ))}
             </View>
           )}
+          <Text className="font-rounded text-xs text-muted-foreground px-5 mt-2">
+            💡 點色塊看預約詳情並微調，點空白處直接排新預約
+          </Text>
         </ScrollView>
       ) : (
       <ScrollView className="flex-1" contentContainerClassName="pb-10">
