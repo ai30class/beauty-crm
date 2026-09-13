@@ -182,18 +182,31 @@ export default function OnlineBookingScreen() {
   }, [ownerId, authChecked]);
 
   // 回頭客辨識：已登入且這個帳號在這家店留過資料的話，直接帶出來，
-  // 不用每次都重打一次姓名/電話/生日
+  // 不用每次都重打一次姓名/電話/生日。
+  // 剛登入完馬上執行這個查詢時，Supabase client 的登入憑證可能還沒完全
+  // 生效（跟下面服務項目載入那段是同一個已知的時機問題），RLS 用
+  // customer_user_id = auth.uid() 比對會因為 auth.uid() 還沒就緒而查不到，
+  // 沒有重試的話就直接放棄、顧客只好重填一次表單。補上跟服務項目載入
+  // 一樣的重試機制。
   useEffect(() => {
     if (!ownerId || !customerUserId) return;
+    let cancelled = false;
     (async () => {
-      const profile = await getMyCustomerProfile(ownerId).catch(() => null);
-      if (!profile) return;
-      setCustomerName(profile.name);
-      setCustomerPhone(profile.phone);
-      if (profile.birthday) setCustomerBirthday(new Date(`${profile.birthday}T12:00:00`));
-      setIsRegisteredCustomer(true);
-      setStep(s => (s === 'identity' ? 'service' : s));
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const profile = await getMyCustomerProfile(ownerId).catch(() => null);
+        if (cancelled) return;
+        if (profile) {
+          setCustomerName(profile.name);
+          setCustomerPhone(profile.phone);
+          if (profile.birthday) setCustomerBirthday(new Date(`${profile.birthday}T12:00:00`));
+          setIsRegisteredCustomer(true);
+          setStep(s => (s === 'identity' ? 'service' : s));
+          return;
+        }
+        if (attempt < 2) await new Promise(r => setTimeout(r, 800));
+      }
     })();
+    return () => { cancelled = true; };
   }, [ownerId, customerUserId]);
 
   // 日期/人員/服務改變時重新撈時段
