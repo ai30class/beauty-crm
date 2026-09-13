@@ -178,6 +178,18 @@ export interface Holiday {
   created_at: string;
 }
 
+// 人員預留時間：週排班表點空白處可直接標記時段已佔用，不綁定顧客／預約
+export interface StaffReservedSlot {
+  id: string;
+  owner_id: string;
+  staff_id: string;
+  reserved_date: string; // "YYYY-MM-DD"
+  start_time: string; // "HH:MM"
+  end_time: string; // "HH:MM"
+  label: string;
+  created_at: string;
+}
+
 export type OnlineOrderStatus =
   | 'pending_payment' | 'pending_transfer_confirm' | 'paid' | 'confirmed'
   | 'completed' | 'cancelled' | 'refunded';

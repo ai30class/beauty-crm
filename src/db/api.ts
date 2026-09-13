@@ -4,7 +4,7 @@ import type {
   ServicePackage, PackageTransaction, Staff, TimeSlot, ShopProfile,
   ShopPaymentSettings, WaitlistEntry, WaitlistStatus,
   BusinessHours, Expense, Product, ProductUsage, RestockLog,
-  Holiday, OnlineOrder, OnlineOrderAddon, Coupon, CustomerCoupon, ShopBlockedSlot,
+  Holiday, StaffReservedSlot, OnlineOrder, OnlineOrderAddon, Coupon, CustomerCoupon, ShopBlockedSlot,
   MonthlyStats, UnifiedAppointment, ProductSalesRow,
   BirthdayCustomer, CustomerRankRow, StaffPerformanceRow,
 } from '@/types/types';
@@ -563,6 +563,30 @@ export async function getHolidays(year: number, month: number): Promise<Holiday[
     .order('holiday_date');
   if (error) throw error;
   return Array.isArray(data) ? data : [];
+}
+
+// ─── 人員預留時間（週排班表點空白處直接標記時段已佔用，不綁定顧客）──────────────────
+export async function getStaffReservedSlots(fromDate: string, toDate: string): Promise<StaffReservedSlot[]> {
+  const { data, error } = await supabase
+    .from('staff_reserved_slots')
+    .select('*')
+    .gte('reserved_date', fromDate)
+    .lte('reserved_date', toDate)
+    .order('start_time');
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createStaffReservedSlot(
+  payload: Omit<StaffReservedSlot, 'id' | 'owner_id' | 'created_at'>
+): Promise<void> {
+  const { error } = await supabase.from('staff_reserved_slots').insert(payload);
+  if (error) throw error;
+}
+
+export async function deleteStaffReservedSlot(id: string): Promise<void> {
+  const { error } = await supabase.from('staff_reserved_slots').delete().eq('id', id);
+  if (error) throw error;
 }
 
 export async function getAllHolidays(): Promise<Holiday[]> {

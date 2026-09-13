@@ -1,15 +1,18 @@
 import { useState, useCallback } from 'react';
 import {
-  View, Text, ScrollView, Pressable, ActivityIndicator,
+  View, Text, ScrollView, Pressable, ActivityIndicator, Modal, TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import {
-  ArrowLeft, CalendarDays, Clock, User, Globe, ChevronLeft, ChevronRight, Users,
+  ArrowLeft, CalendarDays, Clock, User, Globe, ChevronLeft, ChevronRight, Users, CalendarPlus, Coffee, Trash2,
 } from 'lucide-react-native';
-import { getMergedAppointments, getActiveStaff, getShopProfile, getHolidays } from '@/db/api';
-import type { UnifiedAppointment, Staff, BusinessHours, Holiday } from '@/types/types';
+import {
+  getMergedAppointments, getActiveStaff, getShopProfile, getHolidays,
+  getStaffReservedSlots, createStaffReservedSlot, deleteStaffReservedSlot,
+} from '@/db/api';
+import type { UnifiedAppointment, Staff, BusinessHours, Holiday, StaffReservedSlot } from '@/types/types';
 
 const DAY_KEYS: (keyof BusinessHours)[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -49,6 +52,13 @@ function addDays(d: Date, n: number): Date {
 function timeToMinutes(iso: string) {
   const d = new Date(iso);
   return d.getHours() * 60 + d.getMinutes();
+}
+function hhmmToMinutes(t: string) {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+function minutesToHHMM(min: number) {
+  return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 }
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -135,8 +145,10 @@ const GRID_LINES = Array.from({ length: (TIMELINE_END_MIN - TIMELINE_START_MIN) 
 // 色塊顏色只用來區分「同一位人員當天的不同預約」，跟人員本身的識別色（外框）是兩件事——
 // 同一人員背靠背兩筆預約如果都用人員色，會黏成一塊看不出是兩個人
 const APPT_BLOCK_COLORS = ['#e8789a', '#4a6cf7', '#2ea87e', '#e8a000', '#a78bfa', '#22b8c0'];
-// 空檔可點的時段（整點為單位，比 30 分鐘刻度大方便點擊；實際時間可在建立畫面微調）
-const TAP_SLOT_HOURS = HOUR_MARKS.slice(0, -1);
+// 空檔可點的時段：跟畫面上的 30 分鐘刻度線對齊
+const TAP_SLOT_MINUTES = GRID_LINES.slice(0, -1);
+// 預留時間的快速標籤
+const RESERVE_LABEL_PRESETS = ['午休', '外出', '教育訓練'];
 
 // ── 主頁面 ────────────────────────────────────────────────────────────────────
 export default function StaffScheduleScreen() {
@@ -148,12 +160,21 @@ export default function StaffScheduleScreen() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [businessHours, setBusinessHours] = useState<BusinessHours | null>(null);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [reservedSlots, setReservedSlots] = useState<StaffReservedSlot[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null); // null = 全部
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [weekStart, setWeekStart] = useState<Date>(() => getMonday(new Date()));
+
+  // 點空白處：先彈「排新預約／預留時間」選單，選預留時間才接著問標籤
+  const [slotPicker, setSlotPicker] = useState<{ dateStr: string; time: string; staffId: string; staffName: string } | null>(null);
+  const [reserveTarget, setReserveTarget] = useState<{ dateStr: string; time: string; staffId: string; staffName: string } | null>(null);
+  const [reserveLabel, setReserveLabel] = useState('');
+  const [savingReserve, setSavingReserve] = useState(false);
+  const [deleteReserveTarget, setDeleteReserveTarget] = useState<StaffReservedSlot | null>(null);
+  const [deletingReserve, setDeletingReserve] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -195,6 +216,45 @@ export default function StaffScheduleScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { loadHolidays(weekStart); }, [weekStart, loadHolidays]));
+
+  const loadReservedSlots = useCallback(async (start: Date) => {
+    const slots = await getStaffReservedSlots(toDateStr(start), toDateStr(addDays(start, 6)));
+    setReservedSlots(slots);
+  }, []);
+
+  useFocusEffect(useCallback(() => { loadReservedSlots(weekStart); }, [weekStart, loadReservedSlots]));
+
+  const handleCreateReserve = async () => {
+    if (!reserveTarget) return;
+    setSavingReserve(true);
+    try {
+      const endMin = Math.min(hhmmToMinutes(reserveTarget.time) + 30, TIMELINE_END_MIN);
+      await createStaffReservedSlot({
+        staff_id: reserveTarget.staffId,
+        reserved_date: reserveTarget.dateStr,
+        start_time: reserveTarget.time,
+        end_time: minutesToHHMM(endMin),
+        label: reserveLabel.trim() || '預留時間',
+      });
+      setReserveTarget(null);
+      setReserveLabel('');
+      await loadReservedSlots(weekStart);
+    } finally {
+      setSavingReserve(false);
+    }
+  };
+
+  const handleDeleteReserve = async () => {
+    if (!deleteReserveTarget) return;
+    setDeletingReserve(true);
+    try {
+      await deleteStaffReservedSlot(deleteReserveTarget.id);
+      setDeleteReserveTarget(null);
+      await loadReservedSlots(weekStart);
+    } finally {
+      setDeletingReserve(false);
+    }
+  };
 
   // 有預約的日期集合（月曆用）
   const markedDates = new Set(allAppts.map(a => toApptDateStr(a.appointment_time)));
@@ -356,19 +416,39 @@ export default function StaffScheduleScreen() {
                         staffList.map(s => {
                           const staffOff = holidays.some(h => h.holiday_date === dateStr && h.staff_id === s.id);
                           const staffDayAppts = dayAppointments.filter(a => a.staff_name === s.name);
+                          const staffDayReserved = reservedSlots.filter(r => r.staff_id === s.id && r.reserved_date === dateStr);
                           return (
                             <View key={s.id} style={{ flex: 1, height: '100%', position: 'relative' }}>
-                              {/* 空檔可點：整點分段，點了帶著日期/時間/人員直接去新增預約 */}
-                              {!staffOff && TAP_SLOT_HOURS.map(hr => {
-                                const top = ((hr * 60 - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
-                                const slotH = (60 / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
-                                const timeStr = `${String(hr).padStart(2, '0')}:00`;
+                              {/* 空檔可點：30 分鐘一格，點了彈「排新預約／預留時間」選單 */}
+                              {!staffOff && TAP_SLOT_MINUTES.map(min => {
+                                const top = ((min - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
+                                const slotH = (30 / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
+                                const timeStr = minutesToHHMM(min);
                                 return (
                                   <Pressable
-                                    key={`slot-${hr}`}
+                                    key={`slot-${min}`}
                                     style={{ position: 'absolute', left: 0, right: 0, top, height: slotH }}
-                                    onPress={() => router.push(`/(app)/appointments/new?date=${dateStr}&time=${timeStr}&staffId=${s.id}` as any)}
+                                    onPress={() => setSlotPicker({ dateStr, time: timeStr, staffId: s.id, staffName: s.name })}
                                   />
+                                );
+                              })}
+                              {!staffOff && staffDayReserved.map(r => {
+                                const startMin = Math.max(hhmmToMinutes(r.start_time), TIMELINE_START_MIN);
+                                const endMin = Math.min(hhmmToMinutes(r.end_time), TIMELINE_END_MIN);
+                                const top = ((startMin - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
+                                const h = Math.max(((endMin - startMin) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT, 4);
+                                return (
+                                  <Pressable
+                                    key={r.id}
+                                    style={({ pressed }) => ({
+                                      position: 'absolute', left: 1, right: 1, top, height: h,
+                                      backgroundColor: '#e5dde0', borderRadius: 3, borderWidth: 1, borderColor: '#c4a0ae',
+                                      opacity: pressed ? 0.7 : 1, overflow: 'hidden',
+                                    })}
+                                    onPress={() => setDeleteReserveTarget(r)}
+                                  >
+                                    <Text numberOfLines={1} className="font-rounded" style={{ fontSize: 8, color: '#7a6a70', paddingHorizontal: 2 }}>{r.label}</Text>
+                                  </Pressable>
                                 );
                               })}
                               {staffOff ? null : staffDayAppts.map((a, idx) => {
@@ -409,18 +489,38 @@ export default function StaffScheduleScreen() {
                             ) : null;
                           }
                           const staffDayAppts = dayAppointments.filter(a => a.staff_name === staff.name);
+                          const staffDayReserved = reservedSlots.filter(r => r.staff_id === staff.id && r.reserved_date === dateStr);
                           return (
                             <View style={{ flex: 1, height: '100%', position: 'relative' }}>
-                              {TAP_SLOT_HOURS.map(hr => {
-                                const top = ((hr * 60 - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
-                                const slotH = (60 / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
-                                const timeStr = `${String(hr).padStart(2, '0')}:00`;
+                              {TAP_SLOT_MINUTES.map(min => {
+                                const top = ((min - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
+                                const slotH = (30 / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
+                                const timeStr = minutesToHHMM(min);
                                 return (
                                   <Pressable
-                                    key={`slot-${hr}`}
+                                    key={`slot-${min}`}
                                     style={{ position: 'absolute', left: 0, right: 0, top, height: slotH }}
-                                    onPress={() => router.push(`/(app)/appointments/new?date=${dateStr}&time=${timeStr}&staffId=${staff.id}` as any)}
+                                    onPress={() => setSlotPicker({ dateStr, time: timeStr, staffId: staff.id, staffName: staff.name })}
                                   />
+                                );
+                              })}
+                              {staffDayReserved.map(r => {
+                                const startMin = Math.max(hhmmToMinutes(r.start_time), TIMELINE_START_MIN);
+                                const endMin = Math.min(hhmmToMinutes(r.end_time), TIMELINE_END_MIN);
+                                const top = ((startMin - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
+                                const h = Math.max(((endMin - startMin) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT, 4);
+                                return (
+                                  <Pressable
+                                    key={r.id}
+                                    style={({ pressed }) => ({
+                                      position: 'absolute', left: 2, right: 2, top, height: h,
+                                      backgroundColor: '#e5dde0', borderRadius: 4, borderWidth: 1, borderColor: '#c4a0ae',
+                                      opacity: pressed ? 0.7 : 1, overflow: 'hidden',
+                                    })}
+                                    onPress={() => setDeleteReserveTarget(r)}
+                                  >
+                                    <Text numberOfLines={1} className="font-rounded" style={{ fontSize: 9, color: '#7a6a70', paddingHorizontal: 3 }}>{r.label}</Text>
+                                  </Pressable>
                                 );
                               })}
                               {staffDayAppts.map((a, idx) => {
@@ -470,7 +570,7 @@ export default function StaffScheduleScreen() {
             </View>
           )}
           <Text className="font-rounded text-xs text-muted-foreground px-5 mt-2">
-            💡 點色塊看預約詳情並微調，點空白處直接排新預約
+            💡 點色塊看預約詳情並微調，點空白處可排新預約或標記預留時間
           </Text>
         </ScrollView>
       ) : (
@@ -589,6 +689,121 @@ export default function StaffScheduleScreen() {
         )}
       </ScrollView>
       )}
+
+      {/* 點空白處：先選「排新預約」還是「預留時間」 */}
+      <Modal visible={!!slotPicker} transparent animationType="fade" onRequestClose={() => setSlotPicker(null)}>
+        <Pressable className="flex-1 bg-black/40 items-center justify-center px-8" onPress={() => setSlotPicker(null)}>
+          <Pressable className="bg-card w-full rounded-3xl p-6 gap-3" onPress={() => {}}
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 10 }}>
+            <Text className="font-rounded text-base font-bold text-foreground text-center">
+              {slotPicker ? `${slotPicker.staffName} · ${slotPicker.time}` : ''}
+            </Text>
+            <Pressable
+              className="flex-row items-center justify-center gap-2 rounded-2xl active:opacity-80"
+              style={{ height: 52, backgroundColor: '#e8789a' }}
+              onPress={() => {
+                if (!slotPicker) return;
+                router.push(`/(app)/appointments/new?date=${slotPicker.dateStr}&time=${slotPicker.time}&staffId=${slotPicker.staffId}` as any);
+                setSlotPicker(null);
+              }}
+            >
+              <CalendarPlus size={18} color="#fff" />
+              <Text className="font-rounded text-base font-semibold text-white">排新預約</Text>
+            </Pressable>
+            <Pressable
+              className="flex-row items-center justify-center gap-2 rounded-2xl active:opacity-70"
+              style={{ height: 52, backgroundColor: '#f5e6ec' }}
+              onPress={() => {
+                if (!slotPicker) return;
+                setReserveTarget(slotPicker);
+                setReserveLabel('');
+                setSlotPicker(null);
+              }}
+            >
+              <Coffee size={18} color="#c4667e" />
+              <Text className="font-rounded text-base font-semibold" style={{ color: '#c4667e' }}>預留時間</Text>
+            </Pressable>
+            <Pressable className="items-center py-1 active:opacity-70" onPress={() => setSlotPicker(null)}>
+              <Text className="font-rounded text-sm text-muted-foreground">取消</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* 預留時間：填標籤 */}
+      <Modal visible={!!reserveTarget} transparent animationType="fade" onRequestClose={() => setReserveTarget(null)}>
+        <Pressable className="flex-1 bg-black/40 items-center justify-center px-8" onPress={() => setReserveTarget(null)}>
+          <Pressable className="bg-card w-full rounded-3xl p-6 gap-4" onPress={() => {}}
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 10 }}>
+            <Text className="font-rounded text-base font-bold text-foreground text-center">
+              {reserveTarget ? `${reserveTarget.staffName} · ${reserveTarget.dateStr} ${reserveTarget.time}` : ''}
+            </Text>
+            <View className="flex-row flex-wrap gap-2 justify-center">
+              {RESERVE_LABEL_PRESETS.map(p => (
+                <Pressable
+                  key={p}
+                  className="px-3.5 py-1.5 rounded-full active:opacity-70"
+                  style={{ backgroundColor: reserveLabel === p ? '#e8789a' : '#f5e6ec' }}
+                  onPress={() => setReserveLabel(p)}
+                >
+                  <Text className="font-rounded text-sm font-medium" style={{ color: reserveLabel === p ? '#fff' : '#c4a0ae' }}>{p}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput
+              className="bg-background border border-border rounded-2xl px-4 font-rounded text-base text-foreground"
+              style={{ height: 48 }}
+              placeholder="標籤／原因（例如：午休）"
+              placeholderTextColor="#c4a0ae"
+              value={reserveLabel}
+              onChangeText={setReserveLabel}
+            />
+            <Pressable
+              className="items-center justify-center rounded-2xl active:opacity-80"
+              style={{ height: 52, backgroundColor: '#e8789a' }}
+              onPress={handleCreateReserve}
+              disabled={savingReserve}
+            >
+              {savingReserve ? <ActivityIndicator color="#fff" /> : <Text className="font-rounded text-base font-semibold text-white">確認預留</Text>}
+            </Pressable>
+            <Pressable className="items-center py-1 active:opacity-70" onPress={() => setReserveTarget(null)}>
+              <Text className="font-rounded text-sm text-muted-foreground">取消</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* 刪除預留時間確認 */}
+      <Modal visible={!!deleteReserveTarget} transparent animationType="fade" onRequestClose={() => setDeleteReserveTarget(null)}>
+        <Pressable className="flex-1 bg-black/40 items-center justify-center px-8" onPress={() => setDeleteReserveTarget(null)}>
+          <Pressable className="bg-card w-full rounded-3xl p-6 gap-4" onPress={() => {}}
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 10 }}>
+            <View className="items-center gap-3">
+              <View className="w-16 h-16 rounded-full items-center justify-center" style={{ backgroundColor: '#fff0f3' }}>
+                <Trash2 size={32} color="#e85454" />
+              </View>
+              <Text className="font-rounded text-lg font-bold text-foreground">
+                {deleteReserveTarget ? `刪除「${deleteReserveTarget.label}」？` : ''}
+              </Text>
+              <Text className="font-rounded text-sm text-muted-foreground text-center">
+                {deleteReserveTarget ? `${deleteReserveTarget.reserved_date} ${deleteReserveTarget.start_time}–${deleteReserveTarget.end_time}` : ''}
+              </Text>
+            </View>
+            <View className="flex-row gap-3">
+              <Pressable className="flex-1 h-12 rounded-2xl border border-border items-center justify-center active:opacity-70"
+                onPress={() => setDeleteReserveTarget(null)}>
+                <Text className="font-rounded text-sm font-semibold text-muted-foreground">取消</Text>
+              </Pressable>
+              <Pressable className="flex-1 h-12 rounded-2xl items-center justify-center active:opacity-80"
+                style={{ backgroundColor: '#e85454' }}
+                disabled={deletingReserve}
+                onPress={handleDeleteReserve}>
+                {deletingReserve ? <ActivityIndicator color="#fff" size="small" /> : <Text className="font-rounded text-sm font-semibold text-white">確認刪除</Text>}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

@@ -38,6 +38,11 @@ export default function AppointmentDetailScreen() {
 
   // 編輯狀態
   const [apptDate, setApptDate] = useState<Date>(new Date());
+  // 時間輸入框用自己的字串 state，不要每次都從 apptDate 補零重新格式化再塞回 value——
+  // 那樣打字打到一半（例如想打「14」，打完「1」後欄位被強制補成「01」）游標行為
+  // 會很奇怪，兩位數幾乎打不出來。只在真正解析出合法數字時才回寫 apptDate。
+  const [hourText, setHourText] = useState('00');
+  const [minuteText, setMinuteText] = useState('00');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [reminderMinutes, setReminderMinutes] = useState(30);
   const [notes, setNotes] = useState('');
@@ -52,7 +57,10 @@ export default function AppointmentDetailScreen() {
       setStaffList(staff);
       if (a) {
         setAppt(a);
-        setApptDate(new Date(a.appointment_time));
+        const d = new Date(a.appointment_time);
+        setApptDate(d);
+        setHourText(String(d.getHours()).padStart(2, '0'));
+        setMinuteText(String(d.getMinutes()).padStart(2, '0'));
         setReminderMinutes(a.reminder_minutes);
         setNotes(a.notes ?? '');
         setStatus(a.status);
@@ -233,12 +241,16 @@ export default function AppointmentDetailScreen() {
               className="font-rounded text-base text-foreground w-14 text-center"
               placeholder="HH"
               placeholderTextColor="#c4a0ae"
-              value={String(apptDate.getHours()).padStart(2, '0')}
+              value={hourText}
               onChangeText={(v) => {
-                const h = parseInt(v, 10);
-                if (!isNaN(h) && h >= 0 && h <= 23)
-                  setApptDate(new Date(apptDate.getFullYear(), apptDate.getMonth(), apptDate.getDate(), h, apptDate.getMinutes()));
+                const digits = v.replace(/\D/g, '').slice(0, 2);
+                setHourText(digits);
+                const h = parseInt(digits, 10);
+                if (!isNaN(h) && h >= 0 && h <= 23) {
+                  setApptDate(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate(), h, prev.getMinutes()));
+                }
               }}
+              onBlur={() => setHourText(String(apptDate.getHours()).padStart(2, '0'))}
               keyboardType="numeric"
               maxLength={2}
             />
@@ -247,12 +259,16 @@ export default function AppointmentDetailScreen() {
               className="font-rounded text-base text-foreground w-14 text-center"
               placeholder="MM"
               placeholderTextColor="#c4a0ae"
-              value={String(apptDate.getMinutes()).padStart(2, '0')}
+              value={minuteText}
               onChangeText={(v) => {
-                const m = parseInt(v, 10);
-                if (!isNaN(m) && m >= 0 && m <= 59)
-                  setApptDate(new Date(apptDate.getFullYear(), apptDate.getMonth(), apptDate.getDate(), apptDate.getHours(), m));
+                const digits = v.replace(/\D/g, '').slice(0, 2);
+                setMinuteText(digits);
+                const m = parseInt(digits, 10);
+                if (!isNaN(m) && m >= 0 && m <= 59) {
+                  setApptDate(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate(), prev.getHours(), m));
+                }
               }}
+              onBlur={() => setMinuteText(String(apptDate.getMinutes()).padStart(2, '0'))}
               keyboardType="numeric"
               maxLength={2}
             />
