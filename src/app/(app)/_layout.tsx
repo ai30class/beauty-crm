@@ -54,7 +54,15 @@ function useTermsGate(enabled: boolean) {
     checked.current = true;
     (async () => {
       try {
-        const ok = await getMerchantTermsAccepted();
+        // 剛登入或整頁重新整理時，Supabase client 的登入憑證可能還沒完全生效，
+        // RLS 查 profiles 會撲空而誤判成「沒同意」——跟 online-booking/index.tsx
+        // 的 getMyCustomerProfile 是同一個已知時機問題，補上同樣的重試機制，
+        // 避免商家明明簽過了卻被重複攔下來簽第二次。
+        let ok = false;
+        for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+          ok = await getMerchantTermsAccepted().catch(() => false);
+          if (!ok && attempt < 2) await new Promise(r => setTimeout(r, 800));
+        }
         setAccepted(ok);
         if (!ok && !pathname.includes('/accept-terms')) {
           router.replace('/(app)/accept-terms' as any);
