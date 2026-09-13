@@ -7,14 +7,17 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Heart, Mail, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
 import { supabase } from '@/client/supabase';
-import { acceptMerchantTerms } from '@/db/api';
+import { isFreshlyCreatedAuthUser } from '@/db/api';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 
 // 必要：讓 OAuth 回呼可以關閉瀏覽器
 WebBrowser.maybeCompleteAuthSession();
 
-type Mode = 'login' | 'register' | 'forgot';
+// 商家帳號審核機制：關掉自助註冊（原本這裡有登入/註冊切換頁籤，任何人填
+// 表單就能直接變商家帳號），改成邀請制——想加入的人填 /join-request 申請表單，
+// Emma 手動審核、手動建帳號。這個頁面現在只剩登入／忘記密碼，不再有 signUp。
+type Mode = 'login' | 'forgot';
 
 export default function SignIn() {
   const router = useRouter();
@@ -24,7 +27,6 @@ export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [agreed, setAgreed] = useState(false);
   const [resetSent, setResetSent] = useState(false);
 
   const handleSubmit = async () => {
@@ -52,29 +54,14 @@ export default function SignIn() {
     }
 
     if (!password.trim() || password.length < 6) { setError('密碼至少 6 位'); return; }
-    if (mode === 'register' && !agreed) { setError('請先同意用戶協議與隱私政策'); return; }
 
     setLoading(true);
     try {
-      if (mode === 'login') {
-        const { error: e } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-        if (e) { setError(e.message); return; }
-      } else {
-        const { data, error: e } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-        });
-        if (e) { setError(e.message); return; }
-        // 有 session 才代表信箱驗證非強制、已直接登入——這裡先記一次同意，
-        // 之後 (app)/_layout.tsx 的商家條款關卡就不會再攔一次；如果專案改成
-        // 強制信箱驗證、這裡沒有 session，那個關卡會在驗證完登入後接手補問。
-        if (data.session) {
-          await acceptMerchantTerms().catch(() => { /* 記錄失敗不擋註冊，交給後台關卡補問 */ });
-        }
-      }
+      const { error: e } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (e) { setError(e.message); return; }
       router.replace('/(app)/home' as any);
     } finally {
       setLoading(false);
@@ -130,6 +117,14 @@ export default function SignIn() {
             setError(sessionError.message);
             return;
           }
+          // 商家後台關掉自助註冊了，Google 登入不能是「順便自動註冊」的後門——
+          // 這個帳號如果是這次 OAuth 才剛自動建立的全新使用者，代表繞過了審核，
+          // 立刻登出並導去申請表單，不放行進商家後台。
+          if (await isFreshlyCreatedAuthUser()) {
+            await supabase.auth.signOut();
+            setError('目前商家帳號採邀請制，請先填寫申請表單，我們審核後會協助你開通帳號。');
+            return;
+          }
           router.replace('/(app)/home' as any);
         } else {
           setError('Google 登入失敗，請重試');
@@ -155,7 +150,7 @@ export default function SignIn() {
           </View>
           <Text className="font-rounded text-2xl font-bold text-foreground">美業管家</Text>
           <Text className="font-rounded text-sm text-muted-foreground mt-1">
-            {mode === 'login' ? '歡迎回來 🌸' : mode === 'register' ? '建立您的帳號' : '重設密碼'}
+            {mode === 'login' ? '歡迎回來 🌸' : '重設密碼'}
           </Text>
         </View>
 
@@ -165,27 +160,6 @@ export default function SignIn() {
             <ArrowLeft size={16} color="#e8789a" />
             <Text className="font-rounded text-sm text-primary ml-1">返回登入</Text>
           </Pressable>
-        )}
-
-        {/* 登入 / 註冊 切換（忘記密碼時隱藏） */}
-        {mode !== 'forgot' && (
-          <View className="flex-row bg-muted rounded-2xl p-1 mb-6">
-            {(['login', 'register'] as const).map(m => (
-              <Pressable
-                key={m}
-                className="flex-1 items-center py-2.5 rounded-xl active:opacity-80"
-                style={{ backgroundColor: mode === m ? '#ffffff' : 'transparent' }}
-                onPress={() => switchMode(m)}
-              >
-                <Text
-                  className="font-rounded text-sm font-semibold"
-                  style={{ color: mode === m ? '#e8789a' : '#c4a0ae' }}
-                >
-                  {m === 'login' ? '登入' : '註冊'}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
         )}
 
         {/* 重設密碼成功提示 */}
@@ -256,23 +230,6 @@ export default function SignIn() {
               <View className="mb-3" />
             )}
 
-            {/* 同意條款（僅註冊時顯示） */}
-            {mode === 'register' && (
-              <View className="flex-row items-start mb-6">
-                <Pressable className="flex-row items-start flex-1" onPress={() => setAgreed(!agreed)}>
-                  <View className={`w-5 h-5 rounded-md border-2 mr-2 mt-0.5 items-center justify-center ${agreed ? 'bg-primary border-primary' : 'border-border'}`}>
-                    {agreed && <Text className="text-white text-xs font-bold">✓</Text>}
-                  </View>
-                  <Text className="font-rounded text-sm text-muted-foreground flex-1">
-                    我已閱讀並同意
-                    <Text className="text-primary" onPress={() => router.push('/(auth)/merchant-terms' as any)}>
-                      {' '}商家服務條款{' '}
-                    </Text>
-                  </Text>
-                </Pressable>
-              </View>
-            )}
-
             {/* 操作按鈕 */}
             <Pressable
               className="w-full bg-primary rounded-2xl items-center justify-center active:opacity-80"
@@ -283,7 +240,7 @@ export default function SignIn() {
               {loading
                 ? <ActivityIndicator color="#fff" />
                 : <Text className="font-rounded text-white text-base font-semibold">
-                  {mode === 'login' ? '登入' : mode === 'register' ? '建立帳號' : '發送重設連結'}
+                  {mode === 'login' ? '登入' : '發送重設連結'}
                 </Text>
               }
             </Pressable>
@@ -307,7 +264,14 @@ export default function SignIn() {
                   {/* Google 圖示（SVG 色彩文字模擬） */}
                   <Text style={{ fontSize: 18 }}>G</Text>
                   <Text className="font-rounded text-sm font-semibold text-foreground">
-                    使用 Google 帳號{mode === 'login' ? '登入' : '註冊'}
+                    使用 Google 帳號登入
+                  </Text>
+                </Pressable>
+
+                {/* 商家帳號採邀請制，沒有帳號的人導去申請表單，不是自助註冊 */}
+                <Pressable className="items-center py-4 active:opacity-70" onPress={() => router.push('/join-request' as any)}>
+                  <Text className="font-rounded text-sm text-muted-foreground">
+                    還沒有帳號？<Text className="text-primary font-semibold">填寫申請表單</Text>
                   </Text>
                 </Pressable>
               </>

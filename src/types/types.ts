@@ -6,6 +6,17 @@ export interface Profile {
   created_at: string;
 }
 
+// ─── 商家申請名單（關閉自助註冊後的替代入口）───────────────────────────────────
+export interface SignupRequest {
+  id: string;
+  shop_name: string;
+  contact_name: string;
+  contact_info: string;
+  message: string | null;
+  status: 'pending' | 'contacted' | 'approved' | 'rejected';
+  created_at: string;
+}
+
 export interface Customer {
   id: string;
   owner_id: string;

@@ -57,7 +57,11 @@ export default function OnboardingScreen() {
     try { await markOnboardingCompleted(); } finally { router.replace('/(app)/(tabs)/home' as any); }
   };
 
-  const handleSkip = () => { finish(); };
+  // 「跳過」原本直接呼叫 finish()，讓人可以完全不填商家名稱就完成 onboarding——
+  // 這就是「商家名稱長期是空字串」問題的根源：之後沒有任何地方會再擋，顧客端
+  // 線上預約頁看到的店名就會一直退回顯示平台名稱「美業管家」。改成跳過只跳過
+  // 前面的功能介紹頁，直接跳到最後一頁的商家資訊表單，商家名稱還是必填。
+  const handleSkip = () => { setPage(TOTAL_PAGES - 1); };
 
   const handleNext = () => {
     if (page < TOTAL_PAGES - 1) { setPage(p => p + 1); return; }
@@ -88,11 +92,14 @@ export default function OnboardingScreen() {
     <KeyboardAvoidingView behavior={process.env.EXPO_OS === 'ios' ? 'padding' : 'height'} className="flex-1 bg-background">
       <StatusBar style="dark" backgroundColor="#fff5f7" />
 
-      {/* 跳過按鈕 */}
-      <View className="flex-row justify-end px-5 pt-14">
-        <Pressable className="px-3 py-2 active:opacity-60" onPress={handleSkip}>
-          <Text className="font-rounded text-sm text-muted-foreground">跳過</Text>
-        </Pressable>
+      {/* 跳過按鈕（最後一頁是必填的商家資訊表單，不能再跳，但保留這排 View
+          維持 pt-14 的頂部安全區域間距，不然畫面內容會貼到狀態列底下） */}
+      <View className="flex-row justify-end px-5 pt-14 pb-2">
+        {page < TOTAL_PAGES - 1 && (
+          <Pressable className="px-3 py-2 active:opacity-60" onPress={handleSkip}>
+            <Text className="font-rounded text-sm text-muted-foreground">跳過</Text>
+          </Pressable>
+        )}
       </View>
 
       <ScrollView

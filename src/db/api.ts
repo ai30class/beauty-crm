@@ -7,8 +7,18 @@ import type {
   Holiday, StaffReservedSlot, OnlineOrder, OnlineOrderAddon, Coupon, CustomerCoupon, ShopBlockedSlot,
   MonthlyStats, UnifiedAppointment, ProductSalesRow,
   BirthdayCustomer, CustomerRankRow, StaffPerformanceRow,
-  StaffCommissionTier, StaffBonus, PayrollRecord, DormantCustomer,
+  StaffCommissionTier, StaffBonus, PayrollRecord, DormantCustomer, SignupRequest,
 } from '@/types/types';
+
+// ─── 商家申請名單（關閉自助註冊後的替代入口）───────────────────────────────────
+// 沒有對應的「查詢」函式：Emma 直接在 Supabase Table Editor 看名單、手動審核，
+// App 這邊只需要能寫入，不需要讀回（也讀不到，這張表沒開 SELECT policy）。
+export async function createSignupRequest(
+  payload: Pick<SignupRequest, 'shop_name' | 'contact_name' | 'contact_info' | 'message'>
+): Promise<void> {
+  const { error } = await supabase.from('signup_requests').insert(payload);
+  if (error) throw error;
+}
 
 // ─── 顧客 ────────────────────────────────────────────────────────────────────
 
@@ -1158,6 +1168,17 @@ export async function getAccountType(): Promise<'merchant' | 'customer'> {
     .maybeSingle();
   if (error) throw error;
   return (data?.account_type as 'merchant' | 'customer') ?? 'merchant';
+}
+
+// 商家後台關掉自助註冊後，Google OAuth 是唯一還留著、會「登入或自動註冊」
+// 二合一的入口——Supabase 第一次看到某個 Google 帳號時會自動建立新使用者，
+// 這樣手動建帳號審核機制形同虛設。用這個判斷「這次登入是不是剛剛才自動建立
+// 的全新帳號」（建立時間離現在很近），是就代表繞過了審核，呼叫端要擋下來、
+// 登出、導去申請表單，而不是放行進商家後台。
+export async function isFreshlyCreatedAuthUser(withinMs = 120000): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.created_at) return false;
+  return Date.now() - new Date(user.created_at).getTime() < withinMs;
 }
 
 // ─── 新手引導 ─────────────────────────────────────────────────────────────────
