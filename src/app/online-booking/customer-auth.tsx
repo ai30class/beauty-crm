@@ -27,7 +27,7 @@ export default function CustomerAuthScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [lineLoading, setLineLoading] = useState(false);
-  const [oauthProvider, setOauthProvider] = useState<'line' | 'google'>('line');
+  const [oauthProvider, setOauthProvider] = useState<'line' | 'google' | 'facebook'>('line');
   const [error, setError] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [showPw, setShowPw] = useState(false);
@@ -197,6 +197,35 @@ export default function CustomerAuthScreen() {
     }
   };
 
+  // Facebook 一鍵登入：跟上面 Gmail 一鍵登入完全同一套模式（Supabase 內建
+  // OAuth provider，不像 LINE 要自己接 LIFF），差別只在 provider 名稱跟
+  // 回呼頁。回呼頁一樣要獨立一個 facebook-callback.tsx，理由跟 google-callback
+  // 一樣：不能共用商家後台的 /auth/callback（那頁登入完一律導去商家後台），
+  // 也要在那頁補標記 account_type='customer'、擋掉商家帳號誤用。
+  const handleFacebookLogin = async () => {
+    if (typeof window === 'undefined') return;
+    setError('');
+    setOauthProvider('facebook');
+    setLineLoading(true);
+    try {
+      const targetOwnerId = resolveOwnerId();
+      const redirectUrl = `${window.location.origin}/online-booking/facebook-callback?ownerId=${targetOwnerId}`;
+      const { data, error: e } = await supabase.auth.signInWithOAuth({
+        provider: 'facebook',
+        options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
+      });
+      if (e || !data.url) {
+        setError(e?.message ?? '無法取得 Facebook 登入連結');
+        setLineLoading(false);
+        return;
+      }
+      window.location.href = data.url;
+    } catch {
+      setError('Facebook 登入初始化失敗，請稍後再試');
+      setLineLoading(false);
+    }
+  };
+
   const handleAuth = async () => {
     setError('');
     if (!email.trim() || !password) { setError('請填寫 Email 與密碼'); return; }
@@ -247,24 +276,22 @@ export default function CustomerAuthScreen() {
   // 顯示整頁等待畫面（不是只有按鈕裡的小轉圈圈）——顧客剛跳出 LINE 加好友
   // 畫面回來，需要明確的畫面告訴他「還在處理，不是卡住了」
   if (lineLoading) {
-    const isGoogle = oauthProvider === 'google';
+    const providerInfo = {
+      line: { bg: '#e8f9ee', color: '#06C755', label: 'LINE', icon: <MessageCircle size={40} color="#06C755" /> },
+      google: { bg: '#eef2fc', color: '#4285F4', label: 'Google', icon: <Text style={{ fontSize: 32, fontWeight: '700', color: '#4285F4' }}>G</Text> },
+      facebook: { bg: '#eaf2ff', color: '#1877F2', label: 'Facebook', icon: <Text style={{ fontSize: 32, fontWeight: '700', color: '#1877F2' }}>f</Text> },
+    }[oauthProvider];
     return (
       <View className="flex-1 bg-background items-center justify-center px-8 gap-4">
         <StatusBar style="dark" backgroundColor="#fff5f7" />
-        <View className="w-20 h-20 rounded-full items-center justify-center" style={{ backgroundColor: isGoogle ? '#eef2fc' : '#e8f9ee' }}>
-          {isGoogle
-            ? <Text style={{ fontSize: 32, fontWeight: '700', color: '#4285F4' }}>G</Text>
-            : <MessageCircle size={40} color="#06C755" />
-          }
+        <View className="w-20 h-20 rounded-full items-center justify-center" style={{ backgroundColor: providerInfo.bg }}>
+          {providerInfo.icon}
         </View>
         <Text className="font-rounded text-xl font-bold text-foreground">登入中，請稍候</Text>
         <Text className="font-rounded text-sm text-muted-foreground text-center">
-          {isGoogle
-            ? <>正在跟 Google 同步您的帳號{'\n'}這步驟由 Google 處理，通常幾秒鐘內就會完成</>
-            : <>正在跟 LINE 同步您的帳號{'\n'}這步驟由 LINE 處理，通常幾秒鐘內就會完成</>
-          }
+          正在跟 {providerInfo.label} 同步您的帳號{'\n'}這步驟由 {providerInfo.label} 處理，通常幾秒鐘內就會完成
         </Text>
-        <ActivityIndicator size="large" color={isGoogle ? '#4285F4' : '#06C755'} style={{ marginTop: 8 }} />
+        <ActivityIndicator size="large" color={providerInfo.color} style={{ marginTop: 8 }} />
       </View>
     );
   }
@@ -417,6 +444,22 @@ export default function CustomerAuthScreen() {
                 : <>
                     <Text style={{ fontSize: 18, fontWeight: '700', color: '#4285F4' }}>G</Text>
                     <Text className="font-rounded text-base text-foreground font-semibold">用 Gmail 一鍵登入</Text>
+                  </>
+              }
+            </Pressable>
+
+            {/* Facebook 一鍵登入 */}
+            <Pressable
+              className="rounded-2xl h-14 items-center justify-center active:opacity-80 flex-row gap-2"
+              style={{ backgroundColor: '#1877F2' }}
+              onPress={handleFacebookLogin}
+              disabled={lineLoading}
+            >
+              {lineLoading && oauthProvider === 'facebook'
+                ? <ActivityIndicator color="#fff" />
+                : <>
+                    <Text style={{ fontSize: 18, fontWeight: '700', color: '#fff' }}>f</Text>
+                    <Text className="font-rounded text-base text-white font-semibold">用 Facebook 一鍵登入</Text>
                   </>
               }
             </Pressable>
