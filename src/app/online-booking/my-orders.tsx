@@ -1,7 +1,7 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, CalendarDays, Clock, LogOut, Plus, User2, BellRing, Wallet } from 'lucide-react-native';
+import { ArrowLeft, CalendarDays, Clock, LogOut, Plus, User2, BellRing, Wallet, KeyRound } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import {ActivityIndicator,Pressable, ScrollView, Text,
   View,
@@ -22,6 +22,10 @@ export default function MyOrdersScreen() {
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState('');
   const [userPhone, setUserPhone] = useState('');
+  // LINE 登入的帳號用的是系統自動產生的 line-xxx@line.internal 內部信箱（見
+  // supabase/functions/line-login/index.ts），不是顧客真正收得到信的信箱，
+  // 「忘記密碼」寄過去也是寄假的，這種帳號不該顯示修改密碼功能
+  const [isLineAccount, setIsLineAccount] = useState(false);
 
   useFocusEffect(useCallback(() => {
     (async () => {
@@ -31,6 +35,7 @@ export default function MyOrdersScreen() {
         if (!user) { router.replace('/online-booking/customer-auth' as any); return; }
         setUserEmail(user.email ?? '');
         setUserPhone(user.phone ?? '');
+        setIsLineAccount(!!user.email?.endsWith('@line.internal'));
 
         // 查詢此帳號建立的所有預約（依 customer_user_id = auth.uid() 比對）
         const { data, error } = await supabase
@@ -137,7 +142,7 @@ export default function MyOrdersScreen() {
           </View>
           <View className="flex-1">
             <Text className="font-rounded text-sm font-semibold text-foreground">
-              {userPhone ? `+886 ${userPhone.replace(/^\+?886/, '')}` : userEmail}
+              {userPhone ? `+886 ${userPhone.replace(/^\+?886/, '')}` : isLineAccount ? '已用 LINE 登入' : userEmail}
             </Text>
             <Text className="font-rounded text-xs text-muted-foreground">已登入</Text>
           </View>
@@ -149,6 +154,18 @@ export default function MyOrdersScreen() {
             <Text className="font-rounded text-xs text-primary font-semibold">新增預約</Text>
           </Pressable>
         </View>
+
+        {/* 修改密碼：LINE 登入的帳號是系統自動產生的內部信箱、收不到信，
+            這個功能只對真的用 Email 註冊（或後來也綁過 Google）的帳號有意義 */}
+        {!isLineAccount && (
+          <Pressable
+            className="mx-5 mb-3 flex-row items-center gap-2 px-4 py-3 rounded-2xl bg-card border border-border active:opacity-70"
+            onPress={() => router.push('/reset-password' as any)}
+          >
+            <KeyRound size={16} color="#c4a0ae" />
+            <Text className="font-rounded text-sm text-foreground flex-1">修改密碼</Text>
+          </Pressable>
+        )}
 
         {/* 我的儲值卡/套票 */}
         {packages.length > 0 && (

@@ -4,6 +4,7 @@ import { Eye, EyeOff, Lock } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { supabase } from '@/client/supabase';
+import { getAccountType } from '@/db/api';
 
 // 「忘記密碼」信件點進來後的最後一步：設定新密碼。
 //
@@ -27,6 +28,9 @@ export default function ResetPasswordScreen() {
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
+  // 這頁商家／顧客共用（見上方注解）：改密碼完成後要導去哪裡、「回登入頁」
+  // 要去哪個登入頁，兩種帳號不一樣，用 profiles.account_type 判斷。
+  const [isCustomer, setIsCustomer] = useState(false);
 
   useEffect(() => {
     // 逾時保護：這頁背後要跟 Supabase 換 session，如果那個請求卡住（實測遇過，
@@ -66,8 +70,12 @@ export default function ResetPasswordScreen() {
       }
 
       const { data } = await supabase.auth.getSession();
-      if (data.session) setCanEdit(true);
-      else setError('這個重設連結已失效，請回登入頁重新申請一次。');
+      if (data.session) {
+        setCanEdit(true);
+        try { setIsCustomer((await getAccountType()) === 'customer'); } catch { /* 查不到就當商家處理，不影響改密碼本身 */ }
+      } else {
+        setError('這個重設連結已失效，請回登入頁重新申請一次。');
+      }
       clearTimeout(timer);
       setChecking(false);
     })();
@@ -77,9 +85,10 @@ export default function ResetPasswordScreen() {
 
   // 回登入頁之前一定要先登出：點信進來的人身上帶著 recovery session，
   // 而 (auth) 群組是 guard={!session}，沒登出就導不過去（會彈回來）。
+  // 顧客端沒有這個 guard 限制，但同樣先登出比較乾淨，逼他重新走一次登入。
   const backToSignIn = async () => {
     try { await supabase.auth.signOut(); } catch { /* 登出失敗也照樣導回去 */ }
-    router.replace('/(auth)/sign-in' as any);
+    router.replace((isCustomer ? '/online-booking/customer-auth' : '/(auth)/sign-in') as any);
   };
 
   const handleSave = async () => {
@@ -127,7 +136,7 @@ export default function ResetPasswordScreen() {
               密碼已更新完成，之後請用新密碼登入。
             </Text>
             <Pressable
-              onPress={() => router.replace('/(app)/home' as any)}
+              onPress={() => router.replace((isCustomer ? '/online-booking/my-orders' : '/(app)/home') as any)}
               style={{ backgroundColor: '#e8789a', borderRadius: 999, paddingVertical: 14, alignItems: 'center', marginTop: 4 }}
             >
               <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>開始使用</Text>

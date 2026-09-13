@@ -34,6 +34,9 @@ export default function CustomerAuthScreen() {
   const [showVerify, setShowVerify] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showForgot, setShowForgot] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   // LIFF 登入跳轉時網址列的 query string（例如 ownerId）常常不可靠，實測發現
   // 光從 window.location.search 重建有時還是抓不到——優先順序：路由參數 →
@@ -83,6 +86,13 @@ export default function CustomerAuthScreen() {
         // 這次也刻意跳過下面的自動登入偵測，不然清掉的瞬間又被撿回來。
         if (justLoggedOut) {
           if (liff.isLoggedIn()) liff.logout();
+          // 處理完就把網址列的 ?logout=1 清掉，不然使用者接著按「用 LINE 一鍵登入」時，
+          // handleLineLogin 會把還帶著 logout=1 的 window.location.href 當作 LINE OAuth
+          // 的 redirectUri；LINE 授權完導回來，這裡又會偵測到 logout=1、立刻把剛登入
+          // 成功的 LIFF session 登出、直接 return（完全沒機會走到下面 completeLineLogin），
+          // 使用者停在登入畫面、看起來像整個登入流程卡住轉不出去。
+          const cleanOwnerId = resolveOwnerId();
+          router.replace((cleanOwnerId ? `/online-booking/customer-auth?ownerId=${cleanOwnerId}` : '/online-booking/customer-auth') as any);
           return;
         }
 
@@ -143,8 +153,14 @@ export default function CustomerAuthScreen() {
         await completeLineLogin();
       } else {
         // 已經在 LINE 內建瀏覽器打開時，這一步幾乎不會跳轉、直接就登入了；
-        // 在一般瀏覽器打開時才會真的跳去 LINE 授權頁
-        liff.login({ redirectUri: window.location.href });
+        // 在一般瀏覽器打開時才會真的跳去 LINE 授權頁。redirectUri 不能直接
+        // 拿 window.location.href 現成用——網址列可能還殘留 ?logout=1 之類
+        // 不該帶進下一輪的參數，一旦被 LINE 導回來會誤觸發登出分支（見上面
+        // justLoggedOut 註解），所以這裡自己組一個乾淨的網址，只帶 ownerId。
+        const targetOwnerId = resolveOwnerId();
+        const path = `/online-booking/customer-auth${targetOwnerId ? `?ownerId=${targetOwnerId}` : ''}`;
+        const cleanRedirect = typeof window !== 'undefined' ? `${window.location.origin}${path}` : path;
+        liff.login({ redirectUri: cleanRedirect });
       }
     } catch (e: any) {
       setError('LINE 登入初始化失敗，請稍後再試');
@@ -208,6 +224,25 @@ export default function CustomerAuthScreen() {
     }
   };
 
+  // 忘記密碼：跟商家後台 (auth)/sign-in.tsx 同一套 resetPasswordForEmail，
+  // 都導去 /auth/callback，那頁會依 type=recovery 轉去 /reset-password，
+  // 那頁再依 profiles.account_type 判斷改完密碼要導回顧客端還是商家後台。
+  const handleForgotPassword = async () => {
+    setError('');
+    if (!email.trim()) { setError('請輸入 Email'); return; }
+    setForgotLoading(true);
+    try {
+      const redirectTo = typeof window !== 'undefined'
+        ? `${window.location.origin}/auth/callback`
+        : undefined;
+      const { error: e } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+      if (e) { setError(e.message); return; }
+      setResetSent(true);
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   // 從 LINE 跳轉回來、自動偵測到已登入而觸發 completeLineLogin() 時，
   // 顯示整頁等待畫面（不是只有按鈕裡的小轉圈圈）——顧客剛跳出 LINE 加好友
   // 畫面回來，需要明確的畫面告訴他「還在處理，不是卡住了」
@@ -250,7 +285,7 @@ export default function CustomerAuthScreen() {
           <ArrowLeft size={22} color="#e8789a" />
         </Pressable>
         <Text className="font-rounded text-xl font-bold text-foreground flex-1">
-          {showVerify ? '驗證信已寄出' : isSignUp ? '顧客註冊' : '顧客登入'}
+          {showVerify ? '驗證信已寄出' : showForgot ? '重設密碼' : isSignUp ? '顧客註冊' : '顧客登入'}
         </Text>
       </View>
 
@@ -275,6 +310,69 @@ export default function CustomerAuthScreen() {
             >
               <Text className="font-rounded text-sm text-foreground font-semibold">回到登入</Text>
             </Pressable>
+          </View>
+        ) : showForgot ? (
+          <View className="gap-4">
+            {resetSent ? (
+              <View className="gap-4 items-center pt-8">
+                <View className="w-20 h-20 rounded-full bg-primary/10 items-center justify-center mb-2">
+                  <Mail size={36} color="#e8789a" />
+                </View>
+                <Text className="font-rounded text-2xl font-bold text-foreground text-center">重設密碼信已寄出 📬</Text>
+                <Text className="font-rounded text-sm text-muted-foreground text-center leading-6">
+                  請至 <Text className="text-primary font-semibold">{email}</Text> 信箱點擊連結設定新密碼{'\n'}
+                  沒收到信也可能在垃圾郵件夾，信裡的連結只能點一次
+                </Text>
+                <Pressable
+                  className="border border-border rounded-2xl h-12 px-8 items-center justify-center mt-4 active:opacity-70"
+                  onPress={() => { setShowForgot(false); setResetSent(false); }}
+                >
+                  <Text className="font-rounded text-sm text-foreground font-semibold">回到登入</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <>
+                <Text className="font-rounded text-2xl font-bold text-foreground text-center mb-2">忘記密碼？🌸</Text>
+                <Text className="font-rounded text-sm text-muted-foreground text-center mb-4">
+                  輸入註冊時使用的 Email，我們會寄一封重設密碼的信給您
+                </Text>
+
+                <View className="bg-card border border-border rounded-2xl px-4 py-1 flex-row items-center gap-2">
+                  <Mail size={16} color="#c4a0ae" />
+                  <TextInput
+                    className="flex-1 font-rounded text-base text-foreground py-3"
+                    placeholder="your@email.com"
+                    placeholderTextColor="#c4a0ae"
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    returnKeyType="done"
+                    onSubmitEditing={handleForgotPassword}
+                  />
+                </View>
+
+                {error ? <Text className="font-rounded text-xs text-destructive">{error}</Text> : null}
+
+                <Pressable
+                  className="bg-primary rounded-2xl h-14 items-center justify-center active:opacity-80 mt-1"
+                  onPress={handleForgotPassword}
+                  disabled={forgotLoading}
+                >
+                  {forgotLoading
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text className="font-rounded text-base text-white font-semibold">寄送重設密碼信</Text>
+                  }
+                </Pressable>
+
+                <Pressable
+                  className="items-center py-2 active:opacity-70"
+                  onPress={() => { setShowForgot(false); setError(''); }}
+                >
+                  <Text className="font-rounded text-sm text-primary">回到登入</Text>
+                </Pressable>
+              </>
+            )}
           </View>
         ) : (
           <View className="gap-4">
@@ -361,6 +459,13 @@ export default function CustomerAuthScreen() {
                 {showPw ? <EyeOff size={16} color="#c4a0ae" /> : <Eye size={16} color="#c4a0ae" />}
               </Pressable>
             </View>
+
+            {/* 忘記密碼（僅登入頁顯示） */}
+            {!isSignUp && (
+              <Pressable className="self-end active:opacity-70" onPress={() => { setShowForgot(true); setError(''); }}>
+                <Text className="font-rounded text-sm text-primary">忘記密碼？</Text>
+              </Pressable>
+            )}
 
             {/* 同意條款（僅註冊顯示） */}
             {isSignUp && (
