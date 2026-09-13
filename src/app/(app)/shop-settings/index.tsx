@@ -132,6 +132,7 @@ export default function ShopSettingsScreen() {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [description, setDescription] = useState('');
+  const [parkingInfo, setParkingInfo] = useState('');
 
   // 營業時間
   const [hours, setHours] = useState<BusinessHours>(DEFAULT_HOURS);
@@ -171,6 +172,7 @@ export default function ShopSettingsScreen() {
           setPhone(profile.phone);
           setAddress(profile.address);
           setDescription(profile.description);
+          setParkingInfo(profile.parking_info ?? '');
           setHours({ ...DEFAULT_HOURS, ...profile.business_hours });
           setLineOaId(profile.line_oa_id ?? '');
           setNoShowThreshold(String(profile.no_show_alert_threshold ?? 3));
@@ -237,6 +239,7 @@ export default function ShopSettingsScreen() {
         phone: phone.trim(),
         address: address.trim(),
         description: description.trim(),
+        parking_info: parkingInfo.trim() || null,
         business_hours: hours,
         line_oa_id: lineOaId.trim() || null,
         no_show_alert_threshold: threshold,
@@ -351,6 +354,26 @@ export default function ShopSettingsScreen() {
                   textAlignVertical="top"
                   style={{ minHeight: 72 }}
                 />
+              </View>
+            </View>
+
+            {/* 交通與停車資訊 */}
+            <View className="px-4 py-3 flex-row items-start gap-2 border-t border-border">
+              <MapPin size={14} color="#c4a0ae" style={{ marginTop: 18 }} />
+              <View className="flex-1">
+                <Text className="font-rounded text-xs text-muted-foreground mb-1">交通與停車資訊</Text>
+                <TextInput
+                  className="font-rounded text-base text-foreground"
+                  placeholder={'例：機車可直接停放在店面門口\n汽車：路邊車格、○○立體停車場\n捷運○○站 3號出口步行 6 分鐘'}
+                  placeholderTextColor="#c4a0ae"
+                  value={parkingInfo}
+                  onChangeText={setParkingInfo}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                  style={{ minHeight: 96 }}
+                />
+                <Text className="font-rounded text-xs text-muted-foreground mt-1">顧客預約完成後會看到這段內容，連同地址與地圖連結</Text>
               </View>
             </View>
           </View>

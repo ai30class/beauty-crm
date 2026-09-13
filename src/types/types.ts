@@ -379,6 +379,7 @@ export interface ShopProfile {
   business_hours: BusinessHours;
   line_oa_id: string | null;
   no_show_alert_threshold: number;
+  parking_info: string | null;
   created_at: string;
   updated_at: string;
 }

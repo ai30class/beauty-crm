@@ -129,7 +129,7 @@ export default function OnlineBookingScreen() {
     if (typeof window === 'undefined') return '';
     try { return localStorage.getItem('bcrm_pending_owner_id') ?? ''; } catch { return ''; }
   });
-  const [shopProfile, setShopProfile] = useState<Pick<ShopProfile, 'shop_name' | 'phone' | 'address' | 'description' | 'business_hours' | 'line_oa_id'> | null>(null);
+  const [shopProfile, setShopProfile] = useState<Pick<ShopProfile, 'shop_name' | 'phone' | 'address' | 'description' | 'business_hours' | 'line_oa_id' | 'parking_info'> | null>(null);
 
   // presetOwnerId 之後才解析出來（或改變）的話，同步更新 ownerId，同時把
   // 這把 key 存進 localStorage（跟 customer-auth.tsx 共用），供下次兜底用
@@ -438,7 +438,7 @@ export default function OnlineBookingScreen() {
         <>
         {/* 直接預約成功畫面 */}
         {directSuccess && (
-          <View className="flex-1 bg-background items-center justify-center px-8 gap-6">
+          <ScrollView contentContainerClassName="items-center px-8 gap-6 py-10" className="flex-1 bg-background">
           <View className="w-24 h-24 rounded-full bg-primary/10 items-center justify-center">
             <CheckCircle size={52} color="#e8789a" />
           </View>
@@ -457,6 +457,34 @@ export default function OnlineBookingScreen() {
             <SummaryRow label="日期時間" value={`${toLocalDateStr(selectedDate)} ${selectedTime}`} />
             <SummaryRow label="付款方式" value="到店付款" />
           </View>
+
+          {/* 地址、地圖、交通與停車資訊 */}
+          {shopProfile && (shopProfile.address || shopProfile.parking_info) && (
+            <View className="w-full bg-card rounded-2xl p-4 border border-border gap-3">
+              <View className="flex-row items-center gap-2">
+                <MapPin size={16} color="#e8789a" />
+                <Text className="font-rounded text-sm font-semibold text-foreground">交通與停車資訊</Text>
+              </View>
+              {shopProfile.address ? (
+                <>
+                  <Text className="font-rounded text-sm text-muted-foreground">{shopProfile.address}</Text>
+                  <Pressable
+                    className="flex-row items-center justify-center gap-2 rounded-xl py-2.5 border border-border active:opacity-70"
+                    onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shopProfile.address)}`)}
+                  >
+                    <MapPin size={14} color="#e8789a" />
+                    <Text className="font-rounded text-sm font-semibold" style={{ color: '#e8789a' }}>在 Google 地圖開啟</Text>
+                  </Pressable>
+                </>
+              ) : null}
+              {shopProfile.parking_info ? (
+                <Text className="font-rounded text-xs text-muted-foreground leading-5" style={{ marginTop: shopProfile.address ? 4 : 0 }}>
+                  {shopProfile.parking_info}
+                </Text>
+              ) : null}
+            </View>
+          )}
+
           <Pressable
             className="w-full bg-primary rounded-2xl h-14 items-center justify-center active:opacity-80"
             onPress={() => router.back()}
@@ -471,7 +499,7 @@ export default function OnlineBookingScreen() {
             <ClipboardList size={16} color="#e8789a" />
             <Text className="font-rounded text-sm text-foreground font-semibold">查看我的預約記錄</Text>
           </Pressable>
-        </View>
+        </ScrollView>
       )}
 
       {/* 正常預約流程 */}

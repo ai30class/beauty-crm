@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, Pressable, ActivityIndicator, Linking, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { MessageCircle, ArrowLeft, ExternalLink } from 'lucide-react-native';
+import { MessageCircle, ArrowLeft, ExternalLink, MapPin } from 'lucide-react-native';
 import { getOnlineOrderById, getShopProfileByOwner } from '@/db/api';
 import type { OnlineOrder } from '@/types/types';
 
@@ -12,6 +12,8 @@ export default function DepositTransferScreen() {
 
   const [order, setOrder] = useState<OnlineOrder | null>(null);
   const [lineOaId, setLineOaId] = useState<string | null>(null);
+  const [address, setAddress] = useState<string | null>(null);
+  const [parkingInfo, setParkingInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,6 +25,8 @@ export default function DepositTransferScreen() {
         if (o) {
           const profile = await getShopProfileByOwner(o.owner_id).catch(() => null);
           setLineOaId(profile?.line_oa_id ?? null);
+          setAddress(profile?.address ?? null);
+          setParkingInfo(profile?.parking_info ?? null);
         }
       } finally {
         setLoading(false);
@@ -84,6 +88,32 @@ export default function DepositTransferScreen() {
               <OrderRow label="需付訂金" value={`$${Number(order.deposit_amount).toLocaleString()}`} highlight />
               <OrderRow label="尾款到場付" value={`$${(Number(order.total_amount) - Number(order.deposit_amount)).toLocaleString()}`} />
             </View>
+          </View>
+        )}
+
+        {(address || parkingInfo) && (
+          <View className="bg-card rounded-2xl p-4 border border-border w-full gap-3">
+            <View className="flex-row items-center gap-2">
+              <MapPin size={16} color="#e8789a" />
+              <Text className="font-rounded text-sm font-semibold text-foreground">交通與停車資訊</Text>
+            </View>
+            {address ? (
+              <>
+                <Text className="font-rounded text-sm text-muted-foreground">{address}</Text>
+                <Pressable
+                  className="flex-row items-center justify-center gap-2 rounded-xl py-2.5 border border-border active:opacity-70"
+                  onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`)}
+                >
+                  <MapPin size={14} color="#e8789a" />
+                  <Text className="font-rounded text-sm font-semibold" style={{ color: '#e8789a' }}>在 Google 地圖開啟</Text>
+                </Pressable>
+              </>
+            ) : null}
+            {parkingInfo ? (
+              <Text className="font-rounded text-xs text-muted-foreground leading-5" style={{ marginTop: address ? 4 : 0 }}>
+                {parkingInfo}
+              </Text>
+            ) : null}
           </View>
         )}
 
