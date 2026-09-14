@@ -149,6 +149,8 @@ const APPT_BLOCK_COLORS = ['#e8789a', '#4a6cf7', '#2ea87e', '#e8a000', '#a78bfa'
 const TAP_SLOT_MINUTES = GRID_LINES.slice(0, -1);
 // 預留時間的快速標籤
 const RESERVE_LABEL_PRESETS = ['午休', '外出', '教育訓練'];
+// 預留時間的快速時長（分鐘）；也可以在下方輸入框自行輸入其他數字
+const RESERVE_DURATION_PRESETS = [30, 60, 90, 120];
 
 // ── 主頁面 ────────────────────────────────────────────────────────────────────
 export default function StaffScheduleScreen() {
@@ -172,6 +174,7 @@ export default function StaffScheduleScreen() {
   const [slotPicker, setSlotPicker] = useState<{ dateStr: string; time: string; staffId: string; staffName: string } | null>(null);
   const [reserveTarget, setReserveTarget] = useState<{ dateStr: string; time: string; staffId: string; staffName: string } | null>(null);
   const [reserveLabel, setReserveLabel] = useState('');
+  const [reserveDurationMin, setReserveDurationMin] = useState('30');
   const [savingReserve, setSavingReserve] = useState(false);
   const [deleteReserveTarget, setDeleteReserveTarget] = useState<StaffReservedSlot | null>(null);
   const [deletingReserve, setDeletingReserve] = useState(false);
@@ -228,7 +231,8 @@ export default function StaffScheduleScreen() {
     if (!reserveTarget) return;
     setSavingReserve(true);
     try {
-      const endMin = Math.min(hhmmToMinutes(reserveTarget.time) + 30, TIMELINE_END_MIN);
+      const durationMin = Math.max(parseInt(reserveDurationMin, 10) || 30, 5);
+      const endMin = Math.min(hhmmToMinutes(reserveTarget.time) + durationMin, TIMELINE_END_MIN);
       await createStaffReservedSlot({
         staff_id: reserveTarget.staffId,
         reserved_date: reserveTarget.dateStr,
@@ -733,6 +737,7 @@ export default function StaffScheduleScreen() {
                 if (!slotPicker) return;
                 setReserveTarget(slotPicker);
                 setReserveLabel('');
+                setReserveDurationMin('30');
                 setSlotPicker(null);
               }}
             >
@@ -774,6 +779,30 @@ export default function StaffScheduleScreen() {
               value={reserveLabel}
               onChangeText={setReserveLabel}
             />
+            <View className="flex-row flex-wrap gap-2 justify-center">
+              {RESERVE_DURATION_PRESETS.map(d => (
+                <Pressable
+                  key={d}
+                  className="px-3.5 py-1.5 rounded-full active:opacity-70"
+                  style={{ backgroundColor: reserveDurationMin === String(d) ? '#e8789a' : '#f5e6ec' }}
+                  onPress={() => setReserveDurationMin(String(d))}
+                >
+                  <Text className="font-rounded text-sm font-medium" style={{ color: reserveDurationMin === String(d) ? '#fff' : '#c4a0ae' }}>{d} 分鐘</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View className="flex-row items-center gap-2">
+              <TextInput
+                className="flex-1 bg-background border border-border rounded-2xl px-4 font-rounded text-base text-foreground"
+                style={{ height: 48 }}
+                placeholder="自行輸入分鐘數"
+                placeholderTextColor="#c4a0ae"
+                keyboardType="number-pad"
+                value={reserveDurationMin}
+                onChangeText={setReserveDurationMin}
+              />
+              <Text className="font-rounded text-sm text-muted-foreground">分鐘</Text>
+            </View>
             <Pressable
               className="items-center justify-center rounded-2xl active:opacity-80"
               style={{ height: 52, backgroundColor: '#e8789a' }}
