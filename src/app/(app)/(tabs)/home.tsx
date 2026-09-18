@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { Search, Plus, User, Phone, ChevronRight, Scissors, Clock, CalendarDays, AlertCircle, BellRing } from 'lucide-react-native';
-import { getCustomers, searchCustomers, getServiceTemplates, getShopProfileByOwner, getMergedAppointments } from '@/db/api';
+import { getCustomers, searchCustomers, getServiceTemplates, getShopProfileByOwner, getMergedAppointments, getAccountType, canViewCustomers } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import type { Customer, ServiceTemplate, BusinessHours, UnifiedAppointment } from '@/types/types';
 
@@ -47,13 +47,17 @@ export default function HomeScreen() {
   const [isTodayHoliday, setIsTodayHoliday] = useState(false);
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [upcomingSoon, setUpcomingSoon] = useState<UnifiedAppointment[]>([]);
+  const [staffNoBrowse, setStaffNoBrowse] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
     try {
+      const accountType = await getAccountType().catch(() => 'merchant' as const);
+      const noBrowse = accountType === 'staff' && !(await canViewCustomers().catch(() => false));
+      setStaffNoBrowse(noBrowse);
       const [data, tpls, { data: { user } }, appts] = await Promise.all([
-        getCustomers(),
+        noBrowse ? Promise.resolve([] as Customer[]) : getCustomers(),
         getServiceTemplates(),
         supabase.auth.getUser(),
         getMergedAppointments().catch(() => []),
@@ -112,7 +116,7 @@ export default function HomeScreen() {
       {/* Header */}
       <View className="px-5 pt-14 pb-2 bg-background">
         <Text className="font-rounded text-2xl font-bold text-foreground mb-1">顧客管理</Text>
-        <Text className="font-rounded text-sm text-muted-foreground">共 {customers.length} 位顧客</Text>
+        {!staffNoBrowse && <Text className="font-rounded text-sm text-muted-foreground">共 {customers.length} 位顧客</Text>}
       </View>
 
       {/* 24 小時內預約提醒 */}
@@ -204,8 +208,8 @@ export default function HomeScreen() {
         </Pressable>
       )}
 
-      {/* 搜索欄 */}
-      <View className="px-5 mb-3">
+      {/* 搜索欄（沒開瀏覽權限的員工看不到顧客名單，搜尋框沒有意義，改顯示下方說明） */}
+      {!staffNoBrowse && <View className="px-5 mb-3">
         <View className="flex-row items-center bg-card rounded-2xl px-4 border border-border" style={{ height: 48 }}>
           <Search size={18} color="#c4a0ae" />
           <TextInput
@@ -217,12 +221,26 @@ export default function HomeScreen() {
           />
           {searching && <ActivityIndicator size="small" color="#e8789a" />}
         </View>
-      </View>
+      </View>}
 
       {/* 顧客列表 */}
       {loading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#e8789a" />
+        </View>
+      ) : staffNoBrowse ? (
+        <View className="mx-5 mt-4 bg-card border border-border rounded-2xl p-5 gap-3 items-center">
+          <User size={40} color="#c4a0ae" />
+          <Text className="font-rounded text-base font-semibold text-foreground text-center">此帳號沒有開啟「瀏覽顧客名單」</Text>
+          <Text className="font-rounded text-sm text-muted-foreground text-center">
+            排預約時，輸入顧客的完整電話就能查詢；查不到可以直接建立新顧客。要瀏覽完整名單，請商家在員工管理開啟權限。
+          </Text>
+          <Pressable
+            className="bg-primary rounded-xl px-5 py-2.5 mt-1 active:opacity-80"
+            onPress={() => router.push('/(app)/appointments/new' as any)}
+          >
+            <Text className="font-rounded text-sm text-white font-medium">去排新預約</Text>
+          </Pressable>
         </View>
       ) : (
         <FlatList
