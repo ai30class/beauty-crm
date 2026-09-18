@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import {
-  View, Text, ScrollView, Pressable, ActivityIndicator, Modal, TextInput,
+  View, Text, ScrollView, Pressable, ActivityIndicator, Modal, TextInput, useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -53,6 +53,23 @@ function addDays(d: Date, n: number): Date {
 // 員工帳號讀不到 staff 表，預約帶回來的設計師名字是空的，所以優先用 staff_id 對軌道
 function isStaffAppt(a: UnifiedAppointment, s: StaffRosterEntry) {
   return a.staff_id ? a.staff_id === s.id : a.staff_name === s.name;
+}
+// 手動預約在資料庫沒有時長欄位（一律當 60 分）；舊系統匯入的預約真正的時間寫在備註，優先用那個
+function apptDurationMin(a: UnifiedAppointment) {
+  const m = a.notes?.match(/^\[舊系統匯入\]\s*(\d{2}):(\d{2})~(\d{2}):(\d{2})/);
+  if (m) {
+    const d = (Number(m[3]) * 60 + Number(m[4])) - (Number(m[1]) * 60 + Number(m[2]));
+    if (d > 0) return d;
+  }
+  return a.duration_minutes || 30;
+}
+// 日視圖區塊上的字：顧客姓名（員工帳號讀不到時是「—」就不顯示）＋服務／備註
+function apptLabels(a: UnifiedAppointment) {
+  const who = a.customer_name && a.customer_name !== '—' ? a.customer_name : '';
+  const detail = a.source === 'manual'
+    ? (a.notes ?? '').replace(/^\[舊系統匯入\]\s*\d{2}:\d{2}~\d{2}:\d{2}（\d+分）/, '').replace(/^[\s｜|]+/, '').trim() || a.service_name
+    : a.service_name;
+  return { who, detail };
 }
 function timeToMinutes(iso: string) {
   const d = new Date(iso);
@@ -143,6 +160,8 @@ function ApptCard({ item }: { item: UnifiedAppointment }) {
 const TIMELINE_START_MIN = 9 * 60;
 const TIMELINE_END_MIN = 21 * 60;
 const TRACK_HEIGHT = 320;
+// 日視圖：每小時的高度，一天 12 小時共 720 高，往下捲動看
+const DAY_HOUR_PX = 60;
 const HOUR_MARKS = Array.from({ length: (TIMELINE_END_MIN - TIMELINE_START_MIN) / 60 + 1 }, (_, i) => 9 + i);
 // 每 30 分鐘一條刻度線（含整點），整點另外顯示數字，半點只畫線不顯示文字
 const GRID_LINES = Array.from({ length: (TIMELINE_END_MIN - TIMELINE_START_MIN) / 30 + 1 }, (_, i) => TIMELINE_START_MIN + i * 30);
@@ -162,7 +181,10 @@ export default function StaffScheduleScreen() {
   const router = useRouter();
   const today = toDateStr(new Date());
 
-  const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
+  const { width: winW } = useWindowDimensions();
+  // 手機寬度預設「日」視圖（一週 7 天 × 每位設計師一條軌道，手機上每欄只剩 25 像素，看不清楚）
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>(() => (winW < 700 ? 'day' : 'week'));
+  const [dayDate, setDayDate] = useState<string>(today);
   const [allAppts, setAllAppts] = useState<UnifiedAppointment[]>([]);
   const [allStaff, setAllStaff] = useState<StaffRosterEntry[]>([]);
   const [businessHours, setBusinessHours] = useState<BusinessHours | null>(null);
@@ -189,6 +211,13 @@ export default function StaffScheduleScreen() {
   allAppts.forEach(a => { if (a.staff_id) bookedStaffIds.add(a.staff_id); });
   reservedSlots.forEach(r => bookedStaffIds.add(r.staff_id));
   const staffList = allStaff.filter(s => s.is_active || bookedStaffIds.has(s.id));
+
+  // 切換日期時同步把「週」對到那天所在的週，預留時間與公休日資料才會跟著載入
+  const goDay = (ds: string) => {
+    setDayDate(ds);
+    const m = getMonday(new Date(ds + 'T00:00:00'));
+    setWeekStart(prev => (toDateStr(prev) === toDateStr(m) ? prev : m));
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -332,7 +361,7 @@ export default function StaffScheduleScreen() {
 
       {/* 週／月切換 */}
       <View className="flex-row gap-2 px-5 mb-3">
-        {(['week', 'month'] as const).map(m => (
+        {(['day', 'week', 'month'] as const).map(m => (
           <Pressable
             key={m}
             className="px-4 py-1.5 rounded-full active:opacity-70"
@@ -340,13 +369,141 @@ export default function StaffScheduleScreen() {
             onPress={() => setViewMode(m)}
           >
             <Text className="font-rounded text-sm font-medium" style={{ color: viewMode === m ? '#fff' : '#c4a0ae' }}>
-              {m === 'week' ? '週' : '月'}
+              {m === 'day' ? '日' : m === 'week' ? '週' : '月'}
             </Text>
           </Pressable>
         ))}
       </View>
 
-      {viewMode === 'week' ? (
+      {viewMode === 'day' ? (
+        <ScrollView className="flex-1" contentContainerClassName="pb-10">
+          {/* 日期切換 */}
+          <View className="flex-row items-center justify-between px-5 mb-3">
+            <Pressable className="w-9 h-9 rounded-full items-center justify-center active:bg-muted"
+              onPress={() => goDay(toDateStr(addDays(new Date(dayDate + 'T00:00:00'), -1)))}>
+              <ChevronLeft size={20} color="#e8789a" />
+            </Pressable>
+            <Pressable className="items-center active:opacity-70" onPress={() => goDay(today)}>
+              <Text className="font-rounded text-sm font-bold text-foreground">{formatDateLabel(dayDate)}</Text>
+              {dayDate !== today && <Text className="font-rounded text-xs text-primary">回到今天</Text>}
+            </Pressable>
+            <Pressable className="w-9 h-9 rounded-full items-center justify-center active:bg-muted"
+              onPress={() => goDay(toDateStr(addDays(new Date(dayDate + 'T00:00:00'), 1)))}>
+              <ChevronRight size={20} color="#e8789a" />
+            </Pressable>
+          </View>
+
+          {loading ? (
+            <View className="items-center py-10"><ActivityIndicator color="#e8789a" /></View>
+          ) : staffList.length === 0 ? (
+            <View className="mx-5 bg-card rounded-2xl p-8 border border-border items-center">
+              <Text className="font-rounded text-sm text-muted-foreground">目前沒有可顯示的設計師</Text>
+            </View>
+          ) : (() => {
+            const dayHours = businessHours?.[DAY_KEYS[new Date(dayDate + 'T00:00:00').getDay()]];
+            const shopClosed = dayHours?.open === false || holidays.some(h => h.holiday_date === dayDate && !h.staff_id);
+            const dayList = allAppts.filter(a => toApptDateStr(a.appointment_time) === dayDate);
+            const totalH = ((TIMELINE_END_MIN - TIMELINE_START_MIN) / 60) * DAY_HOUR_PX;
+            const yOf = (min: number) => ((min - TIMELINE_START_MIN) / 60) * DAY_HOUR_PX;
+            const colW = Math.max(92, Math.floor((winW - 40 - 30) / staffList.length));
+            return (
+              <View className="px-5 flex-row">
+                {/* 時間刻度 */}
+                <View style={{ width: 30, marginTop: 28, height: totalH }}>
+                  {HOUR_MARKS.map(h => (
+                    <Text key={h} className="font-rounded"
+                      style={{ position: 'absolute', top: yOf(h * 60) - 7, fontSize: 11, color: '#c4a0ae' }}>
+                      {h}
+                    </Text>
+                  ))}
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View>
+                    {/* 設計師名字列 */}
+                    <View className="flex-row" style={{ height: 28 }}>
+                      {staffList.map(s => (
+                        <View key={s.id} style={{ width: colW }} className="flex-row items-center justify-center gap-1.5">
+                          <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+                          <Text className="font-rounded text-xs font-bold" style={{ color: '#7a6a70' }} numberOfLines={1}>{s.name}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    <View className="flex-row">
+                      {staffList.map(s => {
+                        const staffOff = holidays.some(h => h.holiday_date === dayDate && h.staff_id === s.id);
+                        const closed = shopClosed || staffOff;
+                        const staffAppts = dayList.filter(a => isStaffAppt(a, s));
+                        const staffReserved = reservedSlots.filter(r => r.staff_id === s.id && r.reserved_date === dayDate);
+                        return (
+                          <View key={s.id} style={{ width: colW, height: totalH, position: 'relative', overflow: 'hidden',
+                            backgroundColor: closed ? '#f5f0f2' : '#fdf1f5', borderLeftWidth: 1, borderLeftColor: '#f0dde4' }}>
+                            {GRID_LINES.map(m => (
+                              <View key={m} pointerEvents="none"
+                                style={{ position: 'absolute', left: 0, right: 0, top: yOf(m), height: 1,
+                                  backgroundColor: m % 60 === 0 ? '#e8c8d4' : '#f0dde4' }} />
+                            ))}
+                            {closed ? (
+                              <Text className="font-rounded" style={{ position: 'absolute', top: '40%', left: 0, right: 0, textAlign: 'center', fontSize: 12, color: '#c4a0ae' }}>
+                                {shopClosed ? '店休' : '休'}
+                              </Text>
+                            ) : (
+                              <>
+                                {TAP_SLOT_MINUTES.map(min => (
+                                  <Pressable key={`slot-${min}`}
+                                    style={{ position: 'absolute', left: 0, right: 0, top: yOf(min), height: DAY_HOUR_PX / 2 }}
+                                    onPress={() => setSlotPicker({ dateStr: dayDate, time: minutesToHHMM(min), staffId: s.id, staffName: s.name })} />
+                                ))}
+                                {staffReserved.map(r => {
+                                  const startMin = Math.max(hhmmToMinutes(r.start_time), TIMELINE_START_MIN);
+                                  const endMin = Math.min(hhmmToMinutes(r.end_time), TIMELINE_END_MIN);
+                                  return (
+                                    <Pressable key={r.id}
+                                      style={({ pressed }) => ({ position: 'absolute', left: 3, right: 3, top: yOf(startMin),
+                                        height: Math.max(((endMin - startMin) / 60) * DAY_HOUR_PX, 16),
+                                        backgroundColor: '#e5dde0', borderRadius: 6, borderWidth: 1, borderColor: '#c4a0ae',
+                                        opacity: pressed ? 0.7 : 1, overflow: 'hidden', padding: 3 })}
+                                      onPress={() => setDeleteReserveTarget(r)}>
+                                      <Text className="font-rounded" style={{ fontSize: 11, color: '#7a6a70' }} numberOfLines={3}>{r.label}</Text>
+                                    </Pressable>
+                                  );
+                                })}
+                                {staffAppts.map(a => {
+                                  const startMin = Math.max(timeToMinutes(a.appointment_time), TIMELINE_START_MIN);
+                                  const endMin = Math.min(startMin + apptDurationMin(a), TIMELINE_END_MIN);
+                                  const { who, detail } = apptLabels(a);
+                                  return (
+                                    <Pressable key={a.id}
+                                      style={({ pressed }) => ({ position: 'absolute', left: 3, right: 3, top: yOf(startMin),
+                                        height: Math.max(((endMin - startMin) / 60) * DAY_HOUR_PX, 22),
+                                        backgroundColor: s.color + '33', borderRadius: 6, borderLeftWidth: 4, borderLeftColor: s.color,
+                                        opacity: pressed ? 0.7 : 1, overflow: 'hidden', padding: 4 })}
+                                      onPress={() => {
+                                        if (a.source === 'manual') router.push(`/(app)/appointments/${a.id.replace('manual-', '')}` as any);
+                                        else router.push('/(app)/online-orders' as any);
+                                      }}>
+                                      <Text className="font-rounded" style={{ fontSize: 11, fontWeight: '700', color: '#3d2b32' }} numberOfLines={1}>
+                                        {formatTime(a.appointment_time)}{who ? ` ${who}` : ''}
+                                      </Text>
+                                      {detail ? <Text className="font-rounded" style={{ fontSize: 11, color: '#5a4850' }} numberOfLines={3}>{detail}</Text> : null}
+                                    </Pressable>
+                                  );
+                                })}
+                              </>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                </ScrollView>
+              </View>
+            );
+          })()}
+          <Text className="font-rounded text-xs text-muted-foreground px-5 mt-3">
+            💡 點色塊看預約詳情，點空白處可排新預約或標記預留時間
+          </Text>
+        </ScrollView>
+      ) : viewMode === 'week' ? (
         <ScrollView className="flex-1" contentContainerClassName="pb-10">
           {/* 週切換 */}
           <View className="flex-row items-center justify-between px-5 mb-3">
@@ -496,7 +653,7 @@ export default function StaffScheduleScreen() {
                               })}
                               {staffOff ? null : staffDayAppts.map((a, idx) => {
                                 const startMin = Math.max(timeToMinutes(a.appointment_time), TIMELINE_START_MIN);
-                                const endMin = Math.min(startMin + (a.duration_minutes || 30), TIMELINE_END_MIN);
+                                const endMin = Math.min(startMin + apptDurationMin(a), TIMELINE_END_MIN);
                                 const top = ((startMin - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
                                 const h = Math.max(((endMin - startMin) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT, 4);
                                 return (
@@ -568,7 +725,7 @@ export default function StaffScheduleScreen() {
                               })}
                               {staffDayAppts.map((a, idx) => {
                                 const startMin = Math.max(timeToMinutes(a.appointment_time), TIMELINE_START_MIN);
-                                const endMin = Math.min(startMin + (a.duration_minutes || 30), TIMELINE_END_MIN);
+                                const endMin = Math.min(startMin + apptDurationMin(a), TIMELINE_END_MIN);
                                 const top = ((startMin - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
                                 const h = Math.max(((endMin - startMin) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT, 4);
                                 return (
