@@ -7,9 +7,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Search, Clock, AlertTriangle, UserCheck, Cake } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { createAppointment, getCustomers, getCustomerById, getServiceTemplates, updateCustomer, getActiveStaff } from '@/db/api';
+import { createAppointment, getCustomers, getCustomerById, getServiceTemplates, updateCustomer, getStaffForPicker } from '@/db/api';
 import { supabase } from '@/client/supabase';
-import type { Customer, ServiceTemplate, Staff } from '@/types/types';
+import type { Customer, ServiceTemplate, StaffRosterEntry } from '@/types/types';
 
 const REMINDER_OPTIONS = [
   { label: '15 分鐘前', value: 15 },
@@ -24,7 +24,7 @@ export default function NewAppointmentScreen() {
     useLocalSearchParams<{ customerId?: string; date?: string; time?: string; staffId?: string }>();
   const router = useRouter();
 
-  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [staffList, setStaffList] = useState<StaffRosterEntry[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(presetStaffId ?? null);
 
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -72,7 +72,7 @@ export default function NewAppointmentScreen() {
       const [all, tpls, staff] = await Promise.all([
         getCustomers(),
         getServiceTemplates(),
-        getActiveStaff(),
+        getStaffForPicker(),
       ]);
       setCustomers(all);
       setTemplates(tpls);

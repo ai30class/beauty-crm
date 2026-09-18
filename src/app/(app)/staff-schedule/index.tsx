@@ -9,9 +9,9 @@ import {
   ArrowLeft, CalendarDays, Clock, User, Globe, ChevronLeft, ChevronRight, Users, CalendarPlus, Coffee, Trash2,
 } from 'lucide-react-native';
 import {
-  getMergedAppointments, getActiveStaff, getShopProfile, getHolidays,
+  getMergedAppointments, getShopProfile, getHolidays,
   getStaffReservedSlots, createStaffReservedSlot, deleteStaffReservedSlot,
-  getAccountType, getShopStaffRoster,
+  getStaffForPicker,
 } from '@/db/api';
 import type { UnifiedAppointment, BusinessHours, Holiday, StaffReservedSlot, StaffRosterEntry } from '@/types/types';
 
@@ -183,13 +183,9 @@ export default function StaffScheduleScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // 員工帳號對 staff 表原始列完全沒有 SELECT 權限（怕薪資欄位被同事看到，
-      // 見 migration 00068），排班表要顯示「全店同事名單」得走安全的 roster
-      // 函式，不能用商家在用的 getActiveStaff()——那個查詢對員工帳號會是空的。
-      const accountType = await getAccountType().catch(() => 'merchant' as const);
       const [data, staff, profile] = await Promise.all([
         getMergedAppointments(),
-        accountType === 'staff' ? getShopStaffRoster() : getActiveStaff(),
+        getStaffForPicker(),
         getShopProfile(),
       ]);
       // 只顯示今天及之後、非取消的
@@ -297,7 +293,14 @@ export default function StaffScheduleScreen() {
       <View className="flex-row items-center px-5 pt-14 pb-4 bg-background">
         <Pressable
           className="w-9 h-9 items-center justify-center rounded-full active:bg-muted mr-2"
-          onPress={() => router.back()}
+          onPress={() => {
+            // 員工登入後直接落在這頁（見 sign-in.tsx／reset-password.tsx），導覽堆疊裡
+            // 沒有「上一頁」，router.back() 會靜默沒反應，讓員工卡在這裡連底部分頁列
+            // （顧客／預約／報表／我的）都碰不到。這種情況改導去預約分頁，那裡才進得了
+            // 分頁列，可以繼續往其他分頁走。商家從別處點進來時 canGoBack() 是 true，行為不變。
+            if (router.canGoBack()) router.back();
+            else router.replace('/(app)/appointments' as any);
+          }}
         >
           <ArrowLeft size={22} color="#e8789a" />
         </Pressable>

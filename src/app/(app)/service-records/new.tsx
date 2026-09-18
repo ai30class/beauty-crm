@@ -16,9 +16,9 @@ import {
   createServiceRecord, updateServiceRecord, getCustomerById,
   getServiceTemplates, getPackagesByCustomer, usePackageSession, usePackageAmount,
   getProducts, deductProductStock, createProductUsageBatch,
-  getOnlineOrderById, updateOnlineOrderStatus, getCustomerByPhone, getActiveStaff,
+  getOnlineOrderById, updateOnlineOrderStatus, getCustomerByPhone, getStaffForPicker,
 } from '@/db/api';
-import type { ServiceTemplate, Product, Staff } from '@/types/types';
+import type { ServiceTemplate, Product, StaffRosterEntry } from '@/types/types';
 
 const BUCKET = 'appd2yss59nidj5_service_photos';
 
@@ -69,7 +69,7 @@ export default function NewServiceRecordScreen() {
   const [activePackages, setActivePackages] = useState<import('@/types/types').ServicePackage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [staffList, setStaffList] = useState<StaffRosterEntry[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string>('');
   // 多人協作分帳：兩位人員一起完成同一筆服務時，依比例拆分營收＋抽成
   const [showCoStaff, setShowCoStaff] = useState(false);
@@ -144,7 +144,7 @@ export default function NewServiceRecordScreen() {
       const prods = await getProducts();
       setProducts(prods);
       // 載入服務人員列表
-      const staff = await getActiveStaff();
+      const staff = await getStaffForPicker();
       setStaffList(staff);
     })();
   }, [customerIdParam, templateId, onlineOrderId]);

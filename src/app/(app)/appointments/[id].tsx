@@ -7,8 +7,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Trash2, Clock, CheckCircle, XCircle, Clock3, AlertTriangle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getAppointmentById, updateAppointment, deleteAppointment, incrementCustomerNoShow, getActiveStaff } from '@/db/api';
-import type { Appointment, Staff } from '@/types/types';
+import { getAppointmentById, updateAppointment, deleteAppointment, incrementCustomerNoShow, getStaffForPicker } from '@/db/api';
+import type { Appointment, StaffRosterEntry } from '@/types/types';
 
 const REMINDER_OPTIONS = [
   { label: '15 分鐘前', value: 15 },
@@ -47,13 +47,13 @@ export default function AppointmentDetailScreen() {
   const [reminderMinutes, setReminderMinutes] = useState(30);
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<Appointment['status']>('pending');
-  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [staffList, setStaffList] = useState<StaffRosterEntry[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       if (!id) return;
-      const [a, staff] = await Promise.all([getAppointmentById(id), getActiveStaff()]);
+      const [a, staff] = await Promise.all([getAppointmentById(id), getStaffForPicker()]);
       setStaffList(staff);
       if (a) {
         setAppt(a);

@@ -1220,6 +1220,15 @@ export async function getShopStaffRoster(): Promise<StaffRosterEntry[]> {
   return Array.isArray(data) ? data : [];
 }
 
+// 任何畫面裡「選人員」下拉選單共用這個，不要各自判斷帳號類型——員工帳號對 staff 表
+// 原始列完全沒有 SELECT 權限（怕薪資欄位洩漏，見 migration 00068），直接查
+// getActiveStaff() 對員工帳號一定是空陣列。這裡統一判斷、改走安全的 roster RPC，
+// 避免每個畫面各自複製這段邏輯、漏改一處就會有某個畫面的人員選單悄悄變空白。
+export async function getStaffForPicker(): Promise<StaffRosterEntry[]> {
+  const type = await getAccountType().catch(() => 'merchant' as const);
+  return type === 'staff' ? getShopStaffRoster() : getActiveStaff();
+}
+
 // 員工排預約時查「這支電話有沒有登記過」：只回傳 id/name，不是開放整張 customers 表。
 export async function searchCustomerByPhone(phone: string): Promise<{ id: string; name: string }[]> {
   const { data, error } = await supabase.rpc('search_customer_by_phone', { p_phone: phone });

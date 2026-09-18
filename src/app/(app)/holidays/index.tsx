@@ -5,8 +5,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Plus, Trash2, CalendarX, ChevronDown, User2 } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getAllHolidays, createHoliday, deleteHoliday, getActiveStaff } from '@/db/api';
-import type { Holiday, Staff } from '@/types/types';
+import { getAllHolidays, createHoliday, deleteHoliday, getStaffForPicker } from '@/db/api';
+import type { Holiday, StaffRosterEntry } from '@/types/types';
 
 function toLocalDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -15,7 +15,7 @@ function toLocalDateStr(d: Date) {
 export default function HolidaysScreen() {
   const router = useRouter();
   const [holidays, setHolidays] = useState<Holiday[]>([]);
-  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [staffList, setStaffList] = useState<StaffRosterEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [pickedDate, setPickedDate] = useState<Date>(new Date());
@@ -29,7 +29,7 @@ export default function HolidaysScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [h, s] = await Promise.all([getAllHolidays(), getActiveStaff()]);
+      const [h, s] = await Promise.all([getAllHolidays(), getStaffForPicker()]);
       setHolidays(h);
       setStaffList(s);
     } finally { setLoading(false); }
