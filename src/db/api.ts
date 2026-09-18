@@ -7,7 +7,7 @@ import type {
   Holiday, StaffReservedSlot, OnlineOrder, OnlineOrderAddon, Coupon, CustomerCoupon, ShopBlockedSlot,
   MonthlyStats, UnifiedAppointment, ProductSalesRow,
   BirthdayCustomer, CustomerRankRow, StaffPerformanceRow,
-  StaffCommissionTier, StaffBonus, PayrollRecord, DormantCustomer, SignupRequest,
+  StaffCommissionTier, StaffBonus, PayrollRecord, DormantCustomer, SignupRequest, StaffRosterEntry,
 } from '@/types/types';
 
 // ─── 商家申請名單（關閉自助註冊後的替代入口）───────────────────────────────────
@@ -550,7 +550,7 @@ export async function createStaff(payload: Omit<Staff, 'id' | 'owner_id' | 'crea
   if (error) throw error;
 }
 
-export async function updateStaff(id: string, payload: Partial<Pick<Staff, 'name' | 'role' | 'color' | 'is_active' | 'commission_rate' | 'bio' | 'avatar_url' | 'base_salary'>>): Promise<void> {
+export async function updateStaff(id: string, payload: Partial<Pick<Staff, 'name' | 'role' | 'color' | 'is_active' | 'commission_rate' | 'bio' | 'avatar_url' | 'base_salary' | 'can_manage_customers' | 'can_manage_pricing' | 'can_manage_shop_settings'>>): Promise<void> {
   const { error } = await supabase.from('staff').update(payload).eq('id', id);
   if (error) throw error;
 }
@@ -1160,14 +1160,78 @@ const DEFAULT_HOURS: BusinessHours = {
   sun: { open: false, start: '09:00', end: '18:00' },
 };
 
-// ─── 帳號類型（商家 / 顧客）───────────────────────────────────────────────────
-export async function getAccountType(): Promise<'merchant' | 'customer'> {
+// ─── 帳號類型（商家 / 員工 / 顧客）─────────────────────────────────────────────
+export async function getAccountType(): Promise<'merchant' | 'customer' | 'staff'> {
   const { data, error } = await supabase
     .from('profiles')
     .select('account_type')
     .maybeSingle();
   if (error) throw error;
-  return (data?.account_type as 'merchant' | 'customer') ?? 'merchant';
+  return (data?.account_type as 'merchant' | 'customer' | 'staff') ?? 'merchant';
+}
+
+// 員工帳號專用：拿自己屬於哪家店、對應 staff 表哪一筆。account_type 不是 'staff'
+// 時回傳 null（商家/顧客帳號不需要這個）。
+export async function getMyStaffLink(): Promise<{ staffOwnerId: string; staffId: string } | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('account_type, staff_owner_id, staff_id')
+    .maybeSingle();
+  if (error) throw error;
+  if (data?.account_type !== 'staff' || !data.staff_owner_id || !data.staff_id) return null;
+  return { staffOwnerId: data.staff_owner_id, staffId: data.staff_id };
+}
+
+// 商家在員工管理頁幫某位員工建立登入帳號：寄邀請信，對方自己設密碼
+// （不經過商家或這支 app 的手，見 create-staff-account Edge Function）。
+export async function createStaffAccount(email: string, staffId: string): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('未登入');
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+  const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+  // 跟 sign-in.tsx 的 resetPasswordForEmail 用同一個落點：/auth/callback 才有
+  // 解析網址 hash 裡 access_token/refresh_token 的邏輯，直接指到 /reset-password
+  // 的話那個 hash 沒人處理，員工點信會看到「連結已失效」。
+  const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined;
+  const res = await fetch(`${supabaseUrl}/functions/v1/create-staff-account`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': supabaseAnonKey,
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ email, staff_id: staffId, redirect_to: redirectTo }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error ?? '建立員工帳號失敗，請稍後再試');
+}
+
+// 員工管理頁用：哪些員工已經有登入帳號了（商家沒辦法直接查別人的 profiles）。
+export async function getStaffWithLoginAccounts(): Promise<string[]> {
+  const { data, error } = await supabase.rpc('get_staff_with_login_accounts');
+  if (error) throw error;
+  return Array.isArray(data) ? data.map((r: { staff_id: string }) => r.staff_id) : [];
+}
+
+// 員工版排班表用：同店其他員工的安全欄位（不含薪資），走 RPC 不是查原始 staff 表。
+export async function getShopStaffRoster(): Promise<StaffRosterEntry[]> {
+  const { data, error } = await supabase.rpc('get_shop_staff_roster');
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+// 員工排預約時查「這支電話有沒有登記過」：只回傳 id/name，不是開放整張 customers 表。
+export async function searchCustomerByPhone(phone: string): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await supabase.rpc('search_customer_by_phone', { p_phone: phone });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+// 沒有「顧客管理」權限的員工，看預約明細時用這個拿顧客姓名，不直接查 customers 表。
+export async function getCustomerNameSafe(customerId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('get_customer_name', { p_customer_id: customerId });
+  if (error) throw error;
+  return data ?? null;
 }
 
 // 商家後台關掉自助註冊後，Google OAuth 是唯一還留著、會「登入或自動註冊」

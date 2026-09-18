@@ -21,10 +21,11 @@ export default function AuthCallback() {
         if (accessToken && refreshToken) {
           await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
         }
-        // 從「忘記密碼」信點進來的，hash 會帶 type=recovery。這種人現在雖然
-        // 已經有 session 了，但他的目的是換密碼，不是進後台——直接丟去首頁
-        // 他就再也找不到設定新密碼的地方了。
-        if (params.get('type') === 'recovery') {
+        // 從「忘記密碼」信點進來的，hash 會帶 type=recovery；員工帳號的邀請信
+        // （inviteUserByEmail）帶的是 type=invite——兩種都還沒有密碼／要換密碼，
+        // 目的都不是直接進後台。少判斷 invite 的話，被邀請的員工會直接帶著
+        // session 掉進商家首頁，但從頭到尾沒有機會設密碼，下次登入不出來。
+        if (params.get('type') === 'recovery' || params.get('type') === 'invite') {
           // ⚠️ 是 '/reset-password'，不是 '/(auth)/reset-password'：這頁必須放在
           // 公開路由，因為 (auth) 的 guard 是 !session，而走到這裡的人一定已經
           // 有 recovery session。改動這個路徑前先看開發筆記三十四節。

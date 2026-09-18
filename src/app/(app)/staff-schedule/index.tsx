@@ -11,8 +11,9 @@ import {
 import {
   getMergedAppointments, getActiveStaff, getShopProfile, getHolidays,
   getStaffReservedSlots, createStaffReservedSlot, deleteStaffReservedSlot,
+  getAccountType, getShopStaffRoster,
 } from '@/db/api';
-import type { UnifiedAppointment, Staff, BusinessHours, Holiday, StaffReservedSlot } from '@/types/types';
+import type { UnifiedAppointment, BusinessHours, Holiday, StaffReservedSlot, StaffRosterEntry } from '@/types/types';
 
 const DAY_KEYS: (keyof BusinessHours)[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -159,7 +160,7 @@ export default function StaffScheduleScreen() {
 
   const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
   const [allAppts, setAllAppts] = useState<UnifiedAppointment[]>([]);
-  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [staffList, setStaffList] = useState<StaffRosterEntry[]>([]);
   const [businessHours, setBusinessHours] = useState<BusinessHours | null>(null);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [reservedSlots, setReservedSlots] = useState<StaffReservedSlot[]>([]);
@@ -182,9 +183,13 @@ export default function StaffScheduleScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // 員工帳號對 staff 表原始列完全沒有 SELECT 權限（怕薪資欄位被同事看到，
+      // 見 migration 00068），排班表要顯示「全店同事名單」得走安全的 roster
+      // 函式，不能用商家在用的 getActiveStaff()——那個查詢對員工帳號會是空的。
+      const accountType = await getAccountType().catch(() => 'merchant' as const);
       const [data, staff, profile] = await Promise.all([
         getMergedAppointments(),
-        getActiveStaff(),
+        accountType === 'staff' ? getShopStaffRoster() : getActiveStaff(),
         getShopProfile(),
       ]);
       // 只顯示今天及之後、非取消的

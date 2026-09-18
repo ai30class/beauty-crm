@@ -186,6 +186,20 @@ export interface Staff {
   // 底薪：可選，預設0（沒設底薪的員工完全靠抽成+獎金）
   base_salary: number;
   created_at: string;
+  // 員工登入帳號的權限開關，預設全部關閉，商家在員工管理頁自行開。
+  // 只有這三項可以開放，排班/預約/自己的服務記錄/自己的業績數字等基本層是不可關的。
+  can_manage_customers: boolean;
+  can_manage_pricing: boolean;
+  can_manage_shop_settings: boolean;
+}
+
+// 員工版排班表用的安全欄位——不含 commission_rate/base_salary 等同事不該看到的欄位，
+// 走 get_shop_staff_roster() RPC 取得，不是查原始 staff 表。
+export interface StaffRosterEntry {
+  id: string;
+  name: string;
+  color: string;
+  is_active: boolean;
 }
 
 // ─── 階梯式抽成 ───────────────────────────────────────────────────────────────

@@ -28,9 +28,11 @@ export default function ResetPasswordScreen() {
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
-  // 這頁商家／顧客共用（見上方注解）：改密碼完成後要導去哪裡、「回登入頁」
-  // 要去哪個登入頁，兩種帳號不一樣，用 profiles.account_type 判斷。
+  // 這頁商家／員工／顧客共用（見上方注解）：改密碼完成後要導去哪裡、「回登入頁」
+  // 要去哪個登入頁，三種帳號不一樣，用 profiles.account_type 判斷。員工帳號
+  // 第一次設密碼（邀請信）也是走這頁，「開始使用」要落在排班表，不是商家首頁。
   const [isCustomer, setIsCustomer] = useState(false);
+  const [isStaff, setIsStaff] = useState(false);
 
   useEffect(() => {
     // 逾時保護：這頁背後要跟 Supabase 換 session，如果那個請求卡住（實測遇過，
@@ -72,7 +74,11 @@ export default function ResetPasswordScreen() {
       const { data } = await supabase.auth.getSession();
       if (data.session) {
         setCanEdit(true);
-        try { setIsCustomer((await getAccountType()) === 'customer'); } catch { /* 查不到就當商家處理，不影響改密碼本身 */ }
+        try {
+          const type = await getAccountType();
+          setIsCustomer(type === 'customer');
+          setIsStaff(type === 'staff');
+        } catch { /* 查不到就當商家處理，不影響改密碼本身 */ }
       } else {
         setError('這個重設連結已失效，請回登入頁重新申請一次。');
       }
@@ -136,7 +142,7 @@ export default function ResetPasswordScreen() {
               密碼已更新完成，之後請用新密碼登入。
             </Text>
             <Pressable
-              onPress={() => router.replace((isCustomer ? '/online-booking/my-orders' : '/(app)/home') as any)}
+              onPress={() => router.replace((isCustomer ? '/online-booking/my-orders' : isStaff ? '/(app)/staff-schedule' : '/(app)/home') as any)}
               style={{ backgroundColor: '#e8789a', borderRadius: 999, paddingVertical: 14, alignItems: 'center', marginTop: 4 }}
             >
               <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>開始使用</Text>

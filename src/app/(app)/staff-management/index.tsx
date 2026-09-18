@@ -1,18 +1,18 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  ActivityIndicator
+  ActivityIndicator, Switch
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, Plus, Trash2, Pencil, Check, X, User2, Camera, Layers } from 'lucide-react-native';
+import { ArrowLeft, Plus, Trash2, Pencil, Check, X, User2, Camera, Layers, KeyRound, ShieldCheck } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system';
 import { supabase } from '@/client/supabase';
-import { getStaff, createStaff, updateStaff, deleteStaff, getPhotoUrl } from '@/db/api';
+import { getStaff, createStaff, updateStaff, deleteStaff, getPhotoUrl, getStaffWithLoginAccounts, createStaffAccount } from '@/db/api';
 import type { Staff } from '@/types/types';
 
 const COLORS = ['#e8789a', '#8b9de8', '#5dc0a0', '#e8a87c', '#c49de8', '#e8d47c', '#7cbde8'];
@@ -66,6 +66,17 @@ export default function StaffManagementScreen() {
   const [editBio, setEditBio] = useState('');
   const [editAvatarUrl, setEditAvatarUrl] = useState<string | null>(null);
   const [editAvatarAsset, setEditAvatarAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [editCanManageCustomers, setEditCanManageCustomers] = useState(false);
+  const [editCanManagePricing, setEditCanManagePricing] = useState(false);
+  const [editCanManageShopSettings, setEditCanManageShopSettings] = useState(false);
+
+  // 員工登入帳號：哪些人已經建過了（不能重複邀請）、邀請表單的 email 草稿／
+  // 狀態，用 staffId 當 key，因為同一頁可能好幾個人都在編輯狀態
+  const [staffWithLogin, setStaffWithLogin] = useState<Set<string>>(new Set());
+  const [inviteEmail, setInviteEmail] = useState<Record<string, string>>({});
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<Record<string, string>>({});
+  const [inviteSent, setInviteSent] = useState<Set<string>>(new Set());
 
   const pickAvatar = async (target: 'new' | 'edit') => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -79,8 +90,11 @@ export default function StaffManagementScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setStaff(await getStaff()); }
-    finally { setLoading(false); }
+    try {
+      const [list, withLogin] = await Promise.all([getStaff(), getStaffWithLoginAccounts()]);
+      setStaff(list);
+      setStaffWithLogin(new Set(withLogin));
+    } finally { setLoading(false); }
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -97,7 +111,11 @@ export default function StaffManagementScreen() {
       const avatarPath = newAvatarAsset
         ? await compressAndUploadAvatar(newAvatarAsset.uri, newAvatarAsset.mimeType ?? undefined, newAvatarAsset.width ?? undefined)
         : null;
-      await createStaff({ name: newName.trim(), role: 'therapist', color: newColor, is_active: true, commission_rate: rate, base_salary: baseSalary, bio: newBio.trim() || null, avatar_url: avatarPath });
+      await createStaff({
+        name: newName.trim(), role: 'therapist', color: newColor, is_active: true, commission_rate: rate, base_salary: baseSalary, bio: newBio.trim() || null, avatar_url: avatarPath,
+        // 新員工預設沒有任何登入帳號權限開關（跟還沒建立登入帳號無關，這是獨立的預設值）
+        can_manage_customers: false, can_manage_pricing: false, can_manage_shop_settings: false,
+      });
       setNewName(''); setNewCommissionRate(''); setNewBaseSalary(''); setNewBio(''); setNewAvatarAsset(null); setShowAdd(false); load();
     } catch (e: any) { setError(e.message); }
     finally { setSaving(false); }
@@ -112,8 +130,30 @@ export default function StaffManagementScreen() {
     const avatarPath = editAvatarAsset
       ? await compressAndUploadAvatar(editAvatarAsset.uri, editAvatarAsset.mimeType ?? undefined, editAvatarAsset.width ?? undefined)
       : editAvatarUrl;
-    await updateStaff(id, { name: editName.trim(), color: editColor, commission_rate: rate, base_salary: baseSalary, bio: editBio.trim() || null, avatar_url: avatarPath });
+    await updateStaff(id, {
+      name: editName.trim(), color: editColor, commission_rate: rate, base_salary: baseSalary,
+      bio: editBio.trim() || null, avatar_url: avatarPath,
+      can_manage_customers: editCanManageCustomers,
+      can_manage_pricing: editCanManagePricing,
+      can_manage_shop_settings: editCanManageShopSettings,
+    });
     setEditId(null); setEditAvatarAsset(null); load();
+  };
+
+  const handleInvite = async (s: Staff) => {
+    const email = (inviteEmail[s.id] ?? '').trim();
+    if (!email) { setInviteError(prev => ({ ...prev, [s.id]: '請輸入電子郵件' })); return; }
+    setInviteError(prev => ({ ...prev, [s.id]: '' }));
+    setInvitingId(s.id);
+    try {
+      await createStaffAccount(email, s.id);
+      setInviteSent(prev => new Set(prev).add(s.id));
+      setStaffWithLogin(prev => new Set(prev).add(s.id));
+    } catch (e: any) {
+      setInviteError(prev => ({ ...prev, [s.id]: e.message }));
+    } finally {
+      setInvitingId(null);
+    }
   };
 
   const handleToggleActive = async (s: Staff) => {
@@ -311,6 +351,60 @@ export default function StaffManagementScreen() {
                       style={{ minHeight: 72, textAlignVertical: 'top' }}
                     />
                   </View>
+                  {/* 員工登入帳號：權限開關（預設全部關閉，跟排班/自己業績等基本層權限無關，那些不可關）*/}
+                  <View className="bg-background rounded-xl p-3 gap-2.5 border border-border">
+                    <View className="flex-row items-center gap-1.5">
+                      <ShieldCheck size={14} color="#e8789a" />
+                      <Text className="font-rounded text-xs font-semibold text-foreground">員工登入帳號權限（預設全部關閉）</Text>
+                    </View>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="font-rounded text-sm text-foreground flex-1 pr-2">可管理顧客資料（含電話，不含刪除）</Text>
+                      <Switch value={editCanManageCustomers} onValueChange={setEditCanManageCustomers} trackColor={{ false: '#e5dde0', true: '#e8789a' }} />
+                    </View>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="font-rounded text-sm text-foreground flex-1 pr-2">可管理服務項目與定價</Text>
+                      <Switch value={editCanManagePricing} onValueChange={setEditCanManagePricing} trackColor={{ false: '#e5dde0', true: '#e8789a' }} />
+                    </View>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="font-rounded text-sm text-foreground flex-1 pr-2">可管理營業時間/公休日/封鎖時段</Text>
+                      <Switch value={editCanManageShopSettings} onValueChange={setEditCanManageShopSettings} trackColor={{ false: '#e5dde0', true: '#e8789a' }} />
+                    </View>
+                  </View>
+
+                  {/* 員工登入帳號：建立／已建立狀態 */}
+                  <View className="bg-background rounded-xl p-3 gap-2 border border-border">
+                    <View className="flex-row items-center gap-1.5">
+                      <KeyRound size={14} color="#e8789a" />
+                      <Text className="font-rounded text-xs font-semibold text-foreground">員工登入帳號</Text>
+                    </View>
+                    {staffWithLogin.has(s.id) ? (
+                      <Text className="font-rounded text-xs text-muted-foreground">✓ 已建立登入帳號，上面的權限開關改完會立刻生效，不用重新邀請</Text>
+                    ) : inviteSent.has(s.id) ? (
+                      <Text className="font-rounded text-xs text-muted-foreground">✓ 邀請信已寄出，請 {s.name} 到信箱點連結設定密碼</Text>
+                    ) : (
+                      <>
+                        <Text className="font-rounded text-xs text-muted-foreground">輸入 {s.name} 的電子郵件，寄一封邀請信讓她自己設密碼</Text>
+                        <TextInput
+                          className="bg-card border border-border rounded-xl px-3 h-9 font-rounded text-sm text-foreground"
+                          placeholder="example@mail.com"
+                          placeholderTextColor="#c4a0ae"
+                          autoCapitalize="none"
+                          keyboardType="email-address"
+                          value={inviteEmail[s.id] ?? ''}
+                          onChangeText={v => setInviteEmail(prev => ({ ...prev, [s.id]: v }))}
+                        />
+                        {inviteError[s.id] ? <Text className="font-rounded text-xs text-destructive">{inviteError[s.id]}</Text> : null}
+                        <Pressable
+                          className="bg-primary rounded-xl py-2 items-center active:opacity-80"
+                          onPress={() => handleInvite(s)}
+                          disabled={invitingId === s.id}
+                        >
+                          {invitingId === s.id ? <ActivityIndicator size="small" color="#fff" /> : <Text className="font-rounded text-sm text-white font-medium">建立登入帳號並寄邀請信</Text>}
+                        </Pressable>
+                      </>
+                    )}
+                  </View>
+
                   <View className="flex-row gap-2">
                     <Pressable className="flex-1 bg-primary rounded-xl py-2 items-center active:opacity-80" onPress={() => handleSaveEdit(s.id)}>
                       <Text className="font-rounded text-sm text-white font-medium">儲存</Text>
@@ -352,7 +446,10 @@ export default function StaffManagementScreen() {
                     </Text>
                   </Pressable>
                   <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted mr-1"
-                    onPress={() => { setEditId(s.id); setEditName(s.name); setEditColor(s.color); setEditCommissionRate(String(s.commission_rate)); setEditBaseSalary(String(s.base_salary ?? 0)); setEditBio(s.bio ?? ''); setEditAvatarUrl(s.avatar_url); setEditAvatarAsset(null); }}>
+                    onPress={() => {
+                      setEditId(s.id); setEditName(s.name); setEditColor(s.color); setEditCommissionRate(String(s.commission_rate)); setEditBaseSalary(String(s.base_salary ?? 0)); setEditBio(s.bio ?? ''); setEditAvatarUrl(s.avatar_url); setEditAvatarAsset(null);
+                      setEditCanManageCustomers(s.can_manage_customers); setEditCanManagePricing(s.can_manage_pricing); setEditCanManageShopSettings(s.can_manage_shop_settings);
+                    }}>
                     <Pencil size={15} color="#c4a0ae" />
                   </Pressable>
                   <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted"

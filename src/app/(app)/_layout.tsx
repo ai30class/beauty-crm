@@ -17,6 +17,7 @@ function useAccountTypeGate() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
   const [blocked, setBlocked] = useState(false);
+  const [isStaff, setIsStaff] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -26,6 +27,10 @@ function useAccountTypeGate() {
         if (cancelled) return;
         if (type === 'customer') {
           setBlocked(true);
+        } else if (type === 'staff') {
+          // 員工帳號：不擋，但不是商家本人，底下的商家服務條款關卡／
+          // 新手引導（設定店名）都跳過，那兩關是店家本人才需要走的。
+          setIsStaff(true);
         }
       } catch {
         /* 查詢失敗不擋住正常使用 */
@@ -36,7 +41,7 @@ function useAccountTypeGate() {
     return () => { cancelled = true; };
   }, [router]);
 
-  return { checking, blocked };
+  return { checking, blocked, isStaff };
 }
 
 // 商家服務條款關卡：sign-in.tsx 註冊時勾選同意會直接記錄，這裡是補漏——
@@ -45,12 +50,16 @@ function useAccountTypeGate() {
 function useTermsGate(enabled: boolean) {
   const router = useRouter();
   const pathname = usePathname();
-  const [checking, setChecking] = useState(true);
+  // 初始值跟著 enabled 走，不要寫死 true：員工帳號會一直是 enabled=false
+  // （這關本來就跳過），如果初始值寫死 true，底下的 effect 因為 enabled=false
+  // 直接 return、永遠不會把 checking 撥回 false，畫面會卡在轉圈圈出不來。
+  const [checking, setChecking] = useState(enabled);
   const [accepted, setAccepted] = useState(true);
   const checked = useRef(false);
 
   useEffect(() => {
-    if (!enabled || checked.current) return;
+    if (!enabled) { setChecking(false); return; }
+    if (checked.current) return;
     checked.current = true;
     (async () => {
       try {
@@ -153,9 +162,9 @@ function CustomerBlockedNotice() {
 }
 
 export default function AppLayout() {
-  const { checking, blocked } = useAccountTypeGate();
-  const { checking: termsChecking, accepted: termsAccepted } = useTermsGate(!checking && !blocked);
-  useOnboardingGate(!checking && !blocked && !termsChecking && termsAccepted);
+  const { checking, blocked, isStaff } = useAccountTypeGate();
+  const { checking: termsChecking, accepted: termsAccepted } = useTermsGate(!checking && !blocked && !isStaff);
+  useOnboardingGate(!checking && !blocked && !isStaff && !termsChecking && termsAccepted);
 
   if (checking) {
     return (

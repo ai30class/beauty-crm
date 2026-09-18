@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Heart, Mail, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
 import { supabase } from '@/client/supabase';
-import { isFreshlyCreatedAuthUser } from '@/db/api';
+import { isFreshlyCreatedAuthUser, getAccountType } from '@/db/api';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 
@@ -18,6 +18,13 @@ WebBrowser.maybeCompleteAuthSession();
 // 表單就能直接變商家帳號），改成邀請制——想加入的人填 /join-request 申請表單，
 // Emma 手動審核、手動建帳號。這個頁面現在只剩登入／忘記密碼，不再有 signUp。
 type Mode = 'login' | 'forgot';
+
+// 員工帳號登入後預設落在排班表（他們最常用、也是基本層權限就能用的畫面），
+// 不是商家的顧客列表首頁；商家帳號行為不變。查不到帳號類型就當商家處理。
+async function redirectAfterLogin(router: ReturnType<typeof useRouter>) {
+  const type = await getAccountType().catch(() => 'merchant' as const);
+  router.replace((type === 'staff' ? '/(app)/staff-schedule' : '/(app)/home') as any);
+}
 
 export default function SignIn() {
   const router = useRouter();
@@ -62,7 +69,7 @@ export default function SignIn() {
         password,
       });
       if (e) { setError(e.message); return; }
-      router.replace('/(app)/home' as any);
+      await redirectAfterLogin(router);
     } finally {
       setLoading(false);
     }
@@ -125,7 +132,7 @@ export default function SignIn() {
             setError('目前商家帳號採邀請制，請先填寫申請表單，我們審核後會協助你開通帳號。');
             return;
           }
-          router.replace('/(app)/home' as any);
+          await redirectAfterLogin(router);
         } else {
           setError('Google 登入失敗，請重試');
         }
