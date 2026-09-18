@@ -1106,6 +1106,9 @@ export async function getRestockLog(): Promise<RestockLog[]> {
 
 // 合併手動預約 + 線上預約為統一格式
 export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
+  // 員工帳號對 online_orders 表沒有 SELECT 權限（整列含電話/金額），
+  // 改走只回傳排班欄位的 RPC（migration 00071）；商家照舊直接讀表。
+  const isStaff = (await getAccountType().catch(() => 'merchant' as const)) === 'staff';
   const [appts, orders] = await Promise.all([
     supabase
       .from('appointments')
@@ -1113,12 +1116,18 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
       .order('appointment_time', { ascending: true })
       .limit(500)
       .then(r => r.data ?? []),
-    supabase
-      .from('online_orders')
-      .select('*, staff:staff!staff_id(name, color)')
-      .order('appointment_time', { ascending: true })
-      .limit(500)
-      .then(r => r.data ?? []),
+    isStaff
+      ? supabase
+          .rpc('get_shop_online_orders_for_schedule')
+          .then(r => (r.data ?? []).map((o: any) => ({
+            ...o, customer_phone: '', total_amount: 0, notes: null,
+          })))
+      : supabase
+          .from('online_orders')
+          .select('*, staff:staff!staff_id(name, color)')
+          .order('appointment_time', { ascending: true })
+          .limit(500)
+          .then(r => r.data ?? []),
   ]);
 
   const manual: UnifiedAppointment[] = (appts as Appointment[]).map(a => ({
