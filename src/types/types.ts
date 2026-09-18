@@ -188,7 +188,9 @@ export interface Staff {
   created_at: string;
   // 員工登入帳號的權限開關，預設全部關閉，商家在員工管理頁自行開。
   // 只有這三項可以開放，排班/預約/自己的服務記錄/自己的業績數字等基本層是不可關的。
-  can_manage_customers: boolean;
+  // can_view_customers：只給「瀏覽」完整顧客名單（含電話），不含編輯——編輯顧客資料
+  // 不管有沒有開這個開關都不開放給員工，一律只有商家能改（Emma 明確要求的兩層設計）。
+  can_view_customers: boolean;
   can_manage_pricing: boolean;
   can_manage_shop_settings: boolean;
 }

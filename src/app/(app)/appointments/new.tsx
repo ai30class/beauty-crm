@@ -7,7 +7,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Search, Clock, AlertTriangle, UserCheck, Cake } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { createAppointment, getCustomers, getCustomerById, getServiceTemplates, updateCustomer, getStaffForPicker } from '@/db/api';
+import {
+  createAppointment, getCustomers, getCustomerById, getServiceTemplates, updateCustomer, getStaffForPicker,
+  getAccountType, canViewCustomers, searchCustomerByPhone, createCustomerAndGetId,
+} from '@/db/api';
 import { supabase } from '@/client/supabase';
 import type { Customer, ServiceTemplate, StaffRosterEntry } from '@/types/types';
 
@@ -31,6 +34,22 @@ export default function NewAppointmentScreen() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showCustomerPicker, setShowCustomerPicker] = useState(!presetCustomerId);
   const [customerQuery, setCustomerQuery] = useState('');
+
+  // 一般員工（沒有「瀏覽顧客名單」權限的帳號）：不能瀏覽全部顧客，只能用完整電話
+  // 查「有沒有登記過」，查不到就直接在這裡建一筆新的。跟商家／有瀏覽權限的店長
+  // 用的「瀏覽＋篩選」picker 是兩套完全不同的 UI，因為底層資料權限本來就不一樣
+  // （見 migration 00070：staff 對 customers 只有 INSERT + 條件式 SELECT，沒有 UPDATE）。
+  const [staffPhoneOnlyMode, setStaffPhoneOnlyMode] = useState(false);
+  const [phoneSearchQuery, setPhoneSearchQuery] = useState('');
+  const [phoneSearchResults, setPhoneSearchResults] = useState<{ id: string; name: string }[]>([]);
+  const [phoneSearching, setPhoneSearching] = useState(false);
+  const [phoneSearchTried, setPhoneSearchTried] = useState(false);
+  const [showCreateNewCustomer, setShowCreateNewCustomer] = useState(false);
+  const [newCustName, setNewCustName] = useState('');
+  const [newCustBirthday, setNewCustBirthday] = useState<Date | null>(null);
+  const [showNewCustBirthdayPicker, setShowNewCustBirthdayPicker] = useState(false);
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [createCustError, setCreateCustError] = useState('');
 
   // 會員資料補填狀態
   const [needsProfileFill, setNeedsProfileFill] = useState(false);
@@ -69,8 +88,13 @@ export default function NewAppointmentScreen() {
 
   useEffect(() => {
     (async () => {
+      const accountType = await getAccountType().catch(() => 'merchant' as const);
+      const canBrowse = accountType === 'staff' ? await canViewCustomers().catch(() => false) : true;
+      const phoneOnly = accountType === 'staff' && !canBrowse;
+      setStaffPhoneOnlyMode(phoneOnly);
+
       const [all, tpls, staff] = await Promise.all([
-        getCustomers(),
+        phoneOnly ? Promise.resolve([]) : getCustomers(),
         getServiceTemplates(),
         getStaffForPicker(),
       ]);
@@ -84,6 +108,54 @@ export default function NewAppointmentScreen() {
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetCustomerId]);
+
+  const handlePhoneSearch = async () => {
+    const phone = phoneSearchQuery.trim();
+    if (!phone) return;
+    setPhoneSearching(true);
+    setPhoneSearchTried(true);
+    setShowCreateNewCustomer(false);
+    try {
+      const results = await searchCustomerByPhone(phone);
+      setPhoneSearchResults(results);
+    } finally {
+      setPhoneSearching(false);
+    }
+  };
+
+  const selectFoundCustomer = (result: { id: string; name: string }) => {
+    // 只有 id/name，其餘欄位（電話/生日等）員工看不到——只有 .id 會在建立預約時真正用到，
+    // 其他欄位填假值純粹是為了滿足 Customer 型別，畫面上不會顯示這些假值。
+    setSelectedCustomer({
+      id: result.id, owner_id: '', name: result.name, phone: '', birthday: null, notes: null,
+      created_at: '', updated_at: '', booking_restricted: false, booking_allowed_hours: [], no_show_count: 0,
+    });
+    setShowCustomerPicker(false);
+    setNeedsProfileFill(false); // 員工沒有編輯權限，不能也不需要走補資料流程
+  };
+
+  const handleCreateNewCustomer = async () => {
+    setCreateCustError('');
+    if (!newCustName.trim()) { setCreateCustError('請輸入姓名'); return; }
+    if (!phoneSearchQuery.trim()) { setCreateCustError('請輸入電話'); return; }
+    setCreatingCustomer(true);
+    try {
+      const birthdayStr = newCustBirthday
+        ? `${newCustBirthday.getFullYear()}-${String(newCustBirthday.getMonth() + 1).padStart(2, '0')}-${String(newCustBirthday.getDate()).padStart(2, '0')}`
+        : null;
+      const created = await createCustomerAndGetId({
+        name: newCustName.trim(), phone: phoneSearchQuery.trim(), birthday: birthdayStr, notes: null,
+        booking_restricted: false, booking_allowed_hours: [], no_show_count: 0,
+      });
+      selectFoundCustomer(created);
+      setShowCreateNewCustomer(false);
+      setNewCustName(''); setNewCustBirthday(null);
+    } catch (e: any) {
+      setCreateCustError(e.message ?? '建立失敗');
+    } finally {
+      setCreatingCustomer(false);
+    }
+  };
 
   // 選擇顧客後立即檢查資料完整性
   const selectCustomer = (c: Customer) => {
@@ -236,11 +308,100 @@ export default function NewAppointmentScreen() {
             <Pressable
               className="bg-card border border-primary rounded-2xl px-4 flex-row items-center active:opacity-80"
               style={{ height: 52 }}
-              onPress={() => { setShowCustomerPicker(true); setNeedsProfileFill(false); }}
+              onPress={() => {
+                setShowCustomerPicker(true); setNeedsProfileFill(false);
+                setPhoneSearchQuery(''); setPhoneSearchResults([]); setPhoneSearchTried(false); setShowCreateNewCustomer(false);
+              }}
             >
               <Text className="font-rounded text-base text-foreground flex-1">{selectedCustomer.name}</Text>
               <Text className="font-rounded text-sm text-primary">更換</Text>
             </Pressable>
+          ) : staffPhoneOnlyMode ? (
+            /* 一般員工：不能瀏覽顧客名單，只能用完整電話查、查不到就現場建一筆新的 */
+            <View className="bg-card border border-border rounded-2xl overflow-hidden p-4 gap-3">
+              <Text className="font-rounded text-xs text-muted-foreground">輸入顧客完整電話查詢，查不到的話可以直接建立新顧客</Text>
+              <View className="flex-row gap-2">
+                <View className="flex-1 flex-row items-center px-4 border border-border rounded-xl" style={{ height: 46 }}>
+                  <Search size={16} color="#c4a0ae" />
+                  <TextInput
+                    className="flex-1 font-rounded text-base text-foreground ml-2"
+                    placeholder="輸入完整手機號碼"
+                    placeholderTextColor="#c4a0ae"
+                    keyboardType="phone-pad"
+                    value={phoneSearchQuery}
+                    onChangeText={t => { setPhoneSearchQuery(t); setPhoneSearchTried(false); setPhoneSearchResults([]); setShowCreateNewCustomer(false); }}
+                    onSubmitEditing={handlePhoneSearch}
+                  />
+                </View>
+                <Pressable
+                  className="bg-primary rounded-xl items-center justify-center px-4 active:opacity-80"
+                  style={{ height: 46 }}
+                  onPress={handlePhoneSearch}
+                  disabled={phoneSearching || !phoneSearchQuery.trim()}
+                >
+                  {phoneSearching ? <ActivityIndicator size="small" color="#fff" /> : <Text className="font-rounded text-sm text-white font-medium">查詢</Text>}
+                </Pressable>
+              </View>
+
+              {phoneSearchTried && phoneSearchResults.length > 0 && (
+                <View className="border border-border rounded-xl overflow-hidden">
+                  {phoneSearchResults.map(r => (
+                    <Pressable key={r.id} className="px-4 py-3 border-b border-border active:bg-muted" onPress={() => selectFoundCustomer(r)}>
+                      <Text className="font-rounded text-sm text-foreground">{r.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+
+              {phoneSearchTried && phoneSearchResults.length === 0 && !phoneSearching && (
+                showCreateNewCustomer ? (
+                  <View className="border border-primary rounded-xl p-3 gap-2.5">
+                    <Text className="font-rounded text-xs font-semibold text-foreground">建立新顧客（電話：{phoneSearchQuery.trim()}）</Text>
+                    <TextInput
+                      className="bg-background border border-border rounded-xl px-4 font-rounded text-sm text-foreground"
+                      style={{ height: 42 }}
+                      placeholder="姓名 *"
+                      placeholderTextColor="#c4a0ae"
+                      value={newCustName}
+                      onChangeText={setNewCustName}
+                    />
+                    <Pressable
+                      className="bg-background border border-border rounded-xl px-4 justify-center"
+                      style={{ height: 42 }}
+                      onPress={() => setShowNewCustBirthdayPicker(p => !p)}
+                    >
+                      <Text className="font-rounded text-sm" style={{ color: newCustBirthday ? '#3d2b32' : '#c4a0ae' }}>
+                        {newCustBirthday ? formatDate(newCustBirthday) : '生日（選填）'}
+                      </Text>
+                    </Pressable>
+                    {showNewCustBirthdayPicker && (
+                      <View className="bg-background border border-border rounded-xl overflow-hidden">
+                        <DateTimePicker locale="zh-tw"
+                          mode="single"
+                          date={newCustBirthday ?? new Date(1990, 0, 1)}
+                          onChange={(params: any) => {
+                            if (params.date) setNewCustBirthday(params.date as Date);
+                            setShowNewCustBirthdayPicker(false);
+                          }}
+                        />
+                      </View>
+                    )}
+                    {createCustError ? <Text className="font-rounded text-xs text-destructive">{createCustError}</Text> : null}
+                    <Pressable
+                      className="bg-primary rounded-xl py-2.5 items-center active:opacity-80"
+                      onPress={handleCreateNewCustomer}
+                      disabled={creatingCustomer}
+                    >
+                      {creatingCustomer ? <ActivityIndicator size="small" color="#fff" /> : <Text className="font-rounded text-sm text-white font-medium">建立並選擇</Text>}
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable className="items-center py-2 active:opacity-70" onPress={() => setShowCreateNewCustomer(true)}>
+                    <Text className="font-rounded text-sm text-primary font-medium">查無此人，點此建立新顧客</Text>
+                  </Pressable>
+                )
+              )}
+            </View>
           ) : (
             <View className="bg-card border border-border rounded-2xl overflow-hidden">
               <View className="flex-row items-center px-4 border-b border-border" style={{ height: 48 }}>

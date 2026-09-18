@@ -66,7 +66,7 @@ export default function StaffManagementScreen() {
   const [editBio, setEditBio] = useState('');
   const [editAvatarUrl, setEditAvatarUrl] = useState<string | null>(null);
   const [editAvatarAsset, setEditAvatarAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
-  const [editCanManageCustomers, setEditCanManageCustomers] = useState(false);
+  const [editCanViewCustomers, setEditCanViewCustomers] = useState(false);
   const [editCanManagePricing, setEditCanManagePricing] = useState(false);
   const [editCanManageShopSettings, setEditCanManageShopSettings] = useState(false);
 
@@ -114,7 +114,7 @@ export default function StaffManagementScreen() {
       await createStaff({
         name: newName.trim(), role: 'therapist', color: newColor, is_active: true, commission_rate: rate, base_salary: baseSalary, bio: newBio.trim() || null, avatar_url: avatarPath,
         // 新員工預設沒有任何登入帳號權限開關（跟還沒建立登入帳號無關，這是獨立的預設值）
-        can_manage_customers: false, can_manage_pricing: false, can_manage_shop_settings: false,
+        can_view_customers: false, can_manage_pricing: false, can_manage_shop_settings: false,
       });
       setNewName(''); setNewCommissionRate(''); setNewBaseSalary(''); setNewBio(''); setNewAvatarAsset(null); setShowAdd(false); load();
     } catch (e: any) { setError(e.message); }
@@ -133,7 +133,7 @@ export default function StaffManagementScreen() {
     await updateStaff(id, {
       name: editName.trim(), color: editColor, commission_rate: rate, base_salary: baseSalary,
       bio: editBio.trim() || null, avatar_url: avatarPath,
-      can_manage_customers: editCanManageCustomers,
+      can_view_customers: editCanViewCustomers,
       can_manage_pricing: editCanManagePricing,
       can_manage_shop_settings: editCanManageShopSettings,
     });
@@ -358,8 +358,8 @@ export default function StaffManagementScreen() {
                       <Text className="font-rounded text-xs font-semibold text-foreground">員工登入帳號權限（預設全部關閉）</Text>
                     </View>
                     <View className="flex-row items-center justify-between">
-                      <Text className="font-rounded text-sm text-foreground flex-1 pr-2">可管理顧客資料（含電話，不含刪除）</Text>
-                      <Switch value={editCanManageCustomers} onValueChange={setEditCanManageCustomers} trackColor={{ false: '#e5dde0', true: '#e8789a' }} />
+                      <Text className="font-rounded text-sm text-foreground flex-1 pr-2">可瀏覽完整顧客名單（含電話，不能編輯／刪除——這兩項一律只有你能做）</Text>
+                      <Switch value={editCanViewCustomers} onValueChange={setEditCanViewCustomers} trackColor={{ false: '#e5dde0', true: '#e8789a' }} />
                     </View>
                     <View className="flex-row items-center justify-between">
                       <Text className="font-rounded text-sm text-foreground flex-1 pr-2">可管理服務項目與定價</Text>
@@ -448,7 +448,7 @@ export default function StaffManagementScreen() {
                   <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted mr-1"
                     onPress={() => {
                       setEditId(s.id); setEditName(s.name); setEditColor(s.color); setEditCommissionRate(String(s.commission_rate)); setEditBaseSalary(String(s.base_salary ?? 0)); setEditBio(s.bio ?? ''); setEditAvatarUrl(s.avatar_url); setEditAvatarAsset(null);
-                      setEditCanManageCustomers(s.can_manage_customers); setEditCanManagePricing(s.can_manage_pricing); setEditCanManageShopSettings(s.can_manage_shop_settings);
+                      setEditCanViewCustomers(s.can_view_customers); setEditCanManagePricing(s.can_manage_pricing); setEditCanManageShopSettings(s.can_manage_shop_settings);
                     }}>
                     <Pencil size={15} color="#c4a0ae" />
                   </Pressable>

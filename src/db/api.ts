@@ -103,6 +103,15 @@ export async function createCustomer(payload: Omit<Customer, 'id' | 'owner_id' |
   if (error) throw error;
 }
 
+// 排預約現場建新顧客用：需要拿回剛建立那筆的 id/name 才能直接掛上這筆預約。
+// 員工帳號對 customers 只有 INSERT policy、沒有 SELECT policy，但 INSERT ... RETURNING
+// 不需要 SELECT policy（回傳的是剛寫入那列本身，不是另外查詢），所以這裡照樣拿得到值。
+export async function createCustomerAndGetId(payload: Omit<Customer, 'id' | 'owner_id' | 'created_at' | 'updated_at'>): Promise<{ id: string; name: string }> {
+  const { data, error } = await supabase.from('customers').insert(payload).select('id, name').single();
+  if (error) throw error;
+  return data;
+}
+
 export async function updateCustomer(id: string, payload: Partial<Pick<Customer, 'name' | 'phone' | 'birthday' | 'notes' | 'booking_restricted' | 'booking_allowed_hours'>>): Promise<void> {
   const { error } = await supabase.from('customers').update(payload).eq('id', id);
   if (error) throw error;
@@ -550,7 +559,7 @@ export async function createStaff(payload: Omit<Staff, 'id' | 'owner_id' | 'crea
   if (error) throw error;
 }
 
-export async function updateStaff(id: string, payload: Partial<Pick<Staff, 'name' | 'role' | 'color' | 'is_active' | 'commission_rate' | 'bio' | 'avatar_url' | 'base_salary' | 'can_manage_customers' | 'can_manage_pricing' | 'can_manage_shop_settings'>>): Promise<void> {
+export async function updateStaff(id: string, payload: Partial<Pick<Staff, 'name' | 'role' | 'color' | 'is_active' | 'commission_rate' | 'bio' | 'avatar_url' | 'base_salary' | 'can_view_customers' | 'can_manage_pricing' | 'can_manage_shop_settings'>>): Promise<void> {
   const { error } = await supabase.from('staff').update(payload).eq('id', id);
   if (error) throw error;
 }
@@ -1227,6 +1236,14 @@ export async function getShopStaffRoster(): Promise<StaffRosterEntry[]> {
 export async function getStaffForPicker(): Promise<StaffRosterEntry[]> {
   const type = await getAccountType().catch(() => 'merchant' as const);
   return type === 'staff' ? getShopStaffRoster() : getActiveStaff();
+}
+
+// 員工帳號專用：這個員工有沒有被開「瀏覽顧客名單」的權限（店長 vs 一般員工）。
+// 商家呼叫這個會回傳 false（函式內部限定 account_type='staff'），呼叫端不用另外判斷角色。
+export async function canViewCustomers(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('staff_can_view_customers');
+  if (error) throw error;
+  return data === true;
 }
 
 // 員工排預約時查「這支電話有沒有登記過」：只回傳 id/name，不是開放整張 customers 表。
