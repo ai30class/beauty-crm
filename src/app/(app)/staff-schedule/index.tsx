@@ -67,7 +67,7 @@ function apptDurationMin(a: UnifiedAppointment) {
 function apptLabels(a: UnifiedAppointment) {
   const who = a.customer_name && a.customer_name !== '—' ? a.customer_name : '';
   const detail = a.source === 'manual'
-    ? (a.notes ?? '').replace(/^\[舊系統匯入\]\s*\d{2}:\d{2}~\d{2}:\d{2}（\d+分）/, '').replace(/^[\s｜|]+/, '').trim() || a.service_name
+    ? (a.notes ?? '').replace(/^\[舊系統匯入\]\s*\d{2}:\d{2}~\d{2}:\d{2}（\d+分）/, '').replace(/^[\s｜|]+/, '').replace(/^一般[\s｜|]*/, '').trim() || a.service_name
     : a.service_name;
   return { who, detail };
 }
