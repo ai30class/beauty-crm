@@ -103,6 +103,7 @@ export interface UnifiedAppointment {
   total_amount: number;
   status: string;
   notes: string | null;
+  staff_id?: string | null;
   staff_name?: string;
   staff_color?: string;
   booking_mode?: 'deposit' | 'direct';

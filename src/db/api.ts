@@ -1132,6 +1132,7 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
     total_amount: 0,
     status: a.status,
     notes: a.notes,
+    staff_id: a.staff_id,
     staff_name: (a.staff as any)?.name,
     staff_color: (a.staff as any)?.color,
   }));
@@ -1147,6 +1148,7 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
     total_amount: o.total_amount,
     status: o.status,
     notes: o.notes,
+    staff_id: o.staff_id,
     staff_name: (o.staff as any)?.name,
     staff_color: (o.staff as any)?.color,
     booking_mode: o.booking_mode,
@@ -1236,6 +1238,19 @@ export async function getShopStaffRoster(): Promise<StaffRosterEntry[]> {
 export async function getStaffForPicker(): Promise<StaffRosterEntry[]> {
   const type = await getAccountType().catch(() => 'merchant' as const);
   return type === 'staff' ? getShopStaffRoster() : getActiveStaff();
+}
+
+// 排班表專用：連「暫停服務」的員工也要拿，畫面才能讓「有預約的人」不管有沒有暫停都顯示。
+// 一般「選人員」下拉選單不要用這個，那邊暫停的人本來就不該被選到（用 getStaffForPicker）。
+export async function getScheduleStaff(): Promise<StaffRosterEntry[]> {
+  const type = await getAccountType().catch(() => 'merchant' as const);
+  if (type === 'staff') return getShopStaffRoster();
+  const { data, error } = await supabase
+    .from('staff')
+    .select('id, name, color, is_active')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
 }
 
 // 員工帳號專用：這個員工有沒有被開「瀏覽顧客名單」的權限（店長 vs 一般員工）。

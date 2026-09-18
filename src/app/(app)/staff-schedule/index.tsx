@@ -11,7 +11,7 @@ import {
 import {
   getMergedAppointments, getShopProfile, getHolidays,
   getStaffReservedSlots, createStaffReservedSlot, deleteStaffReservedSlot,
-  getStaffForPicker,
+  getScheduleStaff,
 } from '@/db/api';
 import type { UnifiedAppointment, BusinessHours, Holiday, StaffReservedSlot, StaffRosterEntry } from '@/types/types';
 
@@ -49,6 +49,10 @@ function addDays(d: Date, n: number): Date {
   const date = new Date(d);
   date.setDate(date.getDate() + n);
   return date;
+}
+// 員工帳號讀不到 staff 表，預約帶回來的設計師名字是空的，所以優先用 staff_id 對軌道
+function isStaffAppt(a: UnifiedAppointment, s: StaffRosterEntry) {
+  return a.staff_id ? a.staff_id === s.id : a.staff_name === s.name;
 }
 function timeToMinutes(iso: string) {
   const d = new Date(iso);
@@ -160,7 +164,7 @@ export default function StaffScheduleScreen() {
 
   const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
   const [allAppts, setAllAppts] = useState<UnifiedAppointment[]>([]);
-  const [staffList, setStaffList] = useState<StaffRosterEntry[]>([]);
+  const [allStaff, setAllStaff] = useState<StaffRosterEntry[]>([]);
   const [businessHours, setBusinessHours] = useState<BusinessHours | null>(null);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [reservedSlots, setReservedSlots] = useState<StaffReservedSlot[]>([]);
@@ -180,21 +184,33 @@ export default function StaffScheduleScreen() {
   const [deleteReserveTarget, setDeleteReserveTarget] = useState<StaffReservedSlot | null>(null);
   const [deletingReserve, setDeletingReserve] = useState(false);
 
+  // 「暫停服務」的設計師只要還有預約／預留時間就照樣顯示，不然那些預約會從排班表消失
+  const bookedStaffIds = new Set<string>();
+  allAppts.forEach(a => { if (a.staff_id) bookedStaffIds.add(a.staff_id); });
+  reservedSlots.forEach(r => bookedStaffIds.add(r.staff_id));
+  const staffList = allStaff.filter(s => s.is_active || bookedStaffIds.has(s.id));
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [data, staff, profile] = await Promise.all([
         getMergedAppointments(),
-        getStaffForPicker(),
+        getScheduleStaff(),
         getShopProfile(),
       ]);
-      // 只顯示今天及之後、非取消的
-      const upcoming = data.filter(a =>
-        toApptDateStr(a.appointment_time) >= today &&
-        !['cancelled', 'refunded'].includes(a.status)
-      );
+      const staffById = new Map(staff.map(s => [s.id, s]));
+      // 只顯示今天及之後、非取消的；設計師名字/顏色缺的（員工帳號）用 staff_id 補上
+      const upcoming = data
+        .filter(a =>
+          toApptDateStr(a.appointment_time) >= today &&
+          !['cancelled', 'refunded'].includes(a.status)
+        )
+        .map(a => {
+          const s = a.staff_id ? staffById.get(a.staff_id) : undefined;
+          return s ? { ...a, staff_name: a.staff_name ?? s.name, staff_color: a.staff_color ?? s.color } : a;
+        });
       setAllAppts(upcoming);
-      setStaffList(staff);
+      setAllStaff(staff);
       setBusinessHours(profile?.business_hours ?? null);
     } finally {
       setLoading(false);
@@ -442,7 +458,7 @@ export default function StaffScheduleScreen() {
                         // 全部模式：一人一條細軌道，不重疊混色
                         staffList.map(s => {
                           const staffOff = holidays.some(h => h.holiday_date === dateStr && h.staff_id === s.id);
-                          const staffDayAppts = dayAppointments.filter(a => a.staff_name === s.name);
+                          const staffDayAppts = dayAppointments.filter(a => isStaffAppt(a, s));
                           const staffDayReserved = reservedSlots.filter(r => r.staff_id === s.id && r.reserved_date === dateStr);
                           return (
                             <View key={s.id} style={{ flex: 1, height: '100%', position: 'relative' }}>
@@ -515,7 +531,7 @@ export default function StaffScheduleScreen() {
                               <Text className="font-rounded" style={{ position: 'absolute', top: '46%', left: 0, right: 0, textAlign: 'center', fontSize: 10, color: '#c4a0ae' }}>休</Text>
                             ) : null;
                           }
-                          const staffDayAppts = dayAppointments.filter(a => a.staff_name === staff.name);
+                          const staffDayAppts = dayAppointments.filter(a => isStaffAppt(a, staff));
                           const staffDayReserved = reservedSlots.filter(r => r.staff_id === staff.id && r.reserved_date === dateStr);
                           return (
                             <View style={{ flex: 1, height: '100%', position: 'relative' }}>
