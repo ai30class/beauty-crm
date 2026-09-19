@@ -257,8 +257,10 @@ export async function updateAppointmentStatus(id: string, status: Appointment['s
 }
 
 export async function deleteAppointment(id: string): Promise<void> {
-  const { error } = await supabase.from('appointments').delete().eq('id', id);
+  const { data, error } = await supabase.from('appointments').delete().eq('id', id).select('id');
   if (error) throw error;
+  // RLS 擋掉時 delete 不會報錯、只是刪 0 筆，畫面會像「刪了又跑出來」，這裡明確丟錯
+  if (!data || data.length === 0) throw new Error('沒有權限刪除這筆預約，或它已經不存在');
 }
 
 export async function getDailyServiceRecords(dateStr: string): Promise<ServiceRecord[]> {
@@ -787,8 +789,10 @@ export async function updateOnlineOrderStatus(id: string, status: OnlineOrder['s
 }
 
 export async function deleteOnlineOrder(id: string): Promise<void> {
-  const { error } = await supabase.from('online_orders').delete().eq('id', id);
+  const { data, error } = await supabase.from('online_orders').delete().eq('id', id).select('id');
   if (error) throw error;
+  // 員工帳號對 online_orders 沒有刪除權限（只有商家自己能刪），RLS 擋掉時會刪 0 筆而且不報錯
+  if (!data || data.length === 0) throw new Error('沒有權限刪除這筆線上預約（只有商家帳號可以刪除），或它已經不存在');
 }
 
 export async function updateOnlineOrder(id: string, payload: {
@@ -1113,7 +1117,7 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
     supabase
       .from('appointments')
       .select('*, customer:customers!customer_id(name, phone), staff:staff!staff_id(name, color)')
-      .order('appointment_time', { ascending: true })
+      .order('appointment_time', { ascending: false })
       .limit(500)
       .then(r => r.data ?? []),
     isStaff
@@ -1125,10 +1129,13 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
       : supabase
           .from('online_orders')
           .select('*, staff:staff!staff_id(name, color)')
-          .order('appointment_time', { ascending: true })
+          .order('appointment_time', { ascending: false })
           .limit(500)
           .then(r => r.data ?? []),
   ]);
+  // 上面兩個查詢都是「時間由新到舊取 500 筆」：歷史資料超過 500 筆時被截掉的是最舊的，
+  // 今天以後的預約一定拿得到（原本是由舊到新取 500 筆，超過就會漏掉最新的）。
+  // 最後回傳前有再依時間由舊到新排序。
 
   const manual: UnifiedAppointment[] = (appts as Appointment[]).map(a => ({
     id: `manual-${a.id}`,
@@ -1247,6 +1254,20 @@ export async function getShopStaffRoster(): Promise<StaffRosterEntry[]> {
 export async function getStaffForPicker(): Promise<StaffRosterEntry[]> {
   const type = await getAccountType().catch(() => 'merchant' as const);
   return type === 'staff' ? getShopStaffRoster() : getActiveStaff();
+}
+
+// 進來的網址沒帶店家 ID、也沒有先前留下的紀錄時（例如新顧客從沒帶參數的連結進來），
+// 頁面會因為沒有 ownerId 而不查服務項目、顯示「目前無開放線上預約的服務」。
+// 如果目前只有「一家」店有開放線上預約的服務，就用那一家；兩家以上就回傳 null，不猜。
+export async function getSoleOnlineBookingOwnerId(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('service_templates')
+    .select('owner_id')
+    .eq('allow_online_booking', true)
+    .limit(2000);
+  if (error) throw error;
+  const ids = Array.from(new Set((data ?? []).map((r: { owner_id: string }) => r.owner_id)));
+  return ids.length === 1 ? ids[0] : null;
 }
 
 // 排班表專用：連「暫停服務」的員工也要拿，畫面才能讓「有預約的人」不管有沒有暫停都顯示。

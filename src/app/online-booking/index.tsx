@@ -8,7 +8,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing, AlertTriangle, MessageCircle, Sparkles, HelpCircle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, createTransferDepositOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, createOnlineOrderAddons, getPhotoUrl } from '@/db/api';
+import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, createTransferDepositOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, createOnlineOrderAddons, getPhotoUrl, getSoleOnlineBookingOwnerId } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import type { Staff, ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
 
@@ -139,6 +139,18 @@ export default function OnlineBookingScreen() {
     if (typeof window === 'undefined') return;
     try { localStorage.setItem('bcrm_pending_owner_id', presetOwnerId); } catch { /* ignore */ }
   }, [presetOwnerId]);
+
+  // 已登入卻完全沒有 ownerId（新顧客從沒帶店家 ID 的連結進來，localStorage 也沒有舊紀錄）：
+  // 不補的話下面所有查詢都會被跳過，畫面只會顯示「目前無開放線上預約的服務」。
+  // 只在「全系統只有一家店開放線上預約」時自動採用那一家，兩家以上不猜（見 getSoleOnlineBookingOwnerId）。
+  useEffect(() => {
+    if (ownerId || !authChecked || !customerSession) return;
+    let cancelled = false;
+    getSoleOnlineBookingOwnerId()
+      .then(id => { if (!cancelled && id) setOwnerId(id); })
+      .catch(() => { /* 查不到就維持原本畫面 */ });
+    return () => { cancelled = true; };
+  }, [ownerId, authChecked, customerSession]);
 
   useEffect(() => {
     // 一定要有明確的 owner_id 才能載入——不能再用「猜第一位員工屬於哪家店」
