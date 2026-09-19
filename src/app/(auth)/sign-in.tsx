@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Text, TextInput, View, Pressable, KeyboardAvoidingView,
   ScrollView, ActivityIndicator
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Heart, Mail, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
+import { Heart, Mail, Lock, Eye, EyeOff, ArrowLeft, Check } from 'lucide-react-native';
 import { supabase } from '@/client/supabase';
 import { isFreshlyCreatedAuthUser, getAccountType } from '@/db/api';
 import * as WebBrowser from 'expo-web-browser';
@@ -26,6 +26,19 @@ async function redirectAfterLogin(router: ReturnType<typeof useRouter>) {
   router.replace((type === 'staff' ? '/(app)/staff-schedule' : '/(app)/home') as any);
 }
 
+// 「記住我的電子郵件」：只記信箱，絕不記密碼。勾選並登入成功後存下信箱，下次開登入頁自動帶入；
+// 取消勾選再登入一次就會清掉。localStorage 由 client/supabase.ts 載入的 expo-sqlite 提供，網頁與手機 App 都能用。
+const REMEMBERED_EMAIL_KEY = 'bcrm_remembered_email';
+function readRememberedEmail(): string {
+  try { return localStorage.getItem(REMEMBERED_EMAIL_KEY) ?? ''; } catch { return ''; }
+}
+function writeRememberedEmail(email: string | null) {
+  try {
+    if (email) localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
+    else localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+  } catch { /* 讀寫失敗（例如瀏覽器封鎖儲存）就當沒記住，不影響登入 */ }
+}
+
 export default function SignIn() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('login');
@@ -35,6 +48,12 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resetSent, setResetSent] = useState(false);
+  const [rememberEmail, setRememberEmail] = useState(false);
+
+  useEffect(() => {
+    const saved = readRememberedEmail();
+    if (saved) { setEmail(saved); setRememberEmail(true); }
+  }, []);
 
   const handleSubmit = async () => {
     setError('');
@@ -69,6 +88,7 @@ export default function SignIn() {
         password,
       });
       if (e) { setError(e.message); return; }
+      writeRememberedEmail(rememberEmail ? email.trim() : null);
       await redirectAfterLogin(router);
     } finally {
       setLoading(false);
@@ -221,11 +241,25 @@ export default function SignIn() {
                     }
                   </Pressable>
                 </View>
-                {/* 忘記密碼連結（僅登入頁顯示） */}
+                {/* 記住信箱＋忘記密碼連結（僅登入頁顯示） */}
                 {mode === 'login' && (
-                  <Pressable className="mt-2 self-end active:opacity-70" onPress={() => switchMode('forgot')}>
-                    <Text className="font-rounded text-sm text-primary">忘記密碼？</Text>
-                  </Pressable>
+                  <View className="mt-2 flex-row items-center justify-between">
+                    <Pressable
+                      className="flex-row items-center gap-2 active:opacity-70"
+                      onPress={() => setRememberEmail(v => !v)}
+                    >
+                      <View
+                        className="w-5 h-5 rounded items-center justify-center border"
+                        style={{ borderColor: '#e8789a', backgroundColor: rememberEmail ? '#e8789a' : 'transparent' }}
+                      >
+                        {rememberEmail ? <Check size={13} color="#fff" strokeWidth={3} /> : null}
+                      </View>
+                      <Text className="font-rounded text-sm text-muted-foreground">記住我的電子郵件</Text>
+                    </Pressable>
+                    <Pressable className="active:opacity-70" onPress={() => switchMode('forgot')}>
+                      <Text className="font-rounded text-sm text-primary">忘記密碼？</Text>
+                    </Pressable>
+                  </View>
                 )}
               </View>
             )}
