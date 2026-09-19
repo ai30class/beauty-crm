@@ -12,6 +12,7 @@ import {
   getAccountType, canViewCustomers, searchCustomerByPhone, createCustomerAndGetId,
 } from '@/db/api';
 import { normalizePhone } from '@/lib/phone';
+import TimeOfDayPicker from '@/components/TimeOfDayPicker';
 import { supabase } from '@/client/supabase';
 import type { Customer, ServiceTemplate, StaffRosterEntry } from '@/types/types';
 
@@ -73,12 +74,6 @@ export default function NewAppointmentScreen() {
     const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0); return d;
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
-
-  // 時間輸入框用自己的字串 state，不要每次都從 apptDate 補零重新格式化再塞回 value——
-  // 那樣打字打到一半（例如想打「14」，打完「1」後欄位被強制補成「01」）游標行為
-  // 會很奇怪，兩位數幾乎打不出來。只在真正解析出合法數字時才回寫 apptDate。
-  const [hourText, setHourText] = useState(() => String(apptDate.getHours()).padStart(2, '0'));
-  const [minuteText, setMinuteText] = useState(() => String(apptDate.getMinutes()).padStart(2, '0'));
 
   const [reminderMinutes, setReminderMinutes] = useState(30);
   const [notes, setNotes] = useState('');
@@ -627,46 +622,14 @@ export default function NewAppointmentScreen() {
           )}
         </View>
 
-        {/* 預約時間（手動輸入 HH:MM） */}
+        {/* 預約時間（點一下跳出選單選時、分；不用打字） */}
         <View>
           <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">預約時間 *</Text>
-          <View className="bg-card border border-border rounded-2xl px-4 flex-row items-center gap-2" style={{ height: 52 }}>
-            <TextInput
-              className="font-rounded text-base text-foreground w-14 text-center"
-              placeholder="HH"
-              placeholderTextColor="#c4a0ae"
-              value={hourText}
-              onChangeText={(v) => {
-                const digits = v.replace(/\D/g, '').slice(0, 2);
-                setHourText(digits);
-                const h = parseInt(digits, 10);
-                if (!isNaN(h) && h >= 0 && h <= 23) {
-                  setApptDate(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate(), h, prev.getMinutes()));
-                }
-              }}
-              onBlur={() => setHourText(String(apptDate.getHours()).padStart(2, '0'))}
-              keyboardType="numeric"
-              maxLength={2}
-            />
-            <Text className="font-rounded text-base text-muted-foreground">:</Text>
-            <TextInput
-              className="font-rounded text-base text-foreground w-14 text-center"
-              placeholder="MM"
-              placeholderTextColor="#c4a0ae"
-              value={minuteText}
-              onChangeText={(v) => {
-                const digits = v.replace(/\D/g, '').slice(0, 2);
-                setMinuteText(digits);
-                const m = parseInt(digits, 10);
-                if (!isNaN(m) && m >= 0 && m <= 59) {
-                  setApptDate(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate(), prev.getHours(), m));
-                }
-              }}
-              onBlur={() => setMinuteText(String(apptDate.getMinutes()).padStart(2, '0'))}
-              keyboardType="numeric"
-              maxLength={2}
-            />
-          </View>
+          <TimeOfDayPicker
+            hour={apptDate.getHours()}
+            minute={apptDate.getMinutes()}
+            onChange={(h, m) => setApptDate(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate(), h, m))}
+          />
         </View>
 
         {/* 提醒時間 */}
