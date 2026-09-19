@@ -11,6 +11,7 @@ import {
   createAppointment, getCustomers, getCustomerById, getServiceTemplates, updateCustomer, getStaffForPicker,
   getAccountType, canViewCustomers, searchCustomerByPhone, createCustomerAndGetId,
 } from '@/db/api';
+import { normalizePhone } from '@/lib/phone';
 import { supabase } from '@/client/supabase';
 import type { Customer, ServiceTemplate, StaffRosterEntry } from '@/types/types';
 
@@ -110,7 +111,7 @@ export default function NewAppointmentScreen() {
   }, [presetCustomerId]);
 
   const handlePhoneSearch = async () => {
-    const phone = phoneSearchQuery.trim();
+    const phone = normalizePhone(phoneSearchQuery);
     if (!phone) return;
     setPhoneSearching(true);
     setPhoneSearchTried(true);
@@ -144,7 +145,7 @@ export default function NewAppointmentScreen() {
         ? `${newCustBirthday.getFullYear()}-${String(newCustBirthday.getMonth() + 1).padStart(2, '0')}-${String(newCustBirthday.getDate()).padStart(2, '0')}`
         : null;
       const created = await createCustomerAndGetId({
-        name: newCustName.trim(), phone: phoneSearchQuery.trim(), birthday: birthdayStr, notes: null,
+        name: newCustName.trim(), phone: normalizePhone(phoneSearchQuery), birthday: birthdayStr, notes: null,
         booking_restricted: false, booking_allowed_hours: [], no_show_count: 0,
       });
       selectFoundCustomer(created);
@@ -188,11 +189,11 @@ export default function NewAppointmentScreen() {
       const birthdayStr = `${y}-${m}-${d}`;
       await updateCustomer(selectedCustomer.id, {
         name: profileName.trim(),
-        phone: profilePhone.trim(),
+        phone: normalizePhone(profilePhone),
         birthday: birthdayStr,
       });
       // 更新本地顧客狀態
-      const updated: Customer = { ...selectedCustomer, name: profileName.trim(), phone: profilePhone.trim(), birthday: birthdayStr };
+      const updated: Customer = { ...selectedCustomer, name: profileName.trim(), phone: normalizePhone(profilePhone), birthday: birthdayStr };
       setSelectedCustomer(updated);
       setCustomers(prev => prev.map(c => c.id === updated.id ? updated : c));
       setNeedsProfileFill(false);

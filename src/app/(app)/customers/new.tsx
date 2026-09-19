@@ -8,6 +8,7 @@ import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
 import { createCustomer, updateCustomer, getCustomerById } from '@/db/api';
+import { normalizePhone } from '@/lib/phone';
 
 export default function CustomerFormScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -40,7 +41,7 @@ export default function CustomerFormScreen() {
   const handleSave = async () => {
     setError('');
     if (!name.trim()) { setError('請輸入顧客姓名'); return; }
-    if (!phone.trim()) { setError('請輸入電話號碼'); return; }
+    if (!normalizePhone(phone)) { setError('請輸入電話號碼'); return; }
     if (!birthday) { setError('請選擇顧客生日'); return; }
 
     let birthdayStr: string | null = null;
@@ -54,9 +55,9 @@ export default function CustomerFormScreen() {
     setLoading(true);
     try {
       if (isEdit) {
-        await updateCustomer(id!, { name: name.trim(), phone: phone.trim(), birthday: birthdayStr, notes: notes.trim() || null });
+        await updateCustomer(id!, { name: name.trim(), phone: normalizePhone(phone), birthday: birthdayStr, notes: notes.trim() || null });
       } else {
-        await createCustomer({ name: name.trim(), phone: phone.trim(), birthday: birthdayStr, notes: notes.trim() || null, booking_restricted: false, booking_allowed_hours: [], no_show_count: 0 });
+        await createCustomer({ name: name.trim(), phone: normalizePhone(phone), birthday: birthdayStr, notes: notes.trim() || null, booking_restricted: false, booking_allowed_hours: [], no_show_count: 0 });
       }
       router.back();
     } catch (e: any) {
