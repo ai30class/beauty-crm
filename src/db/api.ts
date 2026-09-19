@@ -1133,6 +1133,18 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
           .limit(500)
           .then(r => r.data ?? []),
   ]);
+  // 員工帳號讀不到 customers 表，上面 customer embed 是 null、姓名會變「—」：
+  // 用只回傳 id＋姓名的批次 RPC（migration 00074）補上。RPC 還沒部署或失敗時保持「—」，不會壞。
+  const staffNames = new Map<string, string>();
+  if (isStaff) {
+    const missingIds = Array.from(new Set(
+      (appts as Appointment[]).filter(a => !a.customer && a.customer_id).map(a => a.customer_id),
+    ));
+    if (missingIds.length > 0) {
+      const { data } = await supabase.rpc('get_customer_names', { p_customer_ids: missingIds });
+      for (const row of (data ?? []) as { id: string; name: string }[]) staffNames.set(row.id, row.name);
+    }
+  }
   // 上面兩個查詢都是「時間由新到舊取 500 筆」：歷史資料超過 500 筆時被截掉的是最舊的，
   // 今天以後的預約一定拿得到（原本是由舊到新取 500 筆，超過就會漏掉最新的）。
   // 最後回傳前有再依時間由舊到新排序。
@@ -1141,7 +1153,7 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
     id: `manual-${a.id}`,
     source: 'manual',
     appointment_time: a.appointment_time,
-    customer_name: a.customer?.name ?? '—',
+    customer_name: a.customer?.name ?? staffNames.get(a.customer_id) ?? '—',
     customer_phone: a.customer?.phone ?? '',
     service_name: '預約服務',
     duration_minutes: 60,
