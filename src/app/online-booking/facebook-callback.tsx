@@ -43,7 +43,7 @@ export default function FacebookCallbackScreen() {
         // 新建的 profiles 列預設是 'merchant'（見 00038_account_type_separation.sql），
         // 顧客用 Facebook 登入一定要補標記成 'customer'，不然會被當成商家帳號，
         // 點進商家後台會被 _layout.tsx 的身分守門擋下，卡在莫名其妙的畫面。
-        await supabase.from('profiles').update({ account_type: 'customer' }).eq('id', user.id);
+        await supabase.rpc('mark_self_as_customer'); // profiles 的 account_type 不能由用戶自己 UPDATE（migration 00068），改走 RPC（00072）
       }
 
       router.replace(`/online-booking?ownerId=${ownerId ?? ''}` as any);
