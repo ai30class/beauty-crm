@@ -51,7 +51,7 @@ export async function upsertCustomerByPhone(
   ownerId: string,
   name: string,
   phone: string,
-  birthday: string,
+  birthday: string | null,
   customerUserId?: string | null,
 ): Promise<{ customerId: string; wasAlreadyRegistered: boolean }> {
   const { data, error } = await supabase

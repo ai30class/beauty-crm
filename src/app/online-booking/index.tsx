@@ -343,7 +343,6 @@ export default function OnlineBookingScreen() {
     setError('');
     if (!customerName.trim()) { setError('請輸入姓名'); return; }
     if (!/^09\d{8}$/.test(customerPhone)) { setError('請輸入正確的手機號碼（09 開頭 10 碼）'); return; }
-    if (!customerBirthday) { setError('請選擇生日'); return; }
     if (!selectedTemplate || !selectedTime) { setError('請完成所有選擇'); return; }
     if (!agreedToPolicy) { setError('請詳閱並勾選同意預約注意事項'); return; }
 
@@ -358,11 +357,10 @@ export default function OnlineBookingScreen() {
       service_template_id: a.id, name: a.name, amount: a.default_amount, duration_minutes: a.duration_minutes,
     }));
 
-    // 生日字串
-    const by = customerBirthday.getFullYear();
-    const bm = String(customerBirthday.getMonth() + 1).padStart(2, '0');
-    const bd = String(customerBirthday.getDate()).padStart(2, '0');
-    const birthdayStr = `${by}-${bm}-${bd}`;
+    // 生日字串（選填，沒填就是 null）
+    const birthdayStr = customerBirthday
+      ? `${customerBirthday.getFullYear()}-${String(customerBirthday.getMonth() + 1).padStart(2, '0')}-${String(customerBirthday.getDate()).padStart(2, '0')}`
+      : null;
 
     setSubmitting(true);
     try {
@@ -694,7 +692,12 @@ export default function OnlineBookingScreen() {
 
             {/* 生日 */}
             <View>
-              <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">生日 *</Text>
+              <View className="flex-row items-center gap-2 mb-1.5">
+                <Text className="font-rounded text-sm font-medium text-foreground">生日</Text>
+                <View className="px-2.5 py-0.5 rounded-full" style={{ backgroundColor: '#fff0f3' }}>
+                  <Text className="font-rounded" style={{ fontSize: 11, color: '#e8789a', fontWeight: '600' }}>選填</Text>
+                </View>
+              </View>
               <Pressable
                 className="flex-row items-center bg-card border border-border rounded-2xl px-4 active:opacity-80"
                 style={{ height: 52 }}
@@ -713,6 +716,8 @@ export default function OnlineBookingScreen() {
               <View className="bg-card border border-border rounded-2xl mt-2 overflow-hidden" style={{ display: showBirthdayPicker ? 'flex' : 'none' }}>
                 <DateTimePicker locale="zh-tw"
                   mode="single"
+                  initialView="year"
+                  maxDate={new Date()}
                   date={customerBirthday ?? new Date(1990, 0, 1)}
                   onChange={(params) => {
                     if (params.date) setCustomerBirthday(params.date as Date);
@@ -721,7 +726,7 @@ export default function OnlineBookingScreen() {
                 />
               </View>
               <Text className="font-rounded text-xs text-muted-foreground mt-1.5 px-1">
-                用於生日優惠提醒，資料安全保存 🔒
+                讓我們有機會在您生日時說聲生日快樂，並送上小禮物
               </Text>
             </View>
 
@@ -733,7 +738,6 @@ export default function OnlineBookingScreen() {
                 setError('');
                 if (!customerName.trim()) { setError('請輸入姓名'); return; }
                 if (!/^09\d{8}$/.test(customerPhone)) { setError('請輸入正確的手機號碼（09 開頭 10 碼）'); return; }
-                if (!customerBirthday) { setError('請選擇您的生日'); return; }
                 setStep('service');
               }}
             >
