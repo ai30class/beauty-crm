@@ -148,6 +148,21 @@ export default function ProfileTab() {
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
           )}
+          {isStaff && (
+          <Pressable
+            className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
+            onPress={() => router.push('/(app)/analytics/my-payroll' as any)}
+          >
+            <View className="w-8 h-8 rounded-full items-center justify-center mr-3" style={{ backgroundColor: '#fef3e2' }}>
+              <Wallet size={16} color="#e8a87c" />
+            </View>
+            <View className="flex-1">
+              <Text className="font-rounded text-base text-foreground">我的抽成與月薪</Text>
+              <Text className="font-rounded text-xs text-muted-foreground mt-0.5">抽成、底薪、獎金與月薪（只有自己看得到）</Text>
+            </View>
+            <ChevronRight size={16} color="#c4a0ae" />
+          </Pressable>
+          )}
         </View>
 
         {/* 數據分析 */}

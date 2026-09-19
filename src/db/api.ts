@@ -1741,6 +1741,82 @@ export async function getPayrollRecords(year: number, month: number): Promise<Pa
   return Array.isArray(data) ? data : [];
 }
 
+// 員工帳號專用：自己某個月的抽成與月薪（唯讀）。
+// - 已按「產生本月薪資」鎖定的月份 → 直接讀自己的 payroll_records（員工本來就能讀自己的）。
+// - 還沒鎖定 → 用跟商家預覽完全相同的算法即時估算：業績（get_my_performance_by_month）＋階梯抽成
+//   （pickTierRate，沒設階梯就用個人抽成比例）＋底薪＋當月已登記獎金。
+// 自己的抽成比例與底薪存在 staff 表（員工無 SELECT），用 get_my_pay_settings() 取（migration 00077）。
+export interface MyPayrollMonth {
+  source: 'locked' | 'preview';
+  total_revenue: number;
+  commission_rate_applied: number;
+  commission_amount: number;
+  base_salary: number;
+  bonus_amount: number;
+  bonus_items: { amount: number; note: string | null }[];
+  total_salary: number;
+}
+export async function getMyPayrollMonth(year: number, month: number): Promise<MyPayrollMonth | null> {
+  const link = await getMyStaffLink();
+  if (!link) return null;
+  const staffId = link.staffId;
+
+  const bonusRes = await supabase
+    .from('staff_bonuses')
+    .select('amount, note')
+    .eq('staff_id', staffId).eq('year', year).eq('month', month)
+    .order('created_at', { ascending: true });
+  if (bonusRes.error) throw bonusRes.error;
+  const bonusItems = ((bonusRes.data ?? []) as { amount: number | string; note: string | null }[])
+    .map(b => ({ amount: Number(b.amount), note: b.note }));
+
+  const lockedRes = await supabase
+    .from('payroll_records')
+    .select('*')
+    .eq('staff_id', staffId).eq('year', year).eq('month', month)
+    .maybeSingle();
+  if (lockedRes.error) throw lockedRes.error;
+  if (lockedRes.data) {
+    const r = lockedRes.data as PayrollRecord;
+    return {
+      source: 'locked',
+      total_revenue: Number(r.total_revenue),
+      commission_rate_applied: Number(r.commission_rate_applied),
+      commission_amount: Number(r.commission_amount),
+      base_salary: Number(r.base_salary),
+      bonus_amount: Number(r.bonus_amount),
+      bonus_items: bonusItems,
+      total_salary: Number(r.total_salary),
+    };
+  }
+
+  const start = `${year}-${String(month).padStart(2, '0')}-01`;
+  const end = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const [perf, tiersRes, settingsRes] = await Promise.all([
+    getMyPerformanceByMonth(start, end),
+    supabase.from('staff_commission_tiers').select('*').eq('staff_id', staffId),
+    supabase.rpc('get_my_pay_settings'),
+  ]);
+  if (tiersRes.error) throw tiersRes.error;
+  if (settingsRes.error) throw settingsRes.error;
+  const settings = ((settingsRes.data ?? []) as { commission_rate: number | string; base_salary: number | string }[])[0];
+  const revenue = perf.reduce((sum, r) => sum + r.total_revenue, 0);
+  const rate = pickTierRate(revenue, (tiersRes.data ?? []) as StaffCommissionTier[], Number(settings?.commission_rate ?? 0));
+  const commission = revenue * rate / 100;
+  const base = Number(settings?.base_salary ?? 0);
+  const bonus = bonusItems.reduce((sum, b) => sum + b.amount, 0);
+  return {
+    source: 'preview',
+    total_revenue: revenue,
+    commission_rate_applied: rate,
+    commission_amount: commission,
+    base_salary: base,
+    bonus_amount: bonus,
+    bonus_items: bonusItems,
+    total_salary: base + commission + bonus,
+  };
+}
+
 // ─── 久未到店提醒 ─────────────────────────────────────────────────────────────
 export async function getDormantCustomers(days: number): Promise<DormantCustomer[]> {
   const [{ data: customers, error: custErr }, { data: records, error: recErr }] = await Promise.all([
