@@ -40,6 +40,7 @@ export interface ShopBlockedSlot {
   end_time: string;     // "HH:MM"
   applies_to: string[]; // ["mon","tue",...] 空=每天（僅在 specific_date 為 null 時生效）
   specific_date: string | null; // "YYYY-MM-DD"，設定時只封鎖這一天，忽略 applies_to
+  staff_id: string | null;      // null = 全店封閉；有值 = 只有這位設計師這段時間不開放線上預約（migration 00075）
   created_at: string;
   updated_at: string;
 }

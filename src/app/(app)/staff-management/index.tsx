@@ -366,7 +366,7 @@ export default function StaffManagementScreen() {
                       <Switch value={editCanManagePricing} onValueChange={setEditCanManagePricing} trackColor={{ false: '#e5dde0', true: '#e8789a' }} />
                     </View>
                     <View className="flex-row items-center justify-between">
-                      <Text className="font-rounded text-sm text-foreground flex-1 pr-2">可管理營業時間/公休日/封鎖時段</Text>
+                      <Text className="font-rounded text-sm text-foreground flex-1 pr-2">可管理自己的休假與封鎖時段（整家店的營業時間、店休一律只有你能改）</Text>
                       <Switch value={editCanManageShopSettings} onValueChange={setEditCanManageShopSettings} trackColor={{ false: '#e5dde0', true: '#e8789a' }} />
                     </View>
                   </View>

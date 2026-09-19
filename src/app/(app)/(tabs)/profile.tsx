@@ -20,10 +20,11 @@ export default function ProfileTab() {
     getMyStaffPermissions()
       .then(setPerms)
       // 查不到就當最嚴格的員工，不能反過來當商家
-      .catch(() => setPerms({ isStaff: true, canViewCustomers: false, canManagePricing: false, canManageShopSettings: false }));
+      .catch(() => setPerms({ isStaff: true, canViewCustomers: false, canManagePricing: false, canManageOwnTimeOff: false }));
   }, []);
   const isStaff = perms?.isStaff ?? true;
-  const showHolidaysAndShop = !isStaff || !!perms?.canManageShopSettings;
+  // 員工只能管理「自己的」休假與封鎖時段（商家開了開關才顯示）；整家店的營業時間／店休永遠只有商家
+  const showHolidays = !isStaff || !!perms?.canManageOwnTimeOff;
   const showPricing = !isStaff || !!perms?.canManagePricing;
   const showCustomerAnalytics = !isStaff || !!perms?.canViewCustomers;
 
@@ -102,7 +103,7 @@ export default function ProfileTab() {
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
           )}
-          {showHolidaysAndShop && (
+          {showHolidays && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/holidays' as any)}
@@ -111,8 +112,8 @@ export default function ProfileTab() {
               <CalendarOff size={16} color="#e8783a" />
             </View>
             <View className="flex-1">
-              <Text className="font-rounded text-base text-foreground">公休日管理</Text>
-              <Text className="font-rounded text-xs text-muted-foreground mt-0.5">設定公休日，自動封鎖預約</Text>
+              <Text className="font-rounded text-base text-foreground">{isStaff ? '我的休假與封鎖時段' : '公休日管理'}</Text>
+              <Text className="font-rounded text-xs text-muted-foreground mt-0.5">{isStaff ? '設定自己的休假日與不接客的時段' : '設定公休日，自動封鎖預約'}</Text>
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
@@ -249,10 +250,10 @@ export default function ProfileTab() {
         </View>}
 
         {/* 業務設定 */}
-        {(showHolidaysAndShop || showPricing || !isStaff) && <View className="mx-5 mb-4 bg-card rounded-2xl overflow-hidden border border-border">
+        {(showPricing || !isStaff) && <View className="mx-5 mb-4 bg-card rounded-2xl overflow-hidden border border-border">
           <Text className="font-rounded text-xs font-semibold text-muted-foreground px-5 pt-4 pb-2">業務設定</Text>
           {/* 商家資訊 */}
-          {showHolidaysAndShop && (
+          {!isStaff && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/shop-settings' as any)}

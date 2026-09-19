@@ -680,10 +680,13 @@ export async function getAvailableSlots(
   const dayKey = ['sun','mon','tue','wed','thu','fri','sat'][new Date(dateStr + 'T12:00:00').getDay()];
   const { data: blockedRows } = await supabase
     .from('shop_blocked_slots')
-    .select('start_time, end_time, applies_to, specific_date')
+    .select('start_time, end_time, applies_to, specific_date, staff_id')
     .eq('owner_id', ownerId);
-  const blockedSlots = (blockedRows ?? []).filter((b: { applies_to: string[]; start_time: string; end_time: string; specific_date: string | null }) =>
-    b.specific_date ? b.specific_date === dateStr : (b.applies_to.length === 0 || b.applies_to.includes(dayKey))
+  // staff_id 為 null 是全店封閉，永遠套用；有值是「只有那位設計師」的個人封鎖時段，
+  // 只有查的就是那位設計師時才套用（沒指定設計師時只看全店封閉）
+  const blockedSlots = (blockedRows ?? []).filter((b: { applies_to: string[]; start_time: string; end_time: string; specific_date: string | null; staff_id: string | null }) =>
+    (!b.staff_id || b.staff_id === staffId) &&
+    (b.specific_date ? b.specific_date === dateStr : (b.applies_to.length === 0 || b.applies_to.includes(dayKey)))
   );
 
   // 取得顧客限制（若有傳 customerPhone）
@@ -1307,11 +1310,11 @@ export async function canViewCustomers(): Promise<boolean> {
 // 商家：isStaff=false（三個權限值不使用）；員工：三個開關由商家在員工管理頁設定，預設全關。
 // 這只是「畫面該不該顯示入口」，真正擋資料的是資料庫 RLS，兩邊要一致。
 export async function getMyStaffPermissions(): Promise<{
-  isStaff: boolean; canViewCustomers: boolean; canManagePricing: boolean; canManageShopSettings: boolean;
+  isStaff: boolean; canViewCustomers: boolean; canManagePricing: boolean; canManageOwnTimeOff: boolean;
 }> {
   const accountType = await getAccountType().catch(() => 'merchant' as const);
   if (accountType !== 'staff') {
-    return { isStaff: false, canViewCustomers: true, canManagePricing: true, canManageShopSettings: true };
+    return { isStaff: false, canViewCustomers: true, canManagePricing: true, canManageOwnTimeOff: true };
   }
   const [view, pricing, shop] = await Promise.all([
     supabase.rpc('staff_can_view_customers'),
@@ -1322,7 +1325,8 @@ export async function getMyStaffPermissions(): Promise<{
     isStaff: true,
     canViewCustomers: view.data === true,
     canManagePricing: pricing.data === true,
-    canManageShopSettings: shop.data === true,
+    // DB 欄位／函式名稱是歷史命名 can_manage_shop_settings，意思已改為「可管理自己的休假、封鎖時段與預留時間」
+    canManageOwnTimeOff: shop.data === true,
   };
 }
 
@@ -1816,7 +1820,7 @@ export async function getShopBlockedSlots(): Promise<ShopBlockedSlot[]> {
 }
 
 export async function createShopBlockedSlot(
-  payload: Pick<ShopBlockedSlot, 'label' | 'start_time' | 'end_time' | 'applies_to' | 'specific_date'>
+  payload: Pick<ShopBlockedSlot, 'label' | 'start_time' | 'end_time' | 'applies_to' | 'specific_date'> & { staff_id?: string | null }
 ): Promise<void> {
   const { error } = await supabase.from('shop_blocked_slots').insert(payload);
   if (error) throw error;

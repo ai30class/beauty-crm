@@ -11,7 +11,7 @@ import {
 import {
   getMergedAppointments, getShopProfile, getHolidays,
   getStaffReservedSlots, createStaffReservedSlot, deleteStaffReservedSlot,
-  getScheduleStaff, getAccountType,
+  getScheduleStaff, getMyStaffPermissions, getMyStaffLink,
 } from '@/db/api';
 import OnlineOrderInfoModal from '@/components/OnlineOrderInfoModal';
 import type { UnifiedAppointment, BusinessHours, Holiday, StaffReservedSlot, StaffRosterEntry } from '@/types/types';
@@ -207,6 +207,12 @@ export default function StaffScheduleScreen() {
   const [deleteReserveTarget, setDeleteReserveTarget] = useState<StaffReservedSlot | null>(null);
   const [deletingReserve, setDeletingReserve] = useState(false);
   const [isStaffAccount, setIsStaffAccount] = useState(false);
+  const [canOwnTimeOff, setCanOwnTimeOff] = useState(false);
+  const [myStaffId, setMyStaffId] = useState<string | null>(null);
+
+  // 預留時間：商家可以替任何設計師排；員工只能替「自己」排，而且商家要開「可管理自己的休假與封鎖時段」開關
+  const canManageReservedFor = (staffId: string) =>
+    !isStaffAccount || (canOwnTimeOff && !!myStaffId && staffId === myStaffId);
   const [infoAppt, setInfoAppt] = useState<UnifiedAppointment | null>(null);
 
   // 點預約色塊：手動 → 預約詳情；線上 → 商家去訂單頁，員工（讀不到訂單頁資料）改跳唯讀小視窗
@@ -232,13 +238,15 @@ export default function StaffScheduleScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [data, staff, profile, accountType] = await Promise.all([
+      const [data, staff, profile, perms] = await Promise.all([
         getMergedAppointments(),
         getScheduleStaff(),
         getShopProfile(),
-        getAccountType().catch(() => 'merchant' as const),
+        getMyStaffPermissions(),
       ]);
-      setIsStaffAccount(accountType === 'staff');
+      setIsStaffAccount(perms.isStaff);
+      setCanOwnTimeOff(perms.isStaff && perms.canManageOwnTimeOff);
+      if (perms.isStaff) setMyStaffId((await getMyStaffLink().catch(() => null))?.staffId ?? null);
       const staffById = new Map(staff.map(s => [s.id, s]));
       // 只顯示今天及之後、非取消的；設計師名字/顏色缺的（員工帳號）用 staff_id 補上
       const upcoming = data
@@ -474,7 +482,7 @@ export default function StaffScheduleScreen() {
                                         height: Math.max(((endMin - startMin) / 60) * DAY_HOUR_PX, 16),
                                         backgroundColor: '#e5dde0', borderRadius: 6, borderWidth: 1, borderColor: '#c4a0ae',
                                         opacity: pressed ? 0.7 : 1, overflow: 'hidden', padding: 3 })}
-                                      onPress={() => setDeleteReserveTarget(r)}>
+                                      onPress={() => { if (canManageReservedFor(r.staff_id)) setDeleteReserveTarget(r); }}>
                                       <Text className="font-rounded" style={{ fontSize: 11, color: '#7a6a70' }} numberOfLines={3}>{r.label}</Text>
                                     </Pressable>
                                   );
@@ -654,7 +662,7 @@ export default function StaffScheduleScreen() {
                                       backgroundColor: '#e5dde0', borderRadius: 3, borderWidth: 1, borderColor: '#c4a0ae',
                                       opacity: pressed ? 0.7 : 1, overflow: 'hidden',
                                     })}
-                                    onPress={() => setDeleteReserveTarget(r)}
+                                    onPress={() => { if (canManageReservedFor(r.staff_id)) setDeleteReserveTarget(r); }}
                                   >
                                     <Text numberOfLines={1} className="font-rounded" style={{ fontSize: 8, color: '#7a6a70', paddingHorizontal: 2 }}>{r.label}</Text>
                                   </Pressable>
@@ -720,7 +728,7 @@ export default function StaffScheduleScreen() {
                                       backgroundColor: '#e5dde0', borderRadius: 4, borderWidth: 1, borderColor: '#c4a0ae',
                                       opacity: pressed ? 0.7 : 1, overflow: 'hidden',
                                     })}
-                                    onPress={() => setDeleteReserveTarget(r)}
+                                    onPress={() => { if (canManageReservedFor(r.staff_id)) setDeleteReserveTarget(r); }}
                                   >
                                     <Text numberOfLines={1} className="font-rounded" style={{ fontSize: 9, color: '#7a6a70', paddingHorizontal: 3 }}>{r.label}</Text>
                                   </Pressable>
@@ -911,6 +919,7 @@ export default function StaffScheduleScreen() {
               <CalendarPlus size={18} color="#fff" />
               <Text className="font-rounded text-base font-semibold text-white">排新預約</Text>
             </Pressable>
+            {slotPicker && canManageReservedFor(slotPicker.staffId) && (
             <Pressable
               className="flex-row items-center justify-center gap-2 rounded-2xl active:opacity-70"
               style={{ height: 52, backgroundColor: '#f5e6ec' }}
@@ -925,6 +934,7 @@ export default function StaffScheduleScreen() {
               <Coffee size={18} color="#c4667e" />
               <Text className="font-rounded text-base font-semibold" style={{ color: '#c4667e' }}>預留時間</Text>
             </Pressable>
+            )}
             <Pressable className="items-center py-1 active:opacity-70" onPress={() => setSlotPicker(null)}>
               <Text className="font-rounded text-sm text-muted-foreground">取消</Text>
             </Pressable>
