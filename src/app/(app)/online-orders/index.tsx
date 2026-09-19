@@ -224,6 +224,10 @@ export default function OnlineOrdersScreen() {
   const [deleteTarget, setDeleteTarget] = useState<OnlineOrder | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [noShowTarget, setNoShowTarget] = useState<OnlineOrder | null>(null);
+  const [noShowing, setNoShowing] = useState(false);
+  const [noShowError, setNoShowError] = useState('');
+  const [noShowDone, setNoShowDone] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -266,11 +270,38 @@ export default function OnlineOrdersScreen() {
     load();
   };
 
-  // 已付訂金/已確認的預約，顧客當天沒出現：取消訂單並累計該顧客未到場次數
-  const handleNoShow = async (o: OnlineOrder) => {
-    await updateOnlineOrderStatus(o.id, 'cancelled');
-    if (o.customer_id) await incrementCustomerNoShow(o.customer_id).catch(() => {});
+  // 已付訂金/已確認的預約，顧客當天沒出現：取消訂單並累計該顧客未到場次數。
+  // 這兩件事按下去就無法復原（沒有「復原未到場」的地方），所以先跳確認視窗再執行。
+  const askNoShow = (o: OnlineOrder) => {
+    setNoShowError('');
+    setNoShowDone(false);
+    setNoShowTarget(o);
+  };
+
+  const handleNoShow = async () => {
+    if (!noShowTarget) return;
+    setNoShowing(true);
+    setNoShowError('');
+    try {
+      await updateOnlineOrderStatus(noShowTarget.id, 'cancelled');
+    } catch (e: any) {
+      setNoShowError(e?.message ?? '標記失敗，請稍後再試');
+      setNoShowing(false);
+      return;
+    }
+    // 訂單已取消；累計次數失敗時不能再讓視窗直接關掉，要讓商家知道沒累計到
+    let countFailed = false;
+    if (noShowTarget.customer_id) {
+      try { await incrementCustomerNoShow(noShowTarget.customer_id); } catch { countFailed = true; }
+    }
+    setNoShowing(false);
     load();
+    if (countFailed) {
+      setNoShowDone(true);
+      setNoShowError('預約已取消，但顧客的未到場次數沒有累計成功，請到顧客資料確認。');
+    } else {
+      setNoShowTarget(null);
+    }
   };
 
   // 銀行轉帳流程：店家核對完銀行帳戶、確認真的收到訂金後才按這個
@@ -471,7 +502,7 @@ export default function OnlineOrdersScreen() {
                     {(item.status === 'paid' || item.status === 'confirmed') && (
                       <Pressable
                         className="flex-row items-center gap-1 bg-destructive/10 px-3 py-1.5 rounded-full active:opacity-70"
-                        onPress={() => handleNoShow(item)}
+                        onPress={() => askNoShow(item)}
                       >
                         <Ban size={13} color="#e85454" />
                         <Text className="font-rounded text-xs font-medium text-destructive">未到場</Text>
@@ -509,6 +540,52 @@ export default function OnlineOrdersScreen() {
           }}
         />
       )}
+
+      {/* 未到場確認彈窗 */}
+      <Modal visible={!!noShowTarget} transparent animationType="fade" onRequestClose={() => setNoShowTarget(null)}>
+        <Pressable className="flex-1 bg-black/40 items-center justify-center px-8" onPress={() => { if (!noShowing) setNoShowTarget(null); }}>
+          <Pressable className="bg-card w-full rounded-3xl p-6 gap-4" onPress={() => {}}>
+            <View className="items-center gap-3">
+              <View className="w-16 h-16 rounded-full items-center justify-center" style={{ backgroundColor: '#fff0f3' }}>
+                <Ban size={30} color="#e85454" />
+              </View>
+              <Text className="font-rounded text-lg font-bold text-foreground text-center">
+                標記「{noShowTarget?.customer_name}」未到場？
+              </Text>
+              {noShowTarget ? (
+                <Text className="font-rounded text-sm text-muted-foreground text-center">
+                  {noShowTarget.service_name}{'\n'}
+                  {new Date(noShowTarget.appointment_time).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}
+                </Text>
+              ) : null}
+              {!noShowDone && noShowTarget ? (
+                <Text className="font-rounded text-xs text-muted-foreground text-center">
+                  {noShowTarget.customer_id
+                    ? '這筆預約會被取消，並在顧客資料裡累計 1 次未到場（累計到你設定的門檻，顧客資料會出現未到場提醒）。這個動作無法復原。\n如果只是要取消預約，請改用「取消」，不會記未到場。'
+                    : '這筆預約會被取消。這筆訂單沒有對應的顧客資料，不會累計未到場次數。這個動作無法復原。'}
+                </Text>
+              ) : null}
+              {noShowError ? (
+                <Text className="font-rounded text-xs text-center" style={{ color: '#e85454' }}>{noShowError}</Text>
+              ) : null}
+            </View>
+            {noShowDone ? (
+              <Pressable className="h-12 rounded-2xl bg-primary items-center justify-center active:opacity-80" onPress={() => setNoShowTarget(null)}>
+                <Text className="font-rounded text-sm font-semibold text-white">知道了</Text>
+              </Pressable>
+            ) : (
+              <View className="flex-row gap-3 mt-1">
+                <Pressable className="flex-1 h-12 rounded-2xl border border-border items-center justify-center active:opacity-70" disabled={noShowing} onPress={() => setNoShowTarget(null)}>
+                  <Text className="font-rounded text-sm font-semibold text-muted-foreground">先不要</Text>
+                </Pressable>
+                <Pressable className="flex-1 h-12 rounded-2xl items-center justify-center active:opacity-80" style={{ backgroundColor: '#e85454' }} disabled={noShowing} onPress={handleNoShow}>
+                  {noShowing ? <ActivityIndicator color="#fff" size="small" /> : <Text className="font-rounded text-sm font-semibold text-white">確認未到場</Text>}
+                </Pressable>
+              </View>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* 刪除確認彈窗 */}
       <Modal visible={!!deleteTarget} transparent animationType="fade" onRequestClose={() => setDeleteTarget(null)}>
