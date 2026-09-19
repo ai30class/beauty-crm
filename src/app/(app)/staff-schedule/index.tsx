@@ -14,16 +14,16 @@ import {
   getScheduleStaff, getMyStaffPermissions, getMyStaffLink,
 } from '@/db/api';
 import OnlineOrderInfoModal from '@/components/OnlineOrderInfoModal';
+import FreeSlotGrid from '@/components/FreeSlotGrid';
+import {
+  toApptDateStr, timeToMinutes, hhmmToMinutes, minutesToHHMM, isStaffAppt, apptDurationMin,
+} from '@/lib/schedule';
 import type { UnifiedAppointment, BusinessHours, Holiday, StaffReservedSlot, StaffRosterEntry } from '@/types/types';
 
 const DAY_KEYS: (keyof BusinessHours)[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 // ── 工具 ─────────────────────────────────────────────────────────────────────
 function toDateStr(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-function toApptDateStr(iso: string) {
-  const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 function formatTime(iso: string) {
@@ -51,19 +51,6 @@ function addDays(d: Date, n: number): Date {
   date.setDate(date.getDate() + n);
   return date;
 }
-// 員工帳號讀不到 staff 表，預約帶回來的設計師名字是空的，所以優先用 staff_id 對軌道
-function isStaffAppt(a: UnifiedAppointment, s: StaffRosterEntry) {
-  return a.staff_id ? a.staff_id === s.id : a.staff_name === s.name;
-}
-// 手動預約在資料庫沒有時長欄位（一律當 60 分）；舊系統匯入的預約真正的時間寫在備註，優先用那個
-function apptDurationMin(a: UnifiedAppointment) {
-  const m = a.notes?.match(/^\[舊系統匯入\]\s*(\d{2}):(\d{2})~(\d{2}):(\d{2})/);
-  if (m) {
-    const d = (Number(m[3]) * 60 + Number(m[4])) - (Number(m[1]) * 60 + Number(m[2]));
-    if (d > 0) return d;
-  }
-  return a.duration_minutes || 30;
-}
 // 日視圖區塊上的字：顧客姓名（員工帳號讀不到時是「—」就不顯示）＋服務／備註
 function apptLabels(a: UnifiedAppointment) {
   const who = a.customer_name && a.customer_name !== '—' ? a.customer_name : '';
@@ -71,17 +58,6 @@ function apptLabels(a: UnifiedAppointment) {
     ? (a.notes ?? '').replace(/^\[舊系統匯入\]\s*\d{2}:\d{2}~\d{2}:\d{2}（\d+分）/, '').replace(/^[\s｜|]+/, '').replace(/^一般[\s｜|]*/, '').trim() || a.service_name
     : a.service_name;
   return { who, detail };
-}
-function timeToMinutes(iso: string) {
-  const d = new Date(iso);
-  return d.getHours() * 60 + d.getMinutes();
-}
-function hhmmToMinutes(t: string) {
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
-}
-function minutesToHHMM(min: number) {
-  return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 }
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -184,7 +160,7 @@ export default function StaffScheduleScreen() {
 
   const { width: winW } = useWindowDimensions();
   // 手機寬度預設「日」視圖（一週 7 天 × 每位設計師一條軌道，手機上每欄只剩 25 像素，看不清楚）
-  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>(() => (winW < 700 ? 'day' : 'week'));
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'free'>(() => (winW < 700 ? 'day' : 'week'));
   const [dayDate, setDayDate] = useState<string>(today);
   const [allAppts, setAllAppts] = useState<UnifiedAppointment[]>([]);
   const [allStaff, setAllStaff] = useState<StaffRosterEntry[]>([]);
@@ -203,6 +179,8 @@ export default function StaffScheduleScreen() {
   const [reserveTarget, setReserveTarget] = useState<{ dateStr: string; time: string; staffId: string; staffName: string } | null>(null);
   // 點空白處的小視窗裡可以改選「替哪位設計師排」（預設是點到的那一欄），並標示每位設計師這個時段有沒有空
   const [pickStaffId, setPickStaffId] = useState<string | null>(null);
+  // 空檔一覽：需要連續多久的空檔（分鐘）
+  const [freeDuration, setFreeDuration] = useState(60);
   const [reserveLabel, setReserveLabel] = useState('');
   const [reserveDurationMin, setReserveDurationMin] = useState('30');
   const [savingReserve, setSavingReserve] = useState(false);
@@ -384,7 +362,7 @@ export default function StaffScheduleScreen() {
 
       {/* 週／月切換 */}
       <View className="flex-row gap-2 px-5 mb-3">
-        {(['day', 'week', 'month'] as const).map(m => (
+        {(['day', 'week', 'month', 'free'] as const).map(m => (
           <Pressable
             key={m}
             className="px-4 py-1.5 rounded-full active:opacity-70"
@@ -392,7 +370,7 @@ export default function StaffScheduleScreen() {
             onPress={() => setViewMode(m)}
           >
             <Text className="font-rounded text-sm font-medium" style={{ color: viewMode === m ? '#fff' : '#c4a0ae' }}>
-              {m === 'day' ? '日' : m === 'week' ? '週' : '月'}
+              {m === 'day' ? '日' : m === 'week' ? '週' : m === 'month' ? '月' : '空檔'}
             </Text>
           </Pressable>
         ))}
@@ -780,6 +758,84 @@ export default function StaffScheduleScreen() {
           )}
           <Text className="font-rounded text-xs text-muted-foreground px-5 mt-2">
             💡 點色塊看預約詳情並微調，點空白處可排新預約或標記預留時間
+          </Text>
+        </ScrollView>
+      ) : viewMode === 'free' ? (
+        <ScrollView className="flex-1" contentContainerClassName="pb-10">
+          {/* 週切換 */}
+          <View className="flex-row items-center justify-between px-5 mb-3">
+            <Pressable className="w-8 h-8 rounded-full items-center justify-center active:bg-muted"
+              onPress={() => setWeekStart(w => addDays(w, -7))}>
+              <ChevronLeft size={18} color="#e8789a" />
+            </Pressable>
+            <Text className="font-rounded text-sm font-bold text-foreground">{weekLabel}</Text>
+            <Pressable className="w-8 h-8 rounded-full items-center justify-center active:bg-muted"
+              onPress={() => setWeekStart(w => addDays(w, 7))}>
+              <ChevronRight size={18} color="#e8789a" />
+            </Pressable>
+          </View>
+
+          {/* 設計師篩選：全部＝顯示每個時間「有幾位設計師有空」；選一位＝只看那位有沒有空 */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-3" contentContainerClassName="px-5 gap-2">
+            <Pressable
+              className="px-3.5 py-1.5 rounded-full active:opacity-70"
+              style={{ backgroundColor: selectedStaffId === null ? '#e8789a' : '#f5e6ec' }}
+              onPress={() => setSelectedStaffId(null)}
+            >
+              <Text className="font-rounded text-xs font-medium" style={{ color: selectedStaffId === null ? '#fff' : '#c4a0ae' }}>全部設計師</Text>
+            </Pressable>
+            {staffList.filter(s => s.is_active || s.id === selectedStaffId).map(s => (
+              <Pressable
+                key={s.id}
+                className="px-3.5 py-1.5 rounded-full active:opacity-70"
+                style={{ backgroundColor: selectedStaffId === s.id ? s.color : s.color + '18' }}
+                onPress={() => setSelectedStaffId(s.id)}
+              >
+                <Text className="font-rounded text-xs font-medium" style={{ color: selectedStaffId === s.id ? '#fff' : s.color }}>{s.name}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          {/* 需要連續多久 */}
+          <View className="flex-row items-center gap-2 px-5 mb-2">
+            <Text className="font-rounded text-xs text-muted-foreground">需要連續</Text>
+            {[30, 60, 90, 120, 180].map(d => (
+              <Pressable
+                key={d}
+                className="px-3 py-1.5 rounded-full active:opacity-70"
+                style={{ backgroundColor: freeDuration === d ? '#e8789a' : '#f5e6ec' }}
+                onPress={() => setFreeDuration(d)}
+              >
+                <Text className="font-rounded text-xs font-medium" style={{ color: freeDuration === d ? '#fff' : '#c4a0ae' }}>{d} 分</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text className="font-rounded text-xs text-muted-foreground px-5 mb-3">
+            綠色格子＝從這個時間開始，連續 {freeDuration} 分鐘有空。{selectedStaffId === null ? '數字是有空的設計師人數。' : ''}點格子選設計師並排預約。
+          </Text>
+
+          {loading ? (
+            <View className="items-center py-10"><ActivityIndicator color="#e8789a" /></View>
+          ) : (
+            <FreeSlotGrid
+              weekDays={weekDays}
+              staffPool={selectedStaffId ? staffList.filter(s => s.id === selectedStaffId) : staffList.filter(s => s.is_active)}
+              durationMin={freeDuration}
+              appts={allAppts}
+              reserved={reservedSlots}
+              holidays={holidays}
+              hoursFor={d => businessHours?.[DAY_KEYS[d.getDay()]]}
+              startMin={TIMELINE_START_MIN}
+              endMin={TIMELINE_END_MIN}
+              today={today}
+              onPick={(dateStr, time, freeStaff) => {
+                const first = freeStaff[0];
+                setSlotPicker({ dateStr, time, staffId: first.id, staffName: first.name });
+              }}
+            />
+          )}
+          <Text className="font-rounded text-xs text-muted-foreground px-5 mt-4">
+            💡 這裡只看預約、預留時間、休假與營業時間；設計師的線上預約封鎖時段不列入。
           </Text>
         </ScrollView>
       ) : (
