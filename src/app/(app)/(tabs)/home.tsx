@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { Search, Plus, User, Phone, ChevronRight, Scissors, Clock, CalendarDays, AlertCircle, BellRing } from 'lucide-react-native';
-import { getCustomers, searchCustomers, getServiceTemplates, getShopProfileByOwner, getMergedAppointments, getAccountType, canViewCustomers } from '@/db/api';
+import { getCustomers, searchCustomers, getServiceTemplates, getShopProfileByOwner, getMergedAppointments, getAccountType, getMyStaffLink, canViewCustomers } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import type { Customer, ServiceTemplate, BusinessHours, UnifiedAppointment } from '@/types/types';
 
@@ -66,7 +66,11 @@ export default function HomeScreen() {
       ]);
       setCustomers(data);
       setTemplates(tpls);
-      setOwnerId(user?.id ?? null);
+      // 店家 ID：商家是自己的 user.id；員工帳號的 user.id 不是店家 ID，要用所屬商家的 ID
+      const shopOwnerId = accountType === 'staff'
+        ? (await getMyStaffLink().catch(() => null))?.staffOwnerId ?? null
+        : user?.id ?? null;
+      setOwnerId(shopOwnerId);
       // 24 小時內即將到來、真的算數的預約提醒——online_orders 的
       // pending_payment／pending_transfer_confirm 是顧客還沒付訂金／
       // 還沒私訊確認前的中繼狀態，不該算進「即將到來的預約」嚇到商家
@@ -79,8 +83,8 @@ export default function HomeScreen() {
         return t >= now && t <= in24h && !NOT_YET_REAL.includes(a.status);
       }));
       // 判斷今日是否公休
-      if (user) {
-        const profile = await getShopProfileByOwner(user.id).catch(() => null);
+      if (shopOwnerId) {
+        const profile = await getShopProfileByOwner(shopOwnerId).catch(() => null);
         if (profile?.business_hours) {
           const todayKey = getTodayDayKey();
           const todayHours = profile.business_hours[todayKey];
