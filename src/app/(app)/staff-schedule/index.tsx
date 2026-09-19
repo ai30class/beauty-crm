@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable, ActivityIndicator, Modal, TextInput, useWindowDimensions,
 } from 'react-native';
@@ -201,12 +201,15 @@ export default function StaffScheduleScreen() {
   // 點空白處：先彈「排新預約／預留時間」選單，選預留時間才接著問標籤
   const [slotPicker, setSlotPicker] = useState<{ dateStr: string; time: string; staffId: string; staffName: string } | null>(null);
   const [reserveTarget, setReserveTarget] = useState<{ dateStr: string; time: string; staffId: string; staffName: string } | null>(null);
+  // 點空白處的小視窗裡可以改選「替哪位設計師排」（預設是點到的那一欄），並標示每位設計師這個時段有沒有空
+  const [pickStaffId, setPickStaffId] = useState<string | null>(null);
   const [reserveLabel, setReserveLabel] = useState('');
   const [reserveDurationMin, setReserveDurationMin] = useState('30');
   const [savingReserve, setSavingReserve] = useState(false);
   const [deleteReserveTarget, setDeleteReserveTarget] = useState<StaffReservedSlot | null>(null);
   const [deletingReserve, setDeletingReserve] = useState(false);
   const [isStaffAccount, setIsStaffAccount] = useState(false);
+  useEffect(() => { setPickStaffId(slotPicker?.staffId ?? null); }, [slotPicker]);
   const [canOwnTimeOff, setCanOwnTimeOff] = useState(false);
   const [myStaffId, setMyStaffId] = useState<string | null>(null);
 
@@ -899,40 +902,99 @@ export default function StaffScheduleScreen() {
       {/* 員工點線上預約：唯讀小視窗 */}
       <OnlineOrderInfoModal item={infoAppt} onClose={() => setInfoAppt(null)} />
 
-      {/* 點空白處：先選「排新預約」還是「預留時間」 */}
+      {/* 點空白處：選替哪位設計師、再選「排新預約」還是「預留時間」 */}
+      {(() => {
+        // 這個時段（30 分鐘）每位設計師有沒有空：有預約／預留時間／休假
+        const statusAt = (st: StaffRosterEntry): { free: boolean; text: string } => {
+          // 排班表只載入今天以後的預約，過去的日期查不出有沒有預約，不顯示有空／忙碌以免誤導
+          if (!slotPicker || slotPicker.dateStr < today) return { free: true, text: '' };
+          const t0 = hhmmToMinutes(slotPicker.time);
+          const t1 = t0 + 30;
+          if (holidays.some(h => h.holiday_date === slotPicker.dateStr && h.staff_id === st.id)) return { free: false, text: '休假' };
+          const hasAppt = allAppts.some(a => {
+            if (!isStaffAppt(a, st) || toApptDateStr(a.appointment_time) !== slotPicker.dateStr) return false;
+            const start = timeToMinutes(a.appointment_time);
+            return start < t1 && start + apptDurationMin(a) > t0;
+          });
+          if (hasAppt) return { free: false, text: '有預約' };
+          const hasReserve = reservedSlots.some(r =>
+            r.staff_id === st.id && r.reserved_date === slotPicker.dateStr &&
+            hhmmToMinutes(r.start_time) < t1 && hhmmToMinutes(r.end_time) > t0);
+          if (hasReserve) return { free: false, text: '預留中' };
+          return { free: true, text: '有空' };
+        };
+        // 新預約可選的設計師：在職的；點到的那一位即使暫停服務也保留（跟原本點欄位就排的行為一致）
+        const pickable = staffList.filter(st => st.is_active || st.id === slotPicker?.staffId);
+        const picked = pickable.find(st => st.id === pickStaffId) ?? null;
+        const pickedStatus = picked ? statusAt(picked) : null;
+        return (
       <Modal visible={!!slotPicker} transparent animationType="fade" onRequestClose={() => setSlotPicker(null)}>
         <Pressable className="flex-1 bg-black/40 items-center justify-center px-8" onPress={() => setSlotPicker(null)}>
           <Pressable className="bg-card w-full rounded-3xl p-6 gap-3" onPress={() => {}}
             style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 10 }}>
             <Text className="font-rounded text-base font-bold text-foreground text-center">
-              {slotPicker ? `${slotPicker.staffName} · ${slotPicker.time}` : ''}
+              {slotPicker ? `${formatDateLabel(slotPicker.dateStr)} ${slotPicker.time}` : ''}
             </Text>
+
+            <Text className="font-rounded text-xs text-muted-foreground">選擇設計師（可以替同事或客人選時間）</Text>
+            <View className="flex-row flex-wrap gap-2">
+              {pickable.map(st => {
+                const status = statusAt(st);
+                const active = st.id === pickStaffId;
+                return (
+                  <Pressable
+                    key={st.id}
+                    className="px-3 py-2 rounded-2xl border active:opacity-80"
+                    style={{
+                      backgroundColor: active ? st.color : st.color + '18',
+                      borderColor: active ? st.color : st.color + '55',
+                      opacity: status.free || active ? 1 : 0.75,
+                    }}
+                    onPress={() => setPickStaffId(st.id)}
+                  >
+                    <Text className="font-rounded text-sm font-semibold" style={{ color: active ? '#fff' : st.color }}>{st.name}</Text>
+                    {status.text ? (
+                      <Text className="font-rounded" style={{ fontSize: 10, color: active ? '#fff' : (status.free ? '#2ea87e' : '#e8a000') }}>
+                        {status.free ? '● ' : '▲ '}{status.text}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+            {picked && pickedStatus && pickedStatus.text && !pickedStatus.free && (
+              <Text className="font-rounded text-xs" style={{ color: '#e8a000' }}>
+                {picked.name} 這個時段{pickedStatus.text}，仍然可以排，請確認不會撞期。
+              </Text>
+            )}
+
             <Pressable
               className="flex-row items-center justify-center gap-2 rounded-2xl active:opacity-80"
-              style={{ height: 52, backgroundColor: '#e8789a' }}
+              style={{ height: 52, backgroundColor: picked ? '#e8789a' : '#e8c8d4' }}
+              disabled={!picked}
               onPress={() => {
-                if (!slotPicker) return;
-                router.push(`/(app)/appointments/new?date=${slotPicker.dateStr}&time=${slotPicker.time}&staffId=${slotPicker.staffId}` as any);
+                if (!slotPicker || !picked) return;
+                router.push(`/(app)/appointments/new?date=${slotPicker.dateStr}&time=${slotPicker.time}&staffId=${picked.id}` as any);
                 setSlotPicker(null);
               }}
             >
               <CalendarPlus size={18} color="#fff" />
-              <Text className="font-rounded text-base font-semibold text-white">排新預約</Text>
+              <Text className="font-rounded text-base font-semibold text-white">{picked ? `替 ${picked.name} 排新預約` : '排新預約'}</Text>
             </Pressable>
-            {slotPicker && canManageReservedFor(slotPicker.staffId) && (
+            {picked && canManageReservedFor(picked.id) && (
             <Pressable
               className="flex-row items-center justify-center gap-2 rounded-2xl active:opacity-70"
               style={{ height: 52, backgroundColor: '#f5e6ec' }}
               onPress={() => {
                 if (!slotPicker) return;
-                setReserveTarget(slotPicker);
+                setReserveTarget({ dateStr: slotPicker.dateStr, time: slotPicker.time, staffId: picked.id, staffName: picked.name });
                 setReserveLabel('');
                 setReserveDurationMin('30');
                 setSlotPicker(null);
               }}
             >
               <Coffee size={18} color="#c4667e" />
-              <Text className="font-rounded text-base font-semibold" style={{ color: '#c4667e' }}>預留時間</Text>
+              <Text className="font-rounded text-base font-semibold" style={{ color: '#c4667e' }}>{`預留 ${picked.name} 的時間`}</Text>
             </Pressable>
             )}
             <Pressable className="items-center py-1 active:opacity-70" onPress={() => setSlotPicker(null)}>
@@ -941,6 +1003,8 @@ export default function StaffScheduleScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+        );
+      })()}
 
       {/* 預留時間：填標籤 */}
       <Modal visible={!!reserveTarget} transparent animationType="fade" onRequestClose={() => setReserveTarget(null)}>
