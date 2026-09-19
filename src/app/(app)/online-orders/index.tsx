@@ -6,9 +6,9 @@ import {
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, Check, X, ShoppingBag, Pencil, Ban } from 'lucide-react-native';
+import { ArrowLeft, Check, X, ShoppingBag, Pencil, Ban, Trash2, AlertTriangle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getOnlineOrders, updateOnlineOrderStatus, updateOnlineOrder, getStaff, getOnlineOrderAddonsByOrderIds, incrementCustomerNoShow } from '@/db/api';
+import { getOnlineOrders, updateOnlineOrderStatus, updateOnlineOrder, getStaff, getOnlineOrderAddonsByOrderIds, incrementCustomerNoShow, deleteOnlineOrder } from '@/db/api';
 import type { OnlineOrder, Staff } from '@/types/types';
 
 // ── 共用常數 ──────────────────────────────────────────────
@@ -221,6 +221,9 @@ export default function OnlineOrdersScreen() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'paid' | 'pending_payment' | 'pending_transfer_confirm' | 'confirmed'>('all');
   const [editingOrder, setEditingOrder] = useState<OnlineOrder | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<OnlineOrder | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -274,6 +277,22 @@ export default function OnlineOrdersScreen() {
   const handleConfirmTransfer = async (o: OnlineOrder) => {
     await updateOnlineOrderStatus(o.id, 'paid');
     load();
+  };
+
+  // 刪除是整筆消失（不留紀錄）；顧客真的爽約或不來，用「取消／未到場」才會保留紀錄
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await deleteOnlineOrder(deleteTarget.id);
+      setDeleteTarget(null);
+      load();
+    } catch (e: any) {
+      setDeleteError(e?.message ?? '刪除失敗，請稍後再試');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const FILTERS: Array<{ key: typeof filter; label: string }> = [
@@ -367,6 +386,13 @@ export default function OnlineOrdersScreen() {
                     <View className="px-2.5 py-1 rounded-full" style={{ backgroundColor: meta.bg }}>
                       <Text className="font-rounded text-xs font-semibold" style={{ color: meta.text }}>{meta.label}</Text>
                     </View>
+                    <Pressable
+                      className="w-7 h-7 rounded-full items-center justify-center active:opacity-60"
+                      style={{ backgroundColor: '#fff0f3' }}
+                      onPress={() => { setDeleteError(''); setDeleteTarget(item); }}
+                    >
+                      <Trash2 size={14} color="#e85454" />
+                    </Pressable>
                   </View>
                 </View>
 
@@ -483,6 +509,42 @@ export default function OnlineOrdersScreen() {
           }}
         />
       )}
+
+      {/* 刪除確認彈窗 */}
+      <Modal visible={!!deleteTarget} transparent animationType="fade" onRequestClose={() => setDeleteTarget(null)}>
+        <Pressable className="flex-1 bg-black/40 items-center justify-center px-8" onPress={() => setDeleteTarget(null)}>
+          <Pressable className="bg-card w-full rounded-3xl p-6 gap-4" onPress={() => {}}>
+            <View className="items-center gap-3">
+              <View className="w-16 h-16 rounded-full items-center justify-center" style={{ backgroundColor: '#fff0f3' }}>
+                <AlertTriangle size={32} color="#e85454" />
+              </View>
+              <Text className="font-rounded text-lg font-bold text-foreground text-center">
+                刪除「{deleteTarget?.customer_name}」的預約？
+              </Text>
+              {deleteTarget ? (
+                <Text className="font-rounded text-sm text-muted-foreground text-center">
+                  {deleteTarget.service_name}{'\n'}
+                  {new Date(deleteTarget.appointment_time).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}
+                </Text>
+              ) : null}
+              <Text className="font-rounded text-xs text-muted-foreground text-center">
+                刪除後無法復原，顧客也看不到這筆預約。{'\n'}如果只是要取消，請改用「取消」，會保留紀錄。
+              </Text>
+              {deleteError ? (
+                <Text className="font-rounded text-xs text-center" style={{ color: '#e85454' }}>{deleteError}</Text>
+              ) : null}
+            </View>
+            <View className="flex-row gap-3 mt-1">
+              <Pressable className="flex-1 h-12 rounded-2xl border border-border items-center justify-center active:opacity-70" onPress={() => setDeleteTarget(null)}>
+                <Text className="font-rounded text-sm font-semibold text-muted-foreground">取消</Text>
+              </Pressable>
+              <Pressable className="flex-1 h-12 rounded-2xl items-center justify-center active:opacity-80" style={{ backgroundColor: '#e85454' }} disabled={deleting} onPress={handleDelete}>
+                {deleting ? <ActivityIndicator color="#fff" size="small" /> : <Text className="font-rounded text-sm font-semibold text-white">確認刪除</Text>}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* 編輯彈窗 */}
       {editingOrder && (

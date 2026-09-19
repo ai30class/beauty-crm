@@ -33,6 +33,7 @@ function AppointmentCard({ item, onStatusChange }: { item: UnifiedAppointment; o
   const router = useRouter();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const handleComplete = async () => {
     if (item.source === 'manual') {
@@ -43,6 +44,7 @@ function AppointmentCard({ item, onStatusChange }: { item: UnifiedAppointment; o
 
   const handleDelete = async () => {
     setDeleting(true);
+    setDeleteError('');
     try {
       if (item.source === 'manual') {
         await deleteAppointment(item.id.replace('manual-', ''));
@@ -51,6 +53,8 @@ function AppointmentCard({ item, onStatusChange }: { item: UnifiedAppointment; o
       }
       setShowDeleteConfirm(false);
       onStatusChange();
+    } catch (e: any) {
+      setDeleteError(e?.message ?? '刪除失敗，請稍後再試');
     } finally {
       setDeleting(false);
     }
@@ -96,7 +100,7 @@ function AppointmentCard({ item, onStatusChange }: { item: UnifiedAppointment; o
           <Pressable
             className="w-7 h-7 rounded-full items-center justify-center active:opacity-60"
             style={{ backgroundColor: '#fff0f3' }}
-            onPress={(e) => { e.stopPropagation?.(); setShowDeleteConfirm(true); }}
+            onPress={(e) => { e.stopPropagation?.(); setDeleteError(''); setShowDeleteConfirm(true); }}
           >
             <Trash2 size={13} color="#e85454" />
           </Pressable>
@@ -186,6 +190,9 @@ function AppointmentCard({ item, onStatusChange }: { item: UnifiedAppointment; o
             <Text className="font-rounded text-sm text-muted-foreground text-center">
               刪除後無法復原，{'\n'}確定要刪除此預約嗎？
             </Text>
+            {deleteError ? (
+              <Text className="font-rounded text-xs text-center" style={{ color: '#e85454' }}>{deleteError}</Text>
+            ) : null}
           </View>
           <View className="flex-row gap-3 mt-2">
             <Pressable
