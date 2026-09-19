@@ -132,6 +132,22 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
+          {/* 員工唯讀看自己的業績（次數與收入；商家有自己的「服務人員業績」） */}
+          {isStaff && (
+          <Pressable
+            className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
+            onPress={() => router.push('/(app)/analytics/my-performance' as any)}
+          >
+            <View className="w-8 h-8 rounded-full items-center justify-center mr-3" style={{ backgroundColor: '#f0e8ff' }}>
+              <BarChart2 size={16} color="#9b59b6" />
+            </View>
+            <View className="flex-1">
+              <Text className="font-rounded text-base text-foreground">我的業績</Text>
+              <Text className="font-rounded text-xs text-muted-foreground mt-0.5">每月服務次數與收入（只有自己看得到）</Text>
+            </View>
+            <ChevronRight size={16} color="#c4a0ae" />
+          </Pressable>
+          )}
         </View>
 
         {/* 數據分析 */}

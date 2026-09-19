@@ -1576,6 +1576,18 @@ export async function getStaffPerformance(year: number, month: number): Promise<
   return Array.from(map.values()).sort((a, b) => b.total_revenue - a.total_revenue);
 }
 
+// 員工帳號專用：自己每個月的服務次數與收入（migration 00076，只回傳彙總數字）。
+// fromDate（含）～toDate（不含），格式 YYYY-MM-DD；沒有服務記錄的月份不會出現在結果裡。
+export async function getMyPerformanceByMonth(fromDate: string, toDate: string): Promise<{ month: string; service_count: number; total_revenue: number }[]> {
+  const { data, error } = await supabase.rpc('get_my_performance_by_month', { p_from: fromDate, p_to: toDate });
+  if (error) throw error;
+  return ((data ?? []) as { month_start: string; service_count: number; total_revenue: number | string }[]).map(r => ({
+    month: r.month_start.slice(0, 7),
+    service_count: Number(r.service_count),
+    total_revenue: Number(r.total_revenue),
+  }));
+}
+
 // ─── 階梯式抽成 ───────────────────────────────────────────────────────────────
 export async function getStaffCommissionTiers(staffId: string): Promise<StaffCommissionTier[]> {
   const { data, error } = await supabase
