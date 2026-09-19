@@ -11,8 +11,9 @@ import {
 import {
   getMergedAppointments, getShopProfile, getHolidays,
   getStaffReservedSlots, createStaffReservedSlot, deleteStaffReservedSlot,
-  getScheduleStaff,
+  getScheduleStaff, getAccountType,
 } from '@/db/api';
+import OnlineOrderInfoModal from '@/components/OnlineOrderInfoModal';
 import type { UnifiedAppointment, BusinessHours, Holiday, StaffReservedSlot, StaffRosterEntry } from '@/types/types';
 
 const DAY_KEYS: (keyof BusinessHours)[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -205,6 +206,15 @@ export default function StaffScheduleScreen() {
   const [savingReserve, setSavingReserve] = useState(false);
   const [deleteReserveTarget, setDeleteReserveTarget] = useState<StaffReservedSlot | null>(null);
   const [deletingReserve, setDeletingReserve] = useState(false);
+  const [isStaffAccount, setIsStaffAccount] = useState(false);
+  const [infoAppt, setInfoAppt] = useState<UnifiedAppointment | null>(null);
+
+  // 點預約色塊：手動 → 預約詳情；線上 → 商家去訂單頁，員工（讀不到訂單頁資料）改跳唯讀小視窗
+  const openAppt = (a: UnifiedAppointment) => {
+    if (a.source === 'manual') router.push(`/(app)/appointments/${a.id.replace('manual-', '')}` as any);
+    else if (isStaffAccount) setInfoAppt(a);
+    else router.push('/(app)/online-orders' as any);
+  };
 
   // 「暫停服務」的設計師只要還有預約／預留時間就照樣顯示，不然那些預約會從排班表消失
   const bookedStaffIds = new Set<string>();
@@ -222,11 +232,13 @@ export default function StaffScheduleScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [data, staff, profile] = await Promise.all([
+      const [data, staff, profile, accountType] = await Promise.all([
         getMergedAppointments(),
         getScheduleStaff(),
         getShopProfile(),
+        getAccountType().catch(() => 'merchant' as const),
       ]);
+      setIsStaffAccount(accountType === 'staff');
       const staffById = new Map(staff.map(s => [s.id, s]));
       // 只顯示今天及之後、非取消的；設計師名字/顏色缺的（員工帳號）用 staff_id 補上
       const upcoming = data
@@ -477,10 +489,7 @@ export default function StaffScheduleScreen() {
                                         height: Math.max(((endMin - startMin) / 60) * DAY_HOUR_PX, 22),
                                         backgroundColor: s.color + '33', borderRadius: 6, borderLeftWidth: 4, borderLeftColor: s.color,
                                         opacity: pressed ? 0.7 : 1, overflow: 'hidden', padding: 4 })}
-                                      onPress={() => {
-                                        if (a.source === 'manual') router.push(`/(app)/appointments/${a.id.replace('manual-', '')}` as any);
-                                        else router.push('/(app)/online-orders' as any);
-                                      }}>
+                                      onPress={() => openAppt(a)}>
                                       <Text className="font-rounded" style={{ fontSize: 11, fontWeight: '700', color: '#3d2b32' }} numberOfLines={1}>
                                         {formatTime(a.appointment_time)}{who ? ` ${who}` : ''}
                                       </Text>
@@ -665,13 +674,7 @@ export default function StaffScheduleScreen() {
                                       borderRadius: 3, borderWidth: 1.5, borderColor: s.color,
                                       opacity: pressed ? 0.7 : 1,
                                     })}
-                                    onPress={() => {
-                                      if (a.source === 'manual') {
-                                        router.push(`/(app)/appointments/${a.id.replace('manual-', '')}` as any);
-                                      } else {
-                                        router.push('/(app)/online-orders' as any);
-                                      }
-                                    }}
+                                    onPress={() => openAppt(a)}
                                   />
                                 );
                               })}
@@ -737,13 +740,7 @@ export default function StaffScheduleScreen() {
                                       borderRadius: 4, borderWidth: 1.5, borderColor: staff.color,
                                       opacity: pressed ? 0.7 : 1,
                                     })}
-                                    onPress={() => {
-                                      if (a.source === 'manual') {
-                                        router.push(`/(app)/appointments/${a.id.replace('manual-', '')}` as any);
-                                      } else {
-                                        router.push('/(app)/online-orders' as any);
-                                      }
-                                    }}
+                                    onPress={() => openAppt(a)}
                                   />
                                 );
                               })}
@@ -890,6 +887,9 @@ export default function StaffScheduleScreen() {
         )}
       </ScrollView>
       )}
+
+      {/* 員工點線上預約：唯讀小視窗 */}
+      <OnlineOrderInfoModal item={infoAppt} onClose={() => setInfoAppt(null)} />
 
       {/* 點空白處：先選「排新預約」還是「預留時間」 */}
       <Modal visible={!!slotPicker} transparent animationType="fade" onRequestClose={() => setSlotPicker(null)}>

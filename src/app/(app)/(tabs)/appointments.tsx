@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { Calendar, Plus, Clock, User, CheckCircle, Globe, Trash2, AlertTriangle } from 'lucide-react-native';
+import OnlineOrderInfoModal from '@/components/OnlineOrderInfoModal';
 import { getMergedAppointments, updateAppointmentStatus, deleteAppointment, deleteOnlineOrder, getAccountType } from '@/db/api';
 import type { UnifiedAppointment } from '@/types/types';
 
@@ -32,6 +33,7 @@ function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppoi
   const status = STATUS_LABELS[item.status] ?? STATUS_LABELS.pending;
   const router = useRouter();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
@@ -68,6 +70,9 @@ function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppoi
       onPress={() => {
         if (item.source === 'manual') {
           router.push(`/(app)/appointments/${item.id.replace('manual-', '')}` as any);
+        } else if (isStaff) {
+          // 員工讀不到「線上預約訂單」頁的資料，改跳唯讀小視窗
+          setShowInfo(true);
         } else {
           router.push(`/(app)/online-orders` as any);
         }
@@ -146,7 +151,8 @@ function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppoi
           <Text className="font-rounded text-sm text-secondary-foreground ml-1 font-medium">標記完成</Text>
         </Pressable>
       )}
-      {item.source === 'online' && (item.status === 'confirmed' || item.status === 'paid') && (
+      {/* 員工讀不到線上預約資料表，「完成服務並記錄收入」頁載入不到訂單，只有商家能做 */}
+      {item.source === 'online' && !isStaff && (item.status === 'confirmed' || item.status === 'paid') && (
         <Pressable
           className="flex-row items-center justify-center mt-3 gap-2 py-2.5 rounded-xl active:opacity-70"
           style={{ backgroundColor: '#e0f5ef' }}
@@ -161,13 +167,15 @@ function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppoi
           <Text className="font-rounded text-sm font-semibold" style={{ color: '#5dc0a0' }}>完成服務並記錄收入</Text>
         </Pressable>
       )}
-      {item.source === 'online' && item.status !== 'confirmed' && item.status !== 'paid' && (
+      {item.source === 'online' && !isStaff && item.status !== 'confirmed' && item.status !== 'paid' && (
         <View className="flex-row items-center mt-2 gap-1">
           <Globe size={11} color="#4a6cf7" />
           <Text className="font-rounded text-xs" style={{ color: '#4a6cf7' }}>線上訂單，可至「線上預約訂單」查看詳情與修改</Text>
         </View>
       )}
     </Pressable>
+
+    <OnlineOrderInfoModal item={showInfo ? item : null} onClose={() => setShowInfo(false)} />
 
     {/* 刪除確認 Modal */}
     <Modal

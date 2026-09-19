@@ -1,14 +1,19 @@
+import { useState, useEffect } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from '@/client/supabase';
 import { useRouter } from 'expo-router';
 import { useSession } from '@/ctx';
+import { getAccountType } from '@/db/api';
 import { User, Mail, LogOut, ChevronRight, Scissors, Users2, CalendarOff, ShoppingBag, Users, TrendingDown, Package, Store, Cake, Trophy, BarChart2, Tag, TrendingUp, UserX, ListPlus, Wallet } from 'lucide-react-native';
 
 export default function ProfileTab() {
   const router = useRouter();
   const { session } = useSession();
   const email = session?.user?.email ?? '—';
+  // 員工帳號讀不到「線上預約訂單」頁的資料（只有排班用的唯讀資料），入口對員工隱藏
+  const [isStaff, setIsStaff] = useState(false);
+  useEffect(() => { getAccountType().then(t => setIsStaff(t === 'staff')).catch(() => {}); }, []);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -39,7 +44,7 @@ export default function ProfileTab() {
         {/* 線上預約管理 */}
         <View className="mx-5 mb-4 bg-card rounded-2xl overflow-hidden border border-border">
           <Text className="font-rounded text-xs font-semibold text-muted-foreground px-5 pt-4 pb-2">線上預約系統</Text>
-          <Pressable
+          {!isStaff && <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/online-orders' as any)}
           >
@@ -51,7 +56,7 @@ export default function ProfileTab() {
               <Text className="font-rounded text-xs text-muted-foreground mt-0.5">查看顧客線上預約與訂金狀態</Text>
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
-          </Pressable>
+          </Pressable>}
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/waitlist' as any)}
