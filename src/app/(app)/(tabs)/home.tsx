@@ -48,6 +48,7 @@ export default function HomeScreen() {
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [upcomingSoon, setUpcomingSoon] = useState<UnifiedAppointment[]>([]);
   const [staffNoBrowse, setStaffNoBrowse] = useState(false);
+  const [isStaff, setIsStaff] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadCustomers = useCallback(async () => {
@@ -56,6 +57,7 @@ export default function HomeScreen() {
       const accountType = await getAccountType().catch(() => 'merchant' as const);
       const noBrowse = accountType === 'staff' && !(await canViewCustomers().catch(() => false));
       setStaffNoBrowse(noBrowse);
+      setIsStaff(accountType === 'staff');
       const [data, tpls, { data: { user } }, appts] = await Promise.all([
         noBrowse ? Promise.resolve([] as Customer[]) : getCustomers(),
         getServiceTemplates(),
@@ -274,15 +276,17 @@ export default function HomeScreen() {
         <Plus size={26} color="#fff" />
       </Pressable>
 
-      {/* 線上預約浮動按鈕 */}
-      <Pressable
+      {/* 線上預約浮動按鈕（員工帳號不顯示：這是商家用來開顧客預約頁的入口，
+          且這裡的店家 ID 用的是登入者自己的 id，員工的 id 不是店家 ID；
+          沒開瀏覽權限的員工畫面較短時，這顆還會蓋住說明卡裡的「去排新預約」按鈕） */}
+      {!isStaff && <Pressable
         className="absolute left-5 flex-row items-center gap-2 bg-primary px-4 rounded-full active:opacity-80"
         style={{ bottom: 96, height: 44, shadowColor: '#e8789a', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 5 }}
         onPress={() => router.push(`/online-booking${ownerId ? `?ownerId=${ownerId}` : ''}` as any)}
       >
         <CalendarDays size={16} color="#fff" />
         <Text className="font-rounded text-sm font-semibold text-white">立即線上預約</Text>
-      </Pressable>
+      </Pressable>}
     </View>
   );
 }
