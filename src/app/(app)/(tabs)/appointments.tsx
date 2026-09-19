@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { Calendar, Plus, Clock, User, CheckCircle, Globe, Trash2, AlertTriangle } from 'lucide-react-native';
-import { getMergedAppointments, updateAppointmentStatus, deleteAppointment, deleteOnlineOrder } from '@/db/api';
+import { getMergedAppointments, updateAppointmentStatus, deleteAppointment, deleteOnlineOrder, getAccountType } from '@/db/api';
 import type { UnifiedAppointment } from '@/types/types';
 
 // 統一狀態顯示
@@ -27,7 +27,7 @@ function formatDateTime(iso: string) {
   };
 }
 
-function AppointmentCard({ item, onStatusChange }: { item: UnifiedAppointment; onStatusChange: () => void }) {
+function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppointment; onStatusChange: () => void; isStaff: boolean }) {
   const { date, time } = formatDateTime(item.appointment_time);
   const status = STATUS_LABELS[item.status] ?? STATUS_LABELS.pending;
   const router = useRouter();
@@ -96,7 +96,8 @@ function AppointmentCard({ item, onStatusChange }: { item: UnifiedAppointment; o
           <View className="px-2.5 py-1 rounded-full" style={{ backgroundColor: status.bg }}>
             <Text className="font-rounded text-xs font-medium" style={{ color: status.color }}>{status.label}</Text>
           </View>
-          {/* 所有來源都顯示刪除按鈕 */}
+          {/* 手動、線上預約都可刪；員工帳號對線上預約（online_orders）沒有刪除權限，不顯示 */}
+          {!(isStaff && item.source === 'online') && (
           <Pressable
             className="w-7 h-7 rounded-full items-center justify-center active:opacity-60"
             style={{ backgroundColor: '#fff0f3' }}
@@ -104,6 +105,7 @@ function AppointmentCard({ item, onStatusChange }: { item: UnifiedAppointment; o
           >
             <Trash2 size={13} color="#e85454" />
           </Pressable>
+          )}
         </View>
       </View>
 
@@ -225,12 +227,17 @@ export default function AppointmentsTab() {
   const [appointments, setAppointments] = useState<UnifiedAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
+  const [isStaff, setIsStaff] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getMergedAppointments();
+      const [data, accountType] = await Promise.all([
+        getMergedAppointments(),
+        getAccountType().catch(() => 'merchant' as const),
+      ]);
       setAppointments(data);
+      setIsStaff(accountType === 'staff');
     } finally {
       setLoading(false);
     }
@@ -284,7 +291,7 @@ export default function AppointmentsTab() {
           keyExtractor={item => item.id}
           contentContainerClassName="px-5 pb-24"
           contentInsetAdjustmentBehavior="automatic"
-          renderItem={({ item }) => <AppointmentCard item={item} onStatusChange={load} />}
+          renderItem={({ item }) => <AppointmentCard item={item} onStatusChange={load} isStaff={isStaff} />}
           ListEmptyComponent={
             <View className="items-center py-20 gap-3">
               <Calendar size={48} color="#c4a0ae" />
