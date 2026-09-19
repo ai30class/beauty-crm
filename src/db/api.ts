@@ -1303,6 +1303,29 @@ export async function canViewCustomers(): Promise<boolean> {
   return data === true;
 }
 
+// 「我的」頁依帳號類型與員工權限開關決定要顯示哪些項目。
+// 商家：isStaff=false（三個權限值不使用）；員工：三個開關由商家在員工管理頁設定，預設全關。
+// 這只是「畫面該不該顯示入口」，真正擋資料的是資料庫 RLS，兩邊要一致。
+export async function getMyStaffPermissions(): Promise<{
+  isStaff: boolean; canViewCustomers: boolean; canManagePricing: boolean; canManageShopSettings: boolean;
+}> {
+  const accountType = await getAccountType().catch(() => 'merchant' as const);
+  if (accountType !== 'staff') {
+    return { isStaff: false, canViewCustomers: true, canManagePricing: true, canManageShopSettings: true };
+  }
+  const [view, pricing, shop] = await Promise.all([
+    supabase.rpc('staff_can_view_customers'),
+    supabase.rpc('staff_can_manage_pricing'),
+    supabase.rpc('staff_can_manage_shop_settings'),
+  ]);
+  return {
+    isStaff: true,
+    canViewCustomers: view.data === true,
+    canManagePricing: pricing.data === true,
+    canManageShopSettings: shop.data === true,
+  };
+}
+
 // 員工排預約時查「這支電話有沒有登記過」：只回傳 id/name，不是開放整張 customers 表。
 export async function searchCustomerByPhone(phone: string): Promise<{ id: string; name: string }[]> {
   const { data, error } = await supabase.rpc('search_customer_by_phone', { p_phone: phone });

@@ -1,19 +1,31 @@
 import { useState, useEffect } from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
+import { View, Text, Pressable, ScrollView, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from '@/client/supabase';
 import { useRouter } from 'expo-router';
 import { useSession } from '@/ctx';
-import { getAccountType } from '@/db/api';
+import { getMyStaffPermissions } from '@/db/api';
 import { User, Mail, LogOut, ChevronRight, Scissors, Users2, CalendarOff, ShoppingBag, Users, TrendingDown, Package, Store, Cake, Trophy, BarChart2, Tag, TrendingUp, UserX, ListPlus, Wallet } from 'lucide-react-native';
 
 export default function ProfileTab() {
   const router = useRouter();
   const { session } = useSession();
   const email = session?.user?.email ?? '—';
-  // 員工帳號讀不到「線上預約訂單」頁的資料（只有排班用的唯讀資料），入口對員工隱藏
-  const [isStaff, setIsStaff] = useState(false);
-  useEffect(() => { getAccountType().then(t => setIsStaff(t === 'staff')).catch(() => {}); }, []);
+  // 員工版畫面依三層權限設計精簡（見開發部署筆記七十七節、九十二節）：
+  // 基本層（排班表）一律顯示；開關層（瀏覽顧客／服務定價／店家設定）商家開了才顯示；
+  // 其餘（財務、員工管理、線上預約訂單、候補、庫存、優惠券…）永遠只給商家。
+  // 權限載入完成前不畫選單，避免員工短暫看到商家才有的項目。
+  const [perms, setPerms] = useState<Awaited<ReturnType<typeof getMyStaffPermissions>> | null>(null);
+  useEffect(() => {
+    getMyStaffPermissions()
+      .then(setPerms)
+      // 查不到就當最嚴格的員工，不能反過來當商家
+      .catch(() => setPerms({ isStaff: true, canViewCustomers: false, canManagePricing: false, canManageShopSettings: false }));
+  }, []);
+  const isStaff = perms?.isStaff ?? true;
+  const showHolidaysAndShop = !isStaff || !!perms?.canManageShopSettings;
+  const showPricing = !isStaff || !!perms?.canManagePricing;
+  const showCustomerAnalytics = !isStaff || !!perms?.canViewCustomers;
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -41,9 +53,12 @@ export default function ProfileTab() {
           </View>
         </View>
 
+        {!perms ? (
+          <View className="py-10 items-center"><ActivityIndicator color="#e8789a" /></View>
+        ) : (<>
         {/* 線上預約管理 */}
         <View className="mx-5 mb-4 bg-card rounded-2xl overflow-hidden border border-border">
-          <Text className="font-rounded text-xs font-semibold text-muted-foreground px-5 pt-4 pb-2">線上預約系統</Text>
+          <Text className="font-rounded text-xs font-semibold text-muted-foreground px-5 pt-4 pb-2">{isStaff ? '排班與預約' : '線上預約系統'}</Text>
           {!isStaff && <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/online-orders' as any)}
@@ -57,6 +72,7 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>}
+          {!isStaff && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/waitlist' as any)}
@@ -70,6 +86,8 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
+          )}
+          {!isStaff && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/staff-management' as any)}
@@ -83,6 +101,8 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
+          )}
+          {showHolidaysAndShop && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/holidays' as any)}
@@ -96,6 +116,7 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
+          )}
           {/* 設計師排班表 */}
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
@@ -113,8 +134,9 @@ export default function ProfileTab() {
         </View>
 
         {/* 數據分析 */}
-        <View className="mx-5 mb-4 bg-card rounded-2xl overflow-hidden border border-border">
+        {showCustomerAnalytics && <View className="mx-5 mb-4 bg-card rounded-2xl overflow-hidden border border-border">
           <Text className="font-rounded text-xs font-semibold text-muted-foreground px-5 pt-4 pb-2">數據分析</Text>
+          {showCustomerAnalytics && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/analytics/birthdays' as any)}
@@ -128,6 +150,8 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
+          )}
+          {!isStaff && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/analytics/customer-ranking' as any)}
@@ -141,6 +165,8 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
+          )}
+          {!isStaff && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/analytics/staff-performance' as any)}
@@ -154,6 +180,8 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
+          )}
+          {!isStaff && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/analytics/payroll' as any)}
@@ -167,6 +195,8 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
+          )}
+          {!isStaff && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/inventory/report' as any)}
@@ -180,6 +210,8 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
+          )}
+          {showCustomerAnalytics && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/analytics/dormant-customers' as any)}
@@ -193,11 +225,13 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
-        </View>
+          )}
+        </View>}
 
         {/* 優惠券 */}
-        <View className="mx-5 mb-4 bg-card rounded-2xl overflow-hidden border border-border">
+        {!isStaff && <View className="mx-5 mb-4 bg-card rounded-2xl overflow-hidden border border-border">
           <Text className="font-rounded text-xs font-semibold text-muted-foreground px-5 pt-4 pb-2">優惠券</Text>
+          {!isStaff && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/coupons' as any)}
@@ -211,12 +245,14 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
-        </View>
+          )}
+        </View>}
 
         {/* 業務設定 */}
-        <View className="mx-5 mb-4 bg-card rounded-2xl overflow-hidden border border-border">
+        {(showHolidaysAndShop || showPricing || !isStaff) && <View className="mx-5 mb-4 bg-card rounded-2xl overflow-hidden border border-border">
           <Text className="font-rounded text-xs font-semibold text-muted-foreground px-5 pt-4 pb-2">業務設定</Text>
           {/* 商家資訊 */}
+          {showHolidaysAndShop && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/shop-settings' as any)}
@@ -230,6 +266,8 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
+          )}
+          {showPricing && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/service-templates' as any)}
@@ -243,6 +281,8 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
+          )}
+          {!isStaff && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/inventory' as any)}
@@ -256,6 +296,8 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
+          )}
+          {!isStaff && (
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={() => router.push('/(app)/expenses/new' as any)}
@@ -269,7 +311,10 @@ export default function ProfileTab() {
             </View>
             <ChevronRight size={16} color="#c4a0ae" />
           </Pressable>
-        </View>
+          )}
+        </View>}
+
+        </>)}
 
         {/* 帳號選單 */}
         <View className="mx-5 bg-card rounded-2xl overflow-hidden border border-border">

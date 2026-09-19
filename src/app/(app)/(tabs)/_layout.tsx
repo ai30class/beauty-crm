@@ -1,9 +1,14 @@
+import { useEffect, useState } from 'react';
 import { Tabs } from 'expo-router';
 import { Users, Calendar, BarChart2, User } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getAccountType } from '@/db/api';
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
+  // 「報表」是財務報表，員工永遠不給看（三層權限設計的「永遠鎖住」），員工帳號把這個分頁藏起來
+  const [isStaff, setIsStaff] = useState(false);
+  useEffect(() => { getAccountType().then(t => setIsStaff(t === 'staff')).catch(() => {}); }, []);
   return (
     <Tabs
       initialRouteName="home"
@@ -41,6 +46,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="reports"
         options={{
+          href: isStaff ? null : undefined,
           title: '報表',
           tabBarIcon: ({ color, size }) => <BarChart2 size={size} color={color} />,
         }}
