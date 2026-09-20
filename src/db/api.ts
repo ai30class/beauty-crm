@@ -190,8 +190,56 @@ export async function getServiceRecordById(id: string): Promise<ServiceRecord | 
 }
 
 export async function deleteServiceRecord(id: string): Promise<void> {
+  // 先記下照片路徑，記錄刪掉後再刪檔案（檔案刪除失敗不擋，只是可能留下孤兒檔）
+  const { data: rec } = await supabase
+    .from('service_records')
+    .select('before_photo_path, after_photo_path')
+    .eq('id', id)
+    .maybeSingle();
   const { error } = await supabase.from('service_records').delete().eq('id', id);
   if (error) throw error;
+  await removeClientPhotos([rec?.before_photo_path, rec?.after_photo_path]);
+}
+
+// ─── 顧客施術前後照片（私有空間，見 migration 00083）────────────────────────────
+export const CLIENT_PHOTO_BUCKET = 'client_service_photos';
+
+// 目前登入者所屬的店家 ID：商家是自己，員工是所屬商家（照片資料夾以店家 ID 分開）
+export async function getMyShopOwnerId(): Promise<string> {
+  const link = await getMyStaffLink().catch(() => null);
+  if (link) return link.staffOwnerId;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('尚未登入');
+  return user.id;
+}
+
+// 私有空間的照片要用「簽名網址」才看得到，1 小時後失效；取不到就回 null（畫面顯示未上傳）
+export async function getClientPhotoUrl(path: string | null): Promise<string | null> {
+  if (!path) return null;
+  const { data, error } = await supabase.storage.from(CLIENT_PHOTO_BUCKET).createSignedUrl(path, 60 * 60);
+  if (error) return null;
+  return data.signedUrl;
+}
+
+export async function removeClientPhotos(paths: (string | null | undefined)[]): Promise<void> {
+  const list = paths.filter((p): p is string => !!p);
+  if (list.length === 0) return;
+  await supabase.storage.from(CLIENT_PHOTO_BUCKET).remove(list).catch(() => {});
+}
+
+// 補傳／更換單張照片。RLS 擋下時 update 不報錯、只更新 0 筆，所以要檢查筆數
+export async function setServiceRecordPhoto(
+  id: string,
+  field: 'before_photo_path' | 'after_photo_path',
+  path: string,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from('service_records')
+    .update({ [field]: path })
+    .eq('id', id)
+    .select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('沒有權限修改這筆服務記錄的照片');
 }
 
 export async function getServiceRecordsByMonth(year: number, month: number): Promise<ServiceRecord[]> {

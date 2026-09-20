@@ -9,9 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Clock, Camera, ImageIcon, X, Package, Plus, Trash2 } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
 import * as ImagePicker from 'expo-image-picker';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
-import { supabase } from '@/client/supabase';
+import { uploadClientPhoto } from '@/lib/clientPhotos';
 import { PAYMENT_META } from '@/lib/payments';
 import type { PaymentMethod } from '@/lib/payments';
 import {
@@ -21,30 +19,6 @@ import {
   getOnlineOrderById, updateOnlineOrderStatus, getCustomerByPhone, getStaffForPicker,
 } from '@/db/api';
 import type { ServiceTemplate, Product, StaffRosterEntry } from '@/types/types';
-
-const BUCKET = 'appd2yss59nidj5_service_photos';
-
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binaryStr = atob(base64);
-  const bytes = new Uint8Array(binaryStr.length);
-  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-  return bytes.buffer;
-}
-
-async function compressAndUpload(uri: string, mimeType?: string, width?: number): Promise<string> {
-  const isPng = mimeType === 'image/png';
-  const format = isPng ? SaveFormat.PNG : SaveFormat.JPEG;
-  const actions = (width && width > 1080) ? [{ resize: { width: 1080 } }] : [];
-  const compressed = await manipulateAsync(uri, actions, { compress: isPng ? 1 : 0.8, format });
-  const ext = isPng ? 'png' : 'jpg';
-  const path = `images/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-  const base64 = await FileSystem.readAsStringAsync(compressed.uri, { encoding: 'base64' });
-  const { error } = await supabase.storage.from(BUCKET).upload(path, base64ToArrayBuffer(base64), {
-    contentType: isPng ? 'image/png' : 'image/jpeg', upsert: false,
-  });
-  if (error) throw error;
-  return path;
-}
 
 export default function NewServiceRecordScreen() {
   const { customerId: customerIdParam, templateId, onlineOrderId } =
@@ -259,8 +233,8 @@ export default function NewServiceRecordScreen() {
         await createProductUsageBatch(record.id, itemsWithPrice);
       }
       const [bPath, aPath] = await Promise.all([
-        beforeAsset ? compressAndUpload(beforeAsset.uri, beforeAsset.mimeType ?? undefined, beforeAsset.width ?? undefined) : Promise.resolve(null),
-        afterAsset ? compressAndUpload(afterAsset.uri, afterAsset.mimeType ?? undefined, afterAsset.width ?? undefined) : Promise.resolve(null),
+        beforeAsset ? uploadClientPhoto(beforeAsset) : Promise.resolve(null),
+        afterAsset ? uploadClientPhoto(afterAsset) : Promise.resolve(null),
       ]);
       if (bPath || aPath) {
         await updateServiceRecord(record.id, {

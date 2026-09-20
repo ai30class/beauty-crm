@@ -1,11 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, Share } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, Share2, Scissors, DollarSign, CalendarDays, FileText, Package, User } from 'lucide-react-native';
-import { getServiceRecordById, getPhotoUrl, getProductUsageByRecord } from '@/db/api';
+import { ArrowLeft, Share2, Scissors, DollarSign, CalendarDays, FileText, Package, User, Camera, ImageIcon } from 'lucide-react-native';
+import { getServiceRecordById, getClientPhotoUrl, getProductUsageByRecord, setServiceRecordPhoto, removeClientPhotos } from '@/db/api';
+import { pickClientPhoto, uploadClientPhoto } from '@/lib/clientPhotos';
 import type { ServiceRecord, ProductUsage } from '@/types/types';
 
 export default function ServiceRecordDetailScreen() {
@@ -28,9 +29,46 @@ export default function ServiceRecordDetailScreen() {
     })();
   }, [id]));
 
-  const beforeUrl = getPhotoUrl(record?.before_photo_path ?? null);
-  const afterUrl = getPhotoUrl(record?.after_photo_path ?? null);
-  const hasPhotos = !!(beforeUrl || afterUrl);
+  // 照片存在私有空間，要用簽名網址（1 小時內有效）才看得到
+  const [beforeUrl, setBeforeUrl] = useState<string | null>(null);
+  const [afterUrl, setAfterUrl] = useState<string | null>(null);
+  const [photoBusy, setPhotoBusy] = useState<'before' | 'after' | null>(null);
+  const [photoError, setPhotoError] = useState('');
+  const beforePath = record?.before_photo_path ?? null;
+  const afterPath = record?.after_photo_path ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    getClientPhotoUrl(beforePath).then(u => { if (!cancelled) setBeforeUrl(u); });
+    getClientPhotoUrl(afterPath).then(u => { if (!cancelled) setAfterUrl(u); });
+    return () => { cancelled = true; };
+  }, [beforePath, afterPath]);
+
+  // 補傳（原本沒有）或更換（原本有）單張照片：先上傳新的、再更新記錄、最後才刪舊檔；任何一步失敗都不會弄丟原本的照片
+  const changePhoto = async (which: 'before' | 'after', source: 'camera' | 'gallery') => {
+    if (!record || photoBusy) return;
+    setPhotoError('');
+    const picked = await pickClientPhoto(source);
+    if (picked.denied) { setPhotoError('沒有相機或相簿權限，請到手機設定開啟'); return; }
+    if (!picked.asset) return;
+    setPhotoBusy(which);
+    const field = which === 'before' ? 'before_photo_path' : 'after_photo_path';
+    const oldPath = record[field];
+    let newPath: string | null = null;
+    let saved = false;
+    try {
+      newPath = await uploadClientPhoto(picked.asset);
+      await setServiceRecordPhoto(record.id, field, newPath);
+      saved = true;
+      setRecord({ ...record, [field]: newPath });
+      await removeClientPhotos([oldPath]);
+    } catch (e: any) {
+      // 新照片已上傳、但沒能存進記錄：把它刪掉，不留孤兒檔
+      if (newPath && !saved) await removeClientPhotos([newPath]);
+      setPhotoError(e?.message ?? '上傳失敗，請稍後再試');
+    } finally {
+      setPhotoBusy(null);
+    }
+  };
 
   const productTotal = usages.reduce((sum, u) => sum + Number(u.sell_amount ?? 0), 0);
 
@@ -167,15 +205,16 @@ export default function ServiceRecordDetailScreen() {
         )}
 
         {/* 施術前後照片對比 */}
-        {hasPhotos && (
-          <View className="bg-card rounded-2xl p-4 border border-border">
-            <Text className="font-rounded text-base font-semibold text-foreground mb-3">施術前後對比</Text>
-            <View className="flex-row gap-3">
-              <PhotoCompare label="施術前" url={beforeUrl} />
-              <PhotoCompare label="施術後" url={afterUrl} />
-            </View>
+        <View className="bg-card rounded-2xl p-4 border border-border">
+          <Text className="font-rounded text-base font-semibold text-foreground mb-3">施術前後對比</Text>
+          <View className="flex-row gap-3">
+            <PhotoCompare label="施術前" url={beforeUrl} hasPhoto={!!beforePath} busy={photoBusy === 'before'} onPick={s => changePhoto('before', s)} />
+            <PhotoCompare label="施術後" url={afterUrl} hasPhoto={!!afterPath} busy={photoBusy === 'after'} onPick={s => changePhoto('after', s)} />
           </View>
-        )}
+          {photoError ? (
+            <Text className="font-rounded text-xs mt-3" style={{ color: '#e85454' }}>{photoError}</Text>
+          ) : null}
+        </View>
 
         {/* 分享按鈕 */}
         <Pressable
@@ -191,7 +230,9 @@ export default function ServiceRecordDetailScreen() {
   );
 }
 
-function PhotoCompare({ label, url }: { label: string; url: string | null }) {
+function PhotoCompare({ label, url, hasPhoto, busy, onPick }: {
+  label: string; url: string | null; hasPhoto: boolean; busy: boolean; onPick: (source: 'camera' | 'gallery') => void;
+}) {
   return (
     <View className="flex-1">
       <Text className="font-rounded text-xs text-muted-foreground text-center mb-1.5">{label}</Text>
@@ -202,7 +243,25 @@ function PhotoCompare({ label, url }: { label: string; url: string | null }) {
         </View>
       ) : (
         <View className="rounded-2xl bg-muted/50 items-center justify-center" style={{ aspectRatio: 1 }}>
-          <Text className="font-rounded text-xs text-muted-foreground">未上傳</Text>
+          <Text className="font-rounded text-xs text-muted-foreground">{hasPhoto ? '載入中…' : '未上傳'}</Text>
+        </View>
+      )}
+      {/* 補傳（沒有照片）／更換（已有照片） */}
+      <Text className="font-rounded text-xs text-muted-foreground text-center mt-2 mb-1">{hasPhoto ? '更換照片' : '補傳照片'}</Text>
+      {busy ? (
+        <View className="items-center py-2"><ActivityIndicator size="small" color="#e8789a" /></View>
+      ) : (
+        <View className="flex-row gap-2">
+          <Pressable className="flex-1 flex-row items-center justify-center gap-1 rounded-xl py-2 active:opacity-70"
+            style={{ backgroundColor: '#fce9f0' }} onPress={() => onPick('camera')}>
+            <Camera size={13} color="#e8789a" />
+            <Text className="font-rounded text-xs font-medium" style={{ color: '#e8789a' }}>拍照</Text>
+          </Pressable>
+          <Pressable className="flex-1 flex-row items-center justify-center gap-1 rounded-xl py-2 active:opacity-70"
+            style={{ backgroundColor: '#fce9f0' }} onPress={() => onPick('gallery')}>
+            <ImageIcon size={13} color="#e8789a" />
+            <Text className="font-rounded text-xs font-medium" style={{ color: '#e8789a' }}>相簿</Text>
+          </Pressable>
         </View>
       )}
     </View>
