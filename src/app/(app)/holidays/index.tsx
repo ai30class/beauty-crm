@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, Plus, Trash2, CalendarX, ChevronDown, User2, Ban } from 'lucide-react-native';
+import { ArrowLeft, Plus, Trash2, CalendarX, ChevronDown, User2, Ban, AlertTriangle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
 import {
   getAllHolidays, createHoliday, deleteHoliday, getStaffForPicker,
@@ -94,8 +94,24 @@ export default function HolidaysScreen() {
     finally { setSaving(false); }
   };
 
-  const handleDelete = async (id: string) => {
-    await deleteHoliday(id); load();
+  // 刪除休假前先跳確認視窗（顯示日期與誰的休假，避免手滑誤刪）
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; date: string; who: string } | null>(null);
+  const [deletingHoliday, setDeletingHoliday] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteError('');
+    setDeletingHoliday(true);
+    try {
+      await deleteHoliday(deleteTarget.id);
+      setDeleteTarget(null);
+      load();
+    } catch (e: any) {
+      setDeleteError(e?.message ?? '刪除失敗，請稍後再試');
+    } finally {
+      setDeletingHoliday(false);
+    }
   };
 
   const toggleSlotDay = (d: string) =>
@@ -308,7 +324,10 @@ export default function HolidaysScreen() {
                       </View>
                       {canDeleteThis && (
                       <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted"
-                        onPress={() => handleDelete(h.id)}>
+                        onPress={() => {
+                          setDeleteError('');
+                          setDeleteTarget({ id: h.id, date: h.holiday_date, who: staffInfo ? staffInfo.name : '全店' });
+                        }}>
                         <Trash2 size={15} color="#e85454" />
                       </Pressable>
                       )}
@@ -436,6 +455,56 @@ export default function HolidaysScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* 刪除休假確認 Modal */}
+      <Modal
+        visible={deleteTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteTarget(null)}
+      >
+        <Pressable
+          className="flex-1 bg-black/40 items-center justify-center px-8"
+          onPress={() => setDeleteTarget(null)}
+        >
+          <Pressable
+            className="bg-card w-full rounded-3xl p-6 gap-4"
+            onPress={() => {/* 阻止冒泡 */}}
+          >
+            <View className="items-center gap-3">
+              <View className="w-16 h-16 rounded-full items-center justify-center" style={{ backgroundColor: '#fff0f3' }}>
+                <AlertTriangle size={32} color="#e85454" />
+              </View>
+              <Text className="font-rounded text-lg font-bold text-foreground">確認刪除休假？</Text>
+              <Text className="font-rounded text-sm text-muted-foreground text-center">
+                {deleteTarget ? `${deleteTarget.date}（${deleteTarget.who}）` : ''}{'\n'}刪除後無法復原，確定要刪除這筆休假嗎？
+              </Text>
+              {deleteError ? (
+                <Text className="font-rounded text-xs text-center" style={{ color: '#e85454' }}>{deleteError}</Text>
+              ) : null}
+            </View>
+            <View className="flex-row gap-3 mt-2">
+              <Pressable
+                className="flex-1 h-12 rounded-2xl border border-border items-center justify-center active:opacity-70"
+                onPress={() => setDeleteTarget(null)}
+              >
+                <Text className="font-rounded text-sm font-semibold text-muted-foreground">取消</Text>
+              </Pressable>
+              <Pressable
+                className="flex-1 h-12 rounded-2xl items-center justify-center active:opacity-80"
+                style={{ backgroundColor: '#e85454' }}
+                disabled={deletingHoliday}
+                onPress={handleConfirmDelete}
+              >
+                {deletingHoliday
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text className="font-rounded text-sm font-semibold text-white">確認刪除</Text>
+                }
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

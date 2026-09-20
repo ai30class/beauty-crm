@@ -150,6 +150,9 @@ const APPT_BLOCK_COLORS = ['#e8789a', '#4a6cf7', '#2ea87e', '#e8a000', '#a78bfa'
 const TAP_SLOT_MINUTES = GRID_LINES.slice(0, -1);
 // 預留時間的快速標籤
 const RESERVE_LABEL_PRESETS = ['午休', '外出', '教育訓練'];
+
+// 月檢視：有人休假的日期記號顏色（灰紫，跟「有預約」的粉紅點區分）
+const HOLIDAY_DOT_COLOR = '#a99bb5';
 // 預留時間的快速時長（分鐘）；也可以在下方輸入框自行輸入其他數字
 const RESERVE_DURATION_PRESETS = [30, 60, 90, 120];
 
@@ -166,6 +169,8 @@ export default function StaffScheduleScreen() {
   const [allStaff, setAllStaff] = useState<StaffRosterEntry[]>([]);
   const [businessHours, setBusinessHours] = useState<BusinessHours | null>(null);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  // 月檢視專用的休假資料：月曆顯示的月份與選定日期所在月份（跟「週」用的 holidays 分開，避免互相蓋掉）
+  const [monthHolidays, setMonthHolidays] = useState<Holiday[]>([]);
   const [reservedSlots, setReservedSlots] = useState<StaffReservedSlot[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null); // null = 全部
   const [loading, setLoading] = useState(true);
@@ -267,6 +272,30 @@ export default function StaffScheduleScreen() {
 
   useFocusEffect(useCallback(() => { loadHolidays(weekStart); }, [weekStart, loadHolidays]));
 
+  // 月檢視：載入月曆顯示月份＋選定日期所在月份的休假（只在月檢視時查；快速切月時丟掉過期的回應）
+  useFocusEffect(useCallback(() => {
+    if (viewMode !== 'month') return;
+    let cancelled = false;
+    const monthKeys = new Set([
+      `${calYear}-${calMonth + 1}`,
+      `${selectedDate.slice(0, 4)}-${Number(selectedDate.slice(5, 7))}`,
+    ]);
+    (async () => {
+      try {
+        const results = await Promise.all(
+          [...monthKeys].map(key => {
+            const [y, m] = key.split('-').map(Number);
+            return getHolidays(y, m);
+          })
+        );
+        if (!cancelled) setMonthHolidays(results.flat());
+      } catch {
+        if (!cancelled) setMonthHolidays([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [viewMode, calYear, calMonth, selectedDate]));
+
   const loadReservedSlots = useCallback(async (start: Date) => {
     const slots = await getStaffReservedSlots(toDateStr(start), toDateStr(addDays(start, 6)));
     setReservedSlots(slots);
@@ -309,6 +338,17 @@ export default function StaffScheduleScreen() {
 
   // 有預約的日期集合（月曆用）
   const markedDates = new Set(allAppts.map(a => toApptDateStr(a.appointment_time)));
+
+  // 有休假的日期 → 當天休假的人（月曆用）。全店公休（staff_id 為空）顯示「全店公休」，其餘顯示設計師名字
+  const holidayLabelsByDate = new Map<string, string[]>();
+  for (const h of monthHolidays) {
+    const label = h.staff_id === null
+      ? '全店公休'
+      : (allStaff.find(s => s.id === h.staff_id)?.name ?? h.staff?.name ?? '設計師');
+    const list = holidayLabelsByDate.get(h.holiday_date) ?? [];
+    if (!list.includes(label)) list.push(label);
+    holidayLabelsByDate.set(h.holiday_date, list);
+  }
 
   // 選定日期的預約（依時間排序，月曆模式用）
   const dayAppts = allAppts
@@ -882,6 +922,7 @@ export default function StaffScheduleScreen() {
                 if (!day) return <View key={col} className="flex-1" />;
                 const ds = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                 const isMarked = markedDates.has(ds);
+                const isHoliday = holidayLabelsByDate.has(ds);
                 const isSel = selectedDate === ds;
                 const isToday = ds === today;
                 const isPast = ds < today;
@@ -898,8 +939,17 @@ export default function StaffScheduleScreen() {
                         {day}
                       </Text>
                     </View>
-                    <View className="h-1.5 w-1.5 rounded-full"
-                      style={{ backgroundColor: isMarked ? (isSel ? '#fff' : '#e8789a') : 'transparent' }} />
+                    {/* 記號：粉紅點＝有預約、灰紫點＝有人休假（兩個可以同時出現） */}
+                    <View className="flex-row justify-center gap-0.5 h-1.5">
+                      {isMarked && (
+                        <View className="h-1.5 w-1.5 rounded-full"
+                          style={{ backgroundColor: isSel ? '#fff' : '#e8789a' }} />
+                      )}
+                      {isHoliday && (
+                        <View className="h-1.5 w-1.5 rounded-full"
+                          style={{ backgroundColor: isSel ? '#fff' : HOLIDAY_DOT_COLOR }} />
+                      )}
+                    </View>
                   </Pressable>
                 );
               })}
@@ -911,6 +961,10 @@ export default function StaffScheduleScreen() {
             <View className="flex-row items-center gap-1">
               <View className="w-2 h-2 rounded-full bg-primary" />
               <Text className="font-rounded text-xs text-muted-foreground">有預約</Text>
+            </View>
+            <View className="flex-row items-center gap-1">
+              <View className="w-2 h-2 rounded-full" style={{ backgroundColor: HOLIDAY_DOT_COLOR }} />
+              <Text className="font-rounded text-xs text-muted-foreground">休假</Text>
             </View>
             <View className="flex-row items-center gap-1.5">
               <View className="w-5 h-5 rounded-full bg-primary/15 items-center justify-center">
@@ -936,6 +990,16 @@ export default function StaffScheduleScreen() {
             共 {dayAppts.length} 筆
           </Text>
         </View>
+
+        {/* 選定日期的休假：全店公休／哪些設計師休假 */}
+        {holidayLabelsByDate.has(selectedDate) && (
+          <View className="mx-5 mb-3 px-3 py-2 rounded-xl flex-row items-center gap-2" style={{ backgroundColor: '#f1edf5' }}>
+            <View className="w-2 h-2 rounded-full" style={{ backgroundColor: HOLIDAY_DOT_COLOR }} />
+            <Text className="font-rounded text-xs text-muted-foreground flex-1">
+              休假：{holidayLabelsByDate.get(selectedDate)!.join('、')}
+            </Text>
+          </View>
+        )}
 
         {/* 當日預約列表 */}
         {loading ? (
