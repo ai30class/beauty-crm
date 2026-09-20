@@ -660,24 +660,44 @@ export async function getAvailableSlots(
   customerPhone?: string,
   businessHours?: BusinessHours | null,
 ): Promise<TimeSlot[]> {
-  // 取得當天已預約（online_orders paid/confirmed）
-  const dayStart = `${dateStr}T00:00:00.000Z`;
-  const dayEnd = `${dateStr}T23:59:59.999Z`;
-  // 未指定人員（店家尚未設定服務人員）時，以全店的預約去對衝突，避免超收
-  let ordersQuery = supabase
-    .from('online_orders')
-    .select('appointment_time, end_time')
-    .eq('owner_id', ownerId)
-    .in('status', ['paid', 'confirmed'])
-    .gte('appointment_time', dayStart)
-    .lte('appointment_time', dayEnd);
-  if (staffId) ordersQuery = ordersQuery.eq('staff_id', staffId);
-  const { data: orders } = await ordersQuery;
+  // 取得當天已被佔用的時段：線上預約（已付款／已確認／還在等訂金確認的）、店裡手動預約、
+  // 設計師的預留時間（上課、外出…）。顧客讀不到後兩張表，所以由資料庫函式 get_busy_ranges
+  // 代查，且只回傳「設計師代號＋起訖時間」（沒有姓名電話）。
+  // 指定設計師時只看那位的；沒指定（null）時以全店的去對衝突，避免超收。
+  const dayStartDate = new Date(`${dateStr}T00:00:00`);
+  const dayEndDate = new Date(dayStartDate.getTime() + 24 * 60 * 60 * 1000);
+  type BusyRow = { busy_staff_id: string | null; busy_start: string; busy_end: string };
+  let busyRows: BusyRow[] | null = null;
+  const { data: busyData, error: busyError } = await supabase.rpc('get_busy_ranges', {
+    p_owner_id: ownerId,
+    p_from: dayStartDate.toISOString(),
+    p_to: dayEndDate.toISOString(),
+  });
+  if (!busyError && Array.isArray(busyData)) {
+    busyRows = busyData as BusyRow[];
+  } else {
+    // 函式還沒建立或呼叫失敗時退回舊做法（只看線上預約），避免整天時段都顯示可約
+    console.warn('get_busy_ranges 失敗，退回只看線上預約：', busyError?.message);
+    let legacyQuery = supabase
+      .from('online_orders')
+      .select('staff_id, appointment_time, end_time')
+      .eq('owner_id', ownerId)
+      .in('status', ['paid', 'confirmed'])
+      .gte('appointment_time', dayStartDate.toISOString())
+      .lt('appointment_time', dayEndDate.toISOString());
+    if (staffId) legacyQuery = legacyQuery.eq('staff_id', staffId);
+    const { data: legacyOrders } = await legacyQuery;
+    busyRows = (legacyOrders ?? []).map((o: { staff_id: string | null; appointment_time: string; end_time: string }) => ({
+      busy_staff_id: o.staff_id, busy_start: o.appointment_time, busy_end: o.end_time,
+    }));
+  }
 
-  const busyRanges = (orders ?? []).map((o: { appointment_time: string; end_time: string }) => ({
-    start: new Date(o.appointment_time).getTime(),
-    end: new Date(o.end_time).getTime(),
-  }));
+  const busyRanges = busyRows
+    .filter(r => !staffId || r.busy_staff_id === staffId)
+    .map(r => ({
+      start: new Date(r.busy_start).getTime(),
+      end: new Date(r.busy_end).getTime(),
+    }));
 
   // 取得全店封閉時段——specific_date 有設定時是「只有某一天」的單次封鎖，
   // 只在那一天生效，忽略 applies_to；沒設定則照原本的每週固定規則
