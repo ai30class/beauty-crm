@@ -1,4 +1,5 @@
 import { supabase } from '@/client/supabase';
+import { randomUUID } from 'expo-crypto';
 import type {
   Customer, ServiceRecord, TrendPoint, Appointment, ServiceTemplate,
   ServicePackage, PackageTransaction, Staff, TimeSlot, ShopProfile,
@@ -103,13 +104,16 @@ export async function createCustomer(payload: Omit<Customer, 'id' | 'owner_id' |
   if (error) throw error;
 }
 
-// 排預約現場建新顧客用：需要拿回剛建立那筆的 id/name 才能直接掛上這筆預約。
-// 員工帳號對 customers 只有 INSERT policy、沒有 SELECT policy，但 INSERT ... RETURNING
-// 不需要 SELECT policy（回傳的是剛寫入那列本身，不是另外查詢），所以這裡照樣拿得到值。
+// 排預約現場建新顧客用：需要 id/name 才能直接掛上這筆預約。
+// 員工帳號（沒開「瀏覽顧客名單」）對 customers 只有 INSERT policy、沒有 SELECT policy，
+// 而 INSERT ... RETURNING（.insert().select()）要求寫入的那一列也得通過 SELECT policy，
+// 否則整筆會被擋下（"new row violates row-level security policy"）。
+// 所以 id 由前端先產生、insert 不帶 .select()（不回傳資料），name 直接用送出去的那個。
 export async function createCustomerAndGetId(payload: Omit<Customer, 'id' | 'owner_id' | 'created_at' | 'updated_at'>): Promise<{ id: string; name: string }> {
-  const { data, error } = await supabase.from('customers').insert(payload).select('id, name').single();
+  const id = randomUUID();
+  const { error } = await supabase.from('customers').insert({ id, ...payload });
   if (error) throw error;
-  return data;
+  return { id, name: payload.name };
 }
 
 export async function updateCustomer(id: string, payload: Partial<Pick<Customer, 'name' | 'phone' | 'birthday' | 'notes' | 'booking_restricted' | 'booking_allowed_hours'>>): Promise<void> {
