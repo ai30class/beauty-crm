@@ -55,6 +55,7 @@ export default function NewServiceRecordScreen() {
   const [resolvedCustomerId, setResolvedCustomerId] = useState<string | undefined>(customerIdParam);
   const [customerName, setCustomerName] = useState('');
   const [templates, setTemplates] = useState<ServiceTemplate[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState('全部');
   const [serviceName, setServiceName] = useState('');
   const [amount, setAmount] = useState('');
   const [serviceDate, setServiceDate] = useState<Date>(new Date());
@@ -176,6 +177,13 @@ export default function NewServiceRecordScreen() {
     if (type === 'before') { setBeforeUri(asset.uri); setBeforeAsset(asset); }
     else { setAfterUri(asset.uri); setAfterAsset(asset); }
   };
+
+  // 快速選擇服務的類別分頁：沿用「服務項目管理」設好的分類（沒設分類的歸「未分類」）；只有一種類別時不顯示分頁
+  const templateCategories = ['全部', ...Array.from(new Set(templates.map(t => t.category.trim() || '未分類')))];
+  const activeCategory = templateCategories.includes(selectedCategory) ? selectedCategory : '全部';
+  const visibleTemplates = activeCategory === '全部'
+    ? templates
+    : templates.filter(t => (t.category.trim() || '未分類') === activeCategory);
 
   const handleSave = async () => {
     setError('');
@@ -331,9 +339,27 @@ export default function NewServiceRecordScreen() {
         {templates.length > 0 && (
           <View>
             <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">快速選擇服務</Text>
+            {templateCategories.length > 2 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1 mb-2">
+                <View className="flex-row gap-2 px-1 pb-1">
+                  {templateCategories.map(c => (
+                    <Pressable
+                      key={c}
+                      className="px-4 py-1.5 rounded-full active:opacity-70"
+                      style={{ backgroundColor: activeCategory === c ? '#e8789a' : '#fce9f0' }}
+                      onPress={() => setSelectedCategory(c)}
+                    >
+                      <Text className="font-rounded text-sm font-medium" style={{ color: activeCategory === c ? '#fff' : '#e8789a' }}>
+                        {c}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
               <View className="flex-row gap-2 px-1 pb-1">
-                {templates.map(tpl => (
+                {visibleTemplates.map(tpl => (
                   <Pressable key={tpl.id} className="rounded-xl px-3 py-2 active:opacity-70"
                     style={{ backgroundColor: tpl.color + '22', borderWidth: 1.5, borderColor: serviceName === tpl.name ? tpl.color : tpl.color + '44' }}
                     onPress={() => { setServiceName(tpl.name); setAmount(String(tpl.default_amount)); }}>
