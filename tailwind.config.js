@@ -6,7 +6,8 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        'rounded': ['ResourceHanRoundedCN', 'serif'],
+        // 圓體載入前（或載入失敗）退回系統的無襯線中文字型，不要退回 serif（宋體）
+        'rounded': ['ResourceHanRoundedCN', 'PingFang TC', 'Hiragino Sans TC', 'Microsoft JhengHei', 'sans-serif'],
       },
       borderRadius: {
         lg: 'var(--radius)',

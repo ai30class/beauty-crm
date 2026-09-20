@@ -155,17 +155,12 @@ const RootLayout: React.FC = () => {
   usePWA();
   usePWAMeta();
 
-  const [fontsLoaded, fontError] = useFonts({
+  // 圓體字型檔約 14.7MB，放在中國的雲端 CDN（bcebos.com），台灣網路下載速度很慢（實測每秒只有約 1KB）。
+  // 原本整個畫面要等字型下載完才顯示，所以「開啟網頁」等很久。改成不擋畫面：先用系統中文字型顯示，
+  // 字型在背景載入，載好之後自動換上（載不到也沒關係，看起來只是字型不同）。
+  useFonts({
     'ResourceHanRoundedCN': { uri: 'https://resource-static.cdn.bcebos.com/fonts/ResourceHanRoundedCN-Regular.ttf' },
   });
-
-  if (!fontsLoaded && !fontError) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff5f7' }}>
-        <ActivityIndicator size="large" color="#e8789a" />
-      </View>
-    );
-  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
