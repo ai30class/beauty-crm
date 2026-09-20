@@ -8,7 +8,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing, AlertTriangle, MessageCircle, Sparkles, HelpCircle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, createTransferDepositOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, createOnlineOrderAddons, getPhotoUrl, getSoleOnlineBookingOwnerId } from '@/db/api';
+import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, createTransferDepositOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, createOnlineOrderAddons, getPhotoUrl, getSoleOnlineBookingOwnerId, SLOT_TAKEN_MESSAGE } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import type { Staff, ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
 
@@ -57,6 +57,8 @@ export default function OnlineBookingScreen() {
   const [holidays, setHolidays] = useState<string[]>([]);
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
+  // 送出時發現時段剛被別人約走（SLOT_TAKEN）→ 遞增它，讓可約時段重新載入
+  const [slotsReloadKey, setSlotsReloadKey] = useState(0);
 
   // 使用者選擇
   const [selectedTemplate, setSelectedTemplate] = useState<ServiceTemplate | null>(null);
@@ -280,7 +282,7 @@ export default function OnlineBookingScreen() {
         setSlotsLoading(false);
       }
     })();
-  }, [selectedStaff, anyStaffMode, staffList, selectedTemplate, selectedDate, ownerId, shopProfile, totalDuration]);
+  }, [selectedStaff, anyStaffMode, staffList, selectedTemplate, selectedDate, ownerId, shopProfile, totalDuration, slotsReloadKey]);
 
   const isHoliday = (d: Date) => holidays.includes(toLocalDateStr(d));
 
@@ -418,6 +420,12 @@ export default function OnlineBookingScreen() {
       router.push(`/online-booking/deposit-transfer?orderId=${order.id}` as any);
     } catch (e: any) {
       setError(e.message ?? '提交失敗，請重試');
+      // 時段剛被別人約走：回到選時段那一步並重新載入，被約走的那格就會消失
+      if (e?.message === SLOT_TAKEN_MESSAGE) {
+        setSelectedTime('');
+        setSlotsReloadKey(k => k + 1);
+        setStep('datetime');
+      }
     } finally {
       setSubmitting(false);
     }

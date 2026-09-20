@@ -782,6 +782,14 @@ export async function getAvailableSlots(
 
 // ─── 線上訂單 ─────────────────────────────────────────────────────────────────
 
+// 送出預約／顧客改期的當下，資料庫（00080 觸發器）發現這個時段已被佔用會丟 SLOT_TAKEN，
+// 轉成顧客看得懂的話；其他錯誤照原樣丟出。
+export const SLOT_TAKEN_MESSAGE = '這個時段剛被預約了，請重新選擇其他時段。';
+function throwBookingError(error: { message?: string }): never {
+  if (error?.message?.includes('SLOT_TAKEN')) throw new Error(SLOT_TAKEN_MESSAGE);
+  throw error;
+}
+
 export async function getOnlineOrders(): Promise<OnlineOrder[]> {
   const { data, error } = await supabase
     .from('online_orders')
@@ -845,7 +853,7 @@ export async function updateOnlineOrderByPhone(
     p_appointment_time: payload.appointment_time,
     p_notes: payload.notes,
   });
-  if (error) throw error;
+  if (error) throwBookingError(error);
 }
 
 export async function cancelOnlineOrderByPhone(id: string, phone: string): Promise<void> {
@@ -931,7 +939,7 @@ export async function createDirectOnlineOrder(payload: {
     })
     .select('*, staff:staff!staff_id(name, color)')
     .single();
-  if (error) throw error;
+  if (error) throwBookingError(error);
   return data as OnlineOrder;
 }
 
@@ -966,7 +974,7 @@ export async function createTransferDepositOrder(payload: {
     })
     .select('*, staff:staff!staff_id(name, color)')
     .single();
-  if (error) throw error;
+  if (error) throwBookingError(error);
   return data as OnlineOrder;
 }
 
