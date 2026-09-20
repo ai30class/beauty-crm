@@ -16,14 +16,6 @@ import TimeOfDayPicker from '@/components/TimeOfDayPicker';
 import { supabase } from '@/client/supabase';
 import type { Customer, ServiceTemplate, StaffRosterEntry } from '@/types/types';
 
-const REMINDER_OPTIONS = [
-  { label: '15 分鐘前', value: 15 },
-  { label: '30 分鐘前', value: 30 },
-  { label: '1 小時前', value: 60 },
-  { label: '2 小時前', value: 120 },
-  { label: '1 天前', value: 1440 },
-];
-
 export default function NewAppointmentScreen() {
   const { customerId: presetCustomerId, date: presetDate, time: presetTime, staffId: presetStaffId } =
     useLocalSearchParams<{ customerId?: string; date?: string; time?: string; staffId?: string }>();
@@ -75,7 +67,6 @@ export default function NewAppointmentScreen() {
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const [reminderMinutes, setReminderMinutes] = useState(30);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -269,7 +260,6 @@ export default function NewAppointmentScreen() {
       await createAppointment({
         customer_id: selectedCustomer.id,
         appointment_time: apptDate.toISOString(),
-        reminder_minutes: reminderMinutes,
         notes: notes.trim() || null,
         status: 'pending',
         staff_id: selectedStaffId,
@@ -630,28 +620,6 @@ export default function NewAppointmentScreen() {
             minute={apptDate.getMinutes()}
             onChange={(h, m) => setApptDate(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate(), h, m))}
           />
-        </View>
-
-        {/* 提醒時間 */}
-        <View>
-          <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">提醒時間</Text>
-          <View className="flex-row flex-wrap gap-2">
-            {REMINDER_OPTIONS.map(opt => (
-              <Pressable
-                key={opt.value}
-                className="px-4 py-2 rounded-full active:opacity-70"
-                style={{ backgroundColor: reminderMinutes === opt.value ? '#e8789a' : '#f5e6ec' }}
-                onPress={() => setReminderMinutes(opt.value)}
-              >
-                <Text
-                  className="font-rounded text-sm font-medium"
-                  style={{ color: reminderMinutes === opt.value ? '#fff' : '#c4a0ae' }}
-                >
-                  {opt.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
         </View>
 
         {/* 備註 */}

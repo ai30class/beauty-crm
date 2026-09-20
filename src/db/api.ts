@@ -232,7 +232,8 @@ export async function getAppointmentsByCustomer(customerId: string): Promise<App
   return Array.isArray(data) ? data : [];
 }
 
-export async function createAppointment(payload: Omit<Appointment, 'id' | 'owner_id' | 'created_at' | 'customer' | 'staff'>): Promise<void> {
+// reminder_minutes 不再由畫面填寫（前一天提醒是排程固定發送，不讀這個欄位），新增時交給資料庫預設值 30
+export async function createAppointment(payload: Omit<Appointment, 'id' | 'owner_id' | 'created_at' | 'customer' | 'staff' | 'reminder_minutes'>): Promise<void> {
   const { error } = await supabase.from('appointments').insert(payload);
   if (error) throw error;
 }
@@ -249,7 +250,7 @@ export async function getAppointmentById(id: string): Promise<Appointment | null
 
 export async function updateAppointment(
   id: string,
-  payload: Partial<Pick<Appointment, 'appointment_time' | 'reminder_minutes' | 'notes' | 'status' | 'staff_id'>>
+  payload: Partial<Pick<Appointment, 'appointment_time' | 'notes' | 'status' | 'staff_id'>>
 ): Promise<void> {
   const { error } = await supabase.from('appointments').update(payload).eq('id', id);
   if (error) throw error;
