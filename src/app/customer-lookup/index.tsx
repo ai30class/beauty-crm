@@ -137,7 +137,12 @@ function OrderCard({
 }) {
   const meta = STATUS_META[order.status] ?? STATUS_META.confirmed;
   const staff = order.staff as { name: string; color: string } | undefined;
-  const canEdit = order.status !== 'cancelled' && order.status !== 'refunded' && order.status !== 'completed';
+  // 顧客自助改期／取消，資料庫（update／cancel_online_order_by_phone）只允許 confirmed（免訂金）。
+  // 需訂金的預約（待確認匯款、待付款、已付款）不能自助改，畫面不顯示會失敗的按鈕，改成請私訊店家。
+  const canEdit = order.status === 'confirmed';
+  const needsShopHelp = order.status === 'pending_transfer_confirm'
+    || order.status === 'pending_payment'
+    || order.status === 'paid';
 
   const [showModal, setShowModal] = useState(false);
   const [editNotes, setEditNotes] = useState(order.notes ?? '');
@@ -252,6 +257,15 @@ function OrderCard({
                   </>
               }
             </Pressable>
+          </View>
+        )}
+
+        {/* 需訂金的預約：不能自助改，請私訊店家 */}
+        {needsShopHelp && (
+          <View className="border-t border-border pt-3">
+            <Text className="font-rounded text-xs text-muted-foreground">
+              需訂金的預約如要改期或取消，請私訊店家的 LINE 官方帳號，我們會協助你處理。
+            </Text>
           </View>
         )}
       </View>
