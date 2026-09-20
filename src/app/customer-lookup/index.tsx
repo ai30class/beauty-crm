@@ -34,6 +34,8 @@ function formatDateFull(iso: string) {
 // ── 狀態設定 ─────────────────────────────────────────────────────────────────
 const STATUS_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   pending_payment: { label: '待付款', color: '#e8a000', icon: <Loader size={12} color="#e8a000" /> },
+  // 需訂金、匯款後等店家核對收款；之前這個狀態沒有標籤，會被誤顯示成「已確認」
+  pending_transfer_confirm: { label: '待確認匯款', color: '#e8a000', icon: <Loader size={12} color="#e8a000" /> },
   paid:            { label: '已付訂金', color: '#2ea87e', icon: <CheckCircle size={12} color="#2ea87e" /> },
   confirmed:       { label: '已確認', color: '#4a6cf7', icon: <CheckCircle size={12} color="#4a6cf7" /> },
   completed:       { label: '已完成', color: '#999', icon: <CheckCircle size={12} color="#999" /> },
@@ -143,6 +145,8 @@ function OrderCard({
   const needsShopHelp = order.status === 'pending_transfer_confirm'
     || order.status === 'pending_payment'
     || order.status === 'paid';
+  // 訂金還沒被店家確認收款（待確認匯款／待付款）：不能顯示成「已付訂金」
+  const depositUnconfirmed = order.status === 'pending_transfer_confirm' || order.status === 'pending_payment';
 
   const [showModal, setShowModal] = useState(false);
   const [editNotes, setEditNotes] = useState(order.notes ?? '');
@@ -150,6 +154,9 @@ function OrderCard({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // 取消預約前先跳確認視窗，避免手滑一按就取消
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelError, setCancelError] = useState('');
   const [editError, setEditError] = useState('');
 
   const fmtDate = (d: Date) =>
@@ -169,14 +176,16 @@ function OrderCard({
     } finally { setSaving(false); }
   };
 
+  // 在確認視窗按「確認取消預約」才真的取消
   const handleCancel = async () => {
-    setCancelling(true);
+    setCancelling(true); setCancelError('');
     try {
       await cancelOnlineOrderByPhone(order.id, order.customer_phone);
+      setShowCancelConfirm(false);
       setShowModal(false);
       onRefresh();
     } catch (e: any) {
-      setEditError(e.message ?? '取消失敗');
+      setCancelError(e.message ?? '取消失敗，請稍後再試');
     } finally { setCancelling(false); }
   };
 
@@ -225,8 +234,10 @@ function OrderCard({
         {/* 訂金資訊 */}
         {order.booking_mode === 'deposit' && (
           <View className="flex-row items-center justify-between border-t border-border pt-2">
-            <Text className="font-rounded text-xs text-muted-foreground">已付訂金</Text>
-            <Text className="font-rounded text-xs font-semibold" style={{ color: '#2ea87e' }}>
+            <Text className="font-rounded text-xs text-muted-foreground">
+              {depositUnconfirmed ? '訂金（店家尚未確認收款）' : '已付訂金'}
+            </Text>
+            <Text className="font-rounded text-xs font-semibold" style={{ color: depositUnconfirmed ? '#e8a000' : '#2ea87e' }}>
               ${Number(order.deposit_amount).toLocaleString()}
             </Text>
           </View>
@@ -246,16 +257,10 @@ function OrderCard({
             <Pressable
               className="flex-1 flex-row items-center justify-center gap-1.5 py-2 rounded-xl active:opacity-70"
               style={{ backgroundColor: '#fff0f3', borderWidth: 1, borderColor: '#f0b0b8' }}
-              onPress={handleCancel}
-              disabled={cancelling}
+              onPress={() => { setCancelError(''); setShowCancelConfirm(true); }}
             >
-              {cancelling
-                ? <ActivityIndicator size="small" color="#e85454" />
-                : <>
-                    <XCircle size={14} color="#e85454" />
-                    <Text className="font-rounded text-sm font-medium" style={{ color: '#e85454' }}>取消預約</Text>
-                  </>
-              }
+              <XCircle size={14} color="#e85454" />
+              <Text className="font-rounded text-sm font-medium" style={{ color: '#e85454' }}>取消預約</Text>
             </Pressable>
           </View>
         )}
@@ -368,6 +373,47 @@ function OrderCard({
             </Pressable>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* 取消預約確認 Modal */}
+      <Modal visible={showCancelConfirm} transparent animationType="fade" onRequestClose={() => setShowCancelConfirm(false)}>
+        <Pressable className="flex-1 bg-black/40 items-center justify-center px-8" onPress={() => { if (!cancelling) setShowCancelConfirm(false); }}>
+          <Pressable className="bg-card w-full rounded-3xl p-6 gap-4" onPress={() => {/* 阻止冒泡 */}}>
+            <View className="items-center gap-3">
+              <View className="w-16 h-16 rounded-full items-center justify-center" style={{ backgroundColor: '#fff0f3' }}>
+                <XCircle size={32} color="#e85454" />
+              </View>
+              <Text className="font-rounded text-lg font-bold text-foreground">確定要取消這筆預約嗎？</Text>
+              <Text className="font-rounded text-sm text-muted-foreground text-center">
+                {order.service_name}{'\n'}{formatDateFull(order.appointment_time)} {formatTime(order.appointment_time)}
+                {'\n\n'}取消後這個時段會釋出，無法復原；如果還想預約，需要重新預約。
+              </Text>
+              {cancelError ? (
+                <Text className="font-rounded text-xs text-center" style={{ color: '#e85454' }}>{cancelError}</Text>
+              ) : null}
+            </View>
+            <View className="flex-row gap-3 mt-2">
+              <Pressable
+                className="flex-1 h-12 rounded-2xl border border-border items-center justify-center active:opacity-70"
+                onPress={() => setShowCancelConfirm(false)}
+                disabled={cancelling}
+              >
+                <Text className="font-rounded text-sm font-semibold text-muted-foreground">保留預約</Text>
+              </Pressable>
+              <Pressable
+                className="flex-1 h-12 rounded-2xl items-center justify-center active:opacity-80"
+                style={{ backgroundColor: '#e85454' }}
+                onPress={handleCancel}
+                disabled={cancelling}
+              >
+                {cancelling
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text className="font-rounded text-sm font-semibold text-white">確認取消預約</Text>
+                }
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </>
   );
