@@ -9,7 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Plus, Trash2, Clock, DollarSign, Pencil, HelpCircle, X } from 'lucide-react-native';
 import {
   getServiceTemplates, createServiceTemplate,
-  updateServiceTemplate, deleteServiceTemplate
+  updateServiceTemplate, deleteServiceTemplate, getMyStaffPermissions
 } from '@/db/api';
 import type { ServiceTemplate } from '@/types/types';
 
@@ -19,9 +19,10 @@ const PRESET_COLORS = [
 ];
 
 function TemplateRow({
-  tpl, onEdit, onDelete
+  tpl, canEdit, onEdit, onDelete
 }: {
   tpl: ServiceTemplate;
+  canEdit: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -59,14 +60,16 @@ function TemplateRow({
           )}
         </View>
       </View>
-      <View className="flex-row gap-1">
-        <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted" onPress={onEdit}>
-          <Pencil size={14} color="#e8789a" />
-        </Pressable>
-        <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted" onPress={onDelete}>
-          <Trash2 size={14} color="#c4a0ae" />
-        </Pressable>
-      </View>
+      {canEdit && (
+        <View className="flex-row gap-1">
+          <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted" onPress={onEdit}>
+            <Pencil size={14} color="#e8789a" />
+          </Pressable>
+          <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted" onPress={onDelete}>
+            <Trash2 size={14} color="#c4a0ae" />
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -101,6 +104,12 @@ export default function ServiceTemplatesScreen() {
   const [error, setError] = useState('');
   const [showBreakInfo, setShowBreakInfo] = useState(false);
 
+  // 員工帳號要商家開「可管理服務項目與定價」才能新增／編輯／刪除；沒開就只讀（資料庫也擋寫入，
+  // 這裡讓畫面跟著隱藏按鈕，避免員工直接打網址進來看到按不成功的按鈕）。權限載入前先不顯示按鈕。
+  const [perm, setPerm] = useState<{ isStaff: boolean; canManagePricing: boolean } | null>(null);
+  const canEdit = perm !== null && (!perm.isStaff || perm.canManagePricing);
+  const readOnlyStaff = perm !== null && perm.isStaff && !perm.canManagePricing;
+
   const existingCategories = Array.from(
     new Set(templates.map(t => t.category.trim()).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
@@ -121,7 +130,15 @@ export default function ServiceTemplatesScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setTemplates(await getServiceTemplates());
+      const [tpls, perms] = await Promise.all([
+        getServiceTemplates(),
+        getMyStaffPermissions().catch(() => null),
+      ]);
+      setTemplates(tpls);
+      // 權限查不到時保守處理：當成沒有編輯權限（資料庫本來就會擋）
+      setPerm(perms
+        ? { isStaff: perms.isStaff, canManagePricing: perms.canManagePricing }
+        : { isStaff: true, canManagePricing: false });
     } finally {
       setLoading(false);
     }
@@ -130,6 +147,7 @@ export default function ServiceTemplatesScreen() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const openAdd = () => {
+    if (!canEdit) return;
     setForm(EMPTY_FORM);
     setEditingId(null);
     setError('');
@@ -137,6 +155,7 @@ export default function ServiceTemplatesScreen() {
   };
 
   const openEdit = (tpl: ServiceTemplate) => {
+    if (!canEdit) return;
     setForm({
       name: tpl.name,
       category: tpl.category,
@@ -191,6 +210,7 @@ export default function ServiceTemplatesScreen() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canEdit) return;
     await deleteServiceTemplate(id);
     await load();
   };
@@ -203,13 +223,24 @@ export default function ServiceTemplatesScreen() {
           <ArrowLeft size={22} color="#e8789a" />
         </Pressable>
         <Text className="font-rounded text-xl font-bold text-foreground flex-1">服務項目管理</Text>
-        <Pressable className="flex-row items-center gap-1 px-3 py-1.5 bg-primary rounded-xl active:opacity-80" onPress={openAdd}>
-          <Plus size={15} color="#fff" />
-          <Text className="font-rounded text-sm text-white font-medium">新增</Text>
-        </Pressable>
+        {canEdit && (
+          <Pressable className="flex-row items-center gap-1 px-3 py-1.5 bg-primary rounded-xl active:opacity-80" onPress={openAdd}>
+            <Plus size={15} color="#fff" />
+            <Text className="font-rounded text-sm text-white font-medium">新增</Text>
+          </Pressable>
+        )}
       </View>
 
       <ScrollView contentContainerClassName="px-5 pb-12" keyboardShouldPersistTaps="handled">
+        {/* 員工沒有「可管理服務項目與定價」開關：只能查看 */}
+        {readOnlyStaff && (
+          <View className="bg-card rounded-2xl p-4 mb-4 border border-border">
+            <Text className="font-rounded text-sm text-muted-foreground">
+              目前只能查看。要新增或修改服務項目與定價，請商家在員工管理幫您開啟「可管理服務項目與定價」。
+            </Text>
+          </View>
+        )}
+
         {/* 新增/編輯表單 */}
         {showForm && (
           <View className="bg-card rounded-2xl p-4 mb-5 border border-border gap-3">
@@ -428,7 +459,9 @@ export default function ServiceTemplatesScreen() {
           <View className="py-16 items-center bg-card rounded-2xl border border-border">
             <Text className="font-rounded text-3xl mb-2">✂️</Text>
             <Text className="font-rounded text-sm text-muted-foreground">尚無服務項目</Text>
-            <Text className="font-rounded text-xs text-muted-foreground mt-1">點擊右上角「新增」建立項目</Text>
+            {canEdit && (
+              <Text className="font-rounded text-xs text-muted-foreground mt-1">點擊右上角「新增」建立項目</Text>
+            )}
           </View>
         ) : (
           <View className="gap-4">
@@ -442,6 +475,7 @@ export default function ServiceTemplatesScreen() {
                     <TemplateRow
                       key={tpl.id}
                       tpl={tpl}
+                      canEdit={canEdit}
                       onEdit={() => openEdit(tpl)}
                       onDelete={() => handleDelete(tpl.id)}
                     />
