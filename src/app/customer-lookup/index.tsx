@@ -283,6 +283,7 @@ function OrderCard({
                   <DateTimePicker locale="zh-tw"
                     mode="single"
                     date={editDate}
+                    minDate={new Date()}
                     onChange={(p) => {
                       if (p.date) {
                         const nd = p.date as Date;
