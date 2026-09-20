@@ -1172,14 +1172,20 @@ export default function OnlineBookingScreen() {
                   ? '\n未到場或逾期取消，訂金恕不退還'
                   : ''}
               </Text>
-              <Pressable
-                className="flex-row items-center justify-center gap-2 rounded-xl py-2.5 mt-1 active:opacity-80"
-                style={{ backgroundColor: '#06C755' }}
-                onPress={() => Linking.openURL('https://line.me/R/ti/p/@hzw4396n')}
-              >
-                <MessageCircle size={16} color="#fff" />
-                <Text className="font-rounded text-sm font-semibold text-white">一對一諮詢</Text>
-              </Pressable>
+              {/* 一對一諮詢：導向「這家店」商家資訊裡設定的 LINE 官方帳號；沒設定就不顯示（原本寫死成椏椏的帳號，其他店會被導錯） */}
+              {shopProfile?.line_oa_id ? (
+                <Pressable
+                  className="flex-row items-center justify-center gap-2 rounded-xl py-2.5 mt-1 active:opacity-80"
+                  style={{ backgroundColor: '#06C755' }}
+                  onPress={() => {
+                    const id = shopProfile.line_oa_id!.trim();
+                    Linking.openURL(`https://line.me/R/ti/p/${id.startsWith('@') ? id : `@${id}`}`);
+                  }}
+                >
+                  <MessageCircle size={16} color="#fff" />
+                  <Text className="font-rounded text-sm font-semibold text-white">一對一諮詢</Text>
+                </Pressable>
+              ) : null}
             </View>
 
             {/* 同意勾選 */}
