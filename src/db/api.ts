@@ -9,6 +9,7 @@ import type {
   MonthlyStats, UnifiedAppointment, ProductSalesRow,
   BirthdayCustomer, CustomerRankRow, StaffPerformanceRow,
   StaffCommissionTier, StaffBonus, PayrollRecord, DormantCustomer, SignupRequest, StaffRosterEntry,
+  OwnerNotification,
 } from '@/types/types';
 
 // ─── 商家申請名單（關閉自助註冊後的替代入口）───────────────────────────────────
@@ -1970,5 +1971,37 @@ export async function createShopBlockedSlot(
 
 export async function deleteShopBlockedSlot(id: string): Promise<void> {
   const { error } = await supabase.from('shop_blocked_slots').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── 店家後台的新預約通知（00082）────────────────────────────────────────────
+// 只有店家本人讀得到自己的通知（RLS）；前端只能標已讀，新增由資料庫觸發器代寫。
+export async function getOwnerNotifications(limit = 50): Promise<OwnerNotification[]> {
+  const { data, error } = await supabase
+    .from('owner_notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getUnreadOwnerNotificationCount(): Promise<number> {
+  const { count, error } = await supabase
+    .from('owner_notifications')
+    .select('id', { count: 'exact', head: true })
+    .is('read_at', null);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+// 不帶 ids ＝ 全部標為已讀
+export async function markOwnerNotificationsRead(ids?: string[]): Promise<void> {
+  let query = supabase
+    .from('owner_notifications')
+    .update({ read_at: new Date().toISOString() })
+    .is('read_at', null);
+  if (ids && ids.length > 0) query = query.in('id', ids);
+  const { error } = await query;
   if (error) throw error;
 }

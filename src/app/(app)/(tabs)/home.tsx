@@ -3,8 +3,8 @@ import { View, Text, ScrollView, Pressable, ActivityIndicator, TextInput, FlatLi
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { Search, Plus, User, Phone, ChevronRight, Scissors, Clock, CalendarDays, AlertCircle, BellRing } from 'lucide-react-native';
-import { getCustomers, searchCustomers, getServiceTemplates, getShopProfileByOwner, getMergedAppointments, getAccountType, getMyStaffLink, canViewCustomers } from '@/db/api';
+import { Search, Plus, User, Phone, ChevronRight, Scissors, Clock, CalendarDays, AlertCircle, BellRing, Bell } from 'lucide-react-native';
+import { getCustomers, searchCustomers, getServiceTemplates, getShopProfileByOwner, getMergedAppointments, getAccountType, getMyStaffLink, canViewCustomers, getUnreadOwnerNotificationCount } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import type { Customer, ServiceTemplate, BusinessHours, UnifiedAppointment } from '@/types/types';
 
@@ -49,6 +49,7 @@ export default function HomeScreen() {
   const [upcomingSoon, setUpcomingSoon] = useState<UnifiedAppointment[]>([]);
   const [staffNoBrowse, setStaffNoBrowse] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
+  const [unreadNewBookings, setUnreadNewBookings] = useState(0);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadCustomers = useCallback(async () => {
@@ -58,6 +59,8 @@ export default function HomeScreen() {
       const noBrowse = accountType === 'staff' && !(await canViewCustomers().catch(() => false));
       setStaffNoBrowse(noBrowse);
       setIsStaff(accountType === 'staff');
+      // 新預約通知只有店家本人看得到；查不到（例如資料表還沒建）就當 0，不影響其他畫面
+      setUnreadNewBookings(accountType === 'staff' ? 0 : await getUnreadOwnerNotificationCount().catch(() => 0));
       const [data, tpls, { data: { user } }, appts] = await Promise.all([
         noBrowse ? Promise.resolve([] as Customer[]) : getCustomers(),
         getServiceTemplates(),
@@ -124,6 +127,21 @@ export default function HomeScreen() {
         <Text className="font-rounded text-2xl font-bold text-foreground mb-1">顧客管理</Text>
         {!staffNoBrowse && <Text className="font-rounded text-sm text-muted-foreground">共 {customers.length} 位顧客</Text>}
       </View>
+
+      {/* 新預約通知（顧客從預約頁預約成功；只有店家本人看得到） */}
+      {unreadNewBookings > 0 && (
+        <Pressable
+          className="mx-5 mb-2 flex-row items-center gap-2.5 px-4 py-3 rounded-2xl border active:opacity-80"
+          style={{ backgroundColor: '#fce9f0', borderColor: '#f5c0d3' }}
+          onPress={() => router.push('/(app)/notifications' as any)}
+        >
+          <Bell size={16} color="#c4456a" />
+          <Text className="font-rounded text-sm font-semibold flex-1" style={{ color: '#c4456a' }}>
+            🆕 {unreadNewBookings} 筆新的線上預約
+          </Text>
+          <ChevronRight size={14} color="#c4456a" />
+        </Pressable>
+      )}
 
       {/* 24 小時內預約提醒 */}
       {upcomingSoon.length > 0 && (

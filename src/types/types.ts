@@ -514,3 +514,16 @@ export interface WaitlistEntry {
   updated_at: string;
   staff?: { name: string; color: string } | null;
 }
+
+// 店家後台的新預約通知（migration 00082）：顧客從預約頁預約成功時，由資料庫觸發器代寫
+export interface OwnerNotification {
+  id: string;
+  owner_id: string;
+  type: string;
+  ref_id: string | null;
+  title: string;
+  body: string;
+  is_new_customer: boolean;
+  created_at: string;
+  read_at: string | null;
+}
