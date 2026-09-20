@@ -2,8 +2,8 @@ import * as Sentry from '@sentry/react-native';
 import { Stack } from 'expo-router';
 import { PortalHost } from '@rn-primitives/portal';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { ActivityIndicator, View } from 'react-native';
-import { useFonts } from 'expo-font';
+import { ActivityIndicator, Platform, View } from 'react-native';
+import { useFonts, FontDisplay } from 'expo-font';
 import { useEffect } from 'react';
 
 import { SessionProvider, useSession } from '@/ctx';
@@ -155,11 +155,15 @@ const RootLayout: React.FC = () => {
   usePWA();
   usePWAMeta();
 
-  // 圓體字型檔約 14.7MB，放在中國的雲端 CDN（bcebos.com），台灣網路下載速度很慢（實測每秒只有約 1KB）。
-  // 原本整個畫面要等字型下載完才顯示，所以「開啟網頁」等很久。改成不擋畫面：先用系統中文字型顯示，
-  // 字型在背景載入，載好之後自動換上（載不到也沒關係，看起來只是字型不同）。
+  // 圓體字型：網頁用自己網站上的子集化版本（Resource Han Rounded TW，只留常用繁體字，約 1MB，
+  // 放在 /fonts/，Vercel 邊緣快取）。原本是下載中國百度雲 CDN 上 14.7MB 的完整檔，台灣網路實測每秒約 1KB，
+  // 而且整個畫面要等它載完才顯示，所以開網頁等很久。現在不擋畫面：先用系統中文字型顯示，
+  // 字型載好自動換上（font-display: swap）；子集裡沒有的罕用字自動用系統字型顯示。
+  // 手機 App 版維持原本的遠端字型（不擋畫面）。
   useFonts({
-    'ResourceHanRoundedCN': { uri: 'https://resource-static.cdn.bcebos.com/fonts/ResourceHanRoundedCN-Regular.ttf' },
+    'ResourceHanRoundedCN': Platform.OS === 'web'
+      ? { uri: '/fonts/rhr-tw-regular-v1.woff2', display: FontDisplay.SWAP }
+      : { uri: 'https://resource-static.cdn.bcebos.com/fonts/ResourceHanRoundedCN-Regular.ttf' },
   });
 
   return (
