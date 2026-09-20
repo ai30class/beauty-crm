@@ -10,10 +10,12 @@ import DateTimePicker from 'react-native-ui-datepicker';
 import { createServicePackage, getCustomerById } from '@/db/api';
 import type { PackageType } from '@/types/types';
 
-const COLLECT_OPTIONS: { key: 'cash' | 'card' | 'line_pay'; label: string; color: string }[] = [
-  { key: 'cash',     label: '💵 現金',     color: '#5dc0a0' },
-  { key: 'card',     label: '💳 刷卡',     color: '#8b9de8' },
-  { key: 'line_pay', label: '📱 LINE Pay', color: '#06c755' },
+const COLLECT_OPTIONS: { key: 'cash' | 'card' | 'bank_transfer' | 'line_pay' | 'mobile_pay'; label: string; color: string }[] = [
+  { key: 'cash',          label: '💵 現金',     color: '#5dc0a0' },
+  { key: 'card',          label: '💳 刷卡',     color: '#8b9de8' },
+  { key: 'bank_transfer', label: '🏦 銀行轉帳', color: '#e8a000' },
+  { key: 'line_pay',      label: '📱 LINE Pay', color: '#06c755' },
+  { key: 'mobile_pay',    label: '📲 行動支付', color: '#c76ae8' },
 ];
 
 const TYPE_OPTIONS: { type: PackageType; label: string; desc: string; icon: React.ReactNode }[] = [
@@ -36,7 +38,7 @@ export default function NewPackageScreen() {
   const [expireDate, setExpireDate] = useState<Date | null>(null);
   const [showExpirePicker, setShowExpirePicker] = useState(false);
   const [notes, setNotes] = useState('');
-  const [purchasePaymentMethod, setPurchasePaymentMethod] = useState<'cash' | 'card' | 'line_pay'>('cash');
+  const [purchasePaymentMethod, setPurchasePaymentMethod] = useState<'cash' | 'card' | 'bank_transfer' | 'line_pay' | 'mobile_pay'>('cash');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -230,12 +232,13 @@ export default function NewPackageScreen() {
         {/* 收款方式 */}
         <View>
           <Text className="font-rounded text-sm font-medium text-foreground mb-2">收款方式</Text>
-          <View className="flex-row gap-2">
+          <View className="flex-row flex-wrap gap-2">
             {COLLECT_OPTIONS.map(opt => (
               <Pressable
                 key={opt.key}
-                className="flex-1 rounded-xl py-2.5 items-center border active:opacity-70"
+                className="rounded-xl py-2.5 items-center border active:opacity-70"
                 style={{
+                  width: '31%',
                   backgroundColor: purchasePaymentMethod === opt.key ? opt.color + '22' : '#fafafa',
                   borderColor: purchasePaymentMethod === opt.key ? opt.color : '#e8dce8',
                 }}

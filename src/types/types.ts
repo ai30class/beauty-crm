@@ -55,7 +55,10 @@ export interface ServiceRecord {
   notes: string | null;
   before_photo_path: string | null;
   after_photo_path: string | null;
-  payment_method: 'cash' | 'card' | 'line_pay' | 'package';
+  payment_method: 'cash' | 'card' | 'bank_transfer' | 'line_pay' | 'mobile_pay' | 'package';
+  // 已收訂金（屬於 amount 的一部分，預設 0）與訂金當時的收款方式；現場實收 = amount − deposit_amount（migration 00078）
+  deposit_amount?: number;
+  deposit_method?: 'cash' | 'card' | 'bank_transfer' | 'line_pay' | 'mobile_pay' | null;
   package_id: string | null;
   status: 'completed' | 'pending';
   staff_id: string | null;
@@ -171,7 +174,7 @@ export interface ServicePackage {
   expire_date: string | null;
   notes: string | null;
   is_active: boolean;
-  purchase_payment_method: 'cash' | 'card' | 'line_pay';
+  purchase_payment_method: 'cash' | 'card' | 'bank_transfer' | 'line_pay' | 'mobile_pay';
   created_at: string;
 }
 

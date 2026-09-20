@@ -12,6 +12,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system';
 import { supabase } from '@/client/supabase';
+import { PAYMENT_META } from '@/lib/payments';
+import type { PaymentMethod } from '@/lib/payments';
 import {
   createServiceRecord, updateServiceRecord, getCustomerById,
   getServiceTemplates, getPackagesByCustomer, usePackageSession, usePackageAmount,
@@ -64,7 +66,10 @@ export default function NewServiceRecordScreen() {
   const [beforeAsset, setBeforeAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [afterAsset, setAfterAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'line_pay' | 'package'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  // 線上預約已收的訂金：結帳時自動抵扣，只收尾款（訂金屬於服務總額的一部分）
+  const [paidDeposit, setPaidDeposit] = useState(0);
+  const [depositMethod, setDepositMethod] = useState<'bank_transfer' | 'line_pay'>('bank_transfer');
   const [selectedPackageId, setSelectedPackageId] = useState<string>('');
   const [activePackages, setActivePackages] = useState<import('@/types/types').ServicePackage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -97,6 +102,11 @@ export default function NewServiceRecordScreen() {
             // 自動填入服務名稱與金額
             setServiceName(order.service_name);
             setAmount(String(order.total_amount));
+            // 已收訂金（需訂金的預約，顧客付完、店家確認後）：結帳時抵扣
+            if (order.booking_mode === 'deposit' && (order.status === 'paid' || order.status === 'confirmed')) {
+              setPaidDeposit(Number(order.deposit_amount ?? 0));
+              setDepositMethod(order.line_pay_transaction_id ? 'line_pay' : 'bank_transfer');
+            }
             // 設定服務日期為預約日期
             setServiceDate(new Date(order.appointment_time));
             // 優先使用 customer_id（線上預約時已 upsert 建檔）
@@ -190,6 +200,8 @@ export default function NewServiceRecordScreen() {
         return;
       }
     }
+    // 訂金不會超過服務總額；用套票扣款時不處理訂金
+    const effectiveDeposit = paymentMethod === 'package' ? 0 : Math.min(paidDeposit, amt);
     setLoading(true);
     try {
       const y = serviceDate.getFullYear();
@@ -199,6 +211,8 @@ export default function NewServiceRecordScreen() {
         customer_id: resolvedCustomerId,
         service_name: serviceName.trim(),
         amount: paymentMethod === 'package' ? 0 : amt,
+        deposit_amount: effectiveDeposit,
+        deposit_method: effectiveDeposit > 0 ? depositMethod : null,
         service_date: `${y}-${m}-${d}`,
         notes: notes.trim() || null,
         before_photo_path: null,
@@ -349,6 +363,29 @@ export default function NewServiceRecordScreen() {
             <TextInput className="flex-1 font-rounded text-base text-foreground" placeholder="0"
               placeholderTextColor="#c4a0ae" value={amount} onChangeText={setAmount} keyboardType="numeric" />
           </View>
+          {paidDeposit > 0 && (() => {
+            const total = parseFloat(amount) || 0;
+            const dep = paymentMethod === 'package' ? 0 : Math.min(paidDeposit, total);
+            return (
+              <View className="mt-2 rounded-2xl px-4 py-3 gap-1" style={{ backgroundColor: '#fff8e0', borderWidth: 1, borderColor: '#f5d87a' }}>
+                <View className="flex-row items-center justify-between">
+                  <Text className="font-rounded text-sm" style={{ color: '#9a6400' }}>
+                    已收訂金（{depositMethod === 'line_pay' ? 'LINE Pay' : '銀行轉帳'}）
+                  </Text>
+                  <Text className="font-rounded text-sm font-bold" style={{ color: '#9a6400' }}>
+                    {paymentMethod === 'package' ? '不帶入' : `− $${dep.toLocaleString()}`}
+                  </Text>
+                </View>
+                <View className="flex-row items-center justify-between">
+                  <Text className="font-rounded text-sm font-semibold" style={{ color: '#9a6400' }}>現場應收尾款</Text>
+                  <Text className="font-rounded text-base font-bold" style={{ color: '#9a6400' }}>${Math.max(total - dep, 0).toLocaleString()}</Text>
+                </View>
+                {paymentMethod === 'package' && (
+                  <Text className="font-rounded text-xs" style={{ color: '#9a6400' }}>選擇套票扣款時，這筆訂金不會帶入報表，請另外處理（例如退還）。</Text>
+                )}
+              </View>
+            );
+          })()}
         </View>
 
         {staffList.length > 0 && (
@@ -467,14 +504,11 @@ export default function NewServiceRecordScreen() {
         )}
 
         <View>
-          <Text className="font-rounded text-sm font-medium text-foreground mb-2">付款方式 *</Text>
+          <Text className="font-rounded text-sm font-medium text-foreground mb-2">
+            {paidDeposit > 0 && paymentMethod !== 'package' ? '尾款付款方式 *' : '付款方式 *'}
+          </Text>
           <View className="flex-row flex-wrap gap-2">
-            {([
-              { key: 'cash', label: '💵 現金', color: '#5dc0a0' },
-              { key: 'card', label: '💳 刷卡', color: '#8b9de8' },
-              { key: 'line_pay', label: '📱 LINE Pay', color: '#06c755' },
-              { key: 'package', label: '🎫 套票扣款', color: '#e8789a' },
-            ] as { key: 'cash' | 'card' | 'line_pay' | 'package'; label: string; color: string }[]).map(opt => (
+            {(['cash', 'card', 'bank_transfer', 'line_pay', 'mobile_pay', 'package'] as PaymentMethod[]).map(key => ({ key, label: PAYMENT_META[key].label, color: PAYMENT_META[key].color })).map(opt => (
               <Pressable
                 key={opt.key}
                 className="rounded-xl py-2.5 items-center border active:opacity-70"

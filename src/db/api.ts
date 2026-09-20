@@ -403,7 +403,7 @@ export async function createServicePackage(
       notes: `套票購買，關聯套票 ID: ${pkg.id}`,
       before_photo_path: null,
       after_photo_path: null,
-      payment_method: (payload.purchase_payment_method ?? 'cash') as 'cash' | 'card' | 'line_pay',
+      payment_method: payload.purchase_payment_method ?? 'cash',
       package_id: null,
       status: 'completed',
     });
@@ -1574,6 +1574,27 @@ export async function getStaffPerformance(year: number, month: number): Promise<
     }
   }
   return Array.from(map.values()).sort((a, b) => b.total_revenue - a.total_revenue);
+}
+
+// 報表用：目前的訂金狀況（不分月份的即時快照）。
+// received＝需訂金的預約，顧客已付且店家已確認收款、服務還沒完成（預收訂金，服務完成結帳時才算進營業額）；
+// awaiting＝顧客送出預約、店家還沒核對匯款（待確認匯款，48 小時沒確認會自動取消）。
+export async function getPendingDepositSummary(): Promise<{
+  received: { count: number; amount: number }; awaiting: { count: number; amount: number };
+}> {
+  const { data, error } = await supabase
+    .from('online_orders')
+    .select('deposit_amount, status')
+    .eq('booking_mode', 'deposit')
+    .in('status', ['paid', 'confirmed', 'pending_transfer_confirm']);
+  if (error) throw error;
+  const out = { received: { count: 0, amount: 0 }, awaiting: { count: 0, amount: 0 } };
+  for (const o of (data ?? []) as { deposit_amount: number | string | null; status: string }[]) {
+    const bucket = o.status === 'pending_transfer_confirm' ? out.awaiting : out.received;
+    bucket.count += 1;
+    bucket.amount += Number(o.deposit_amount ?? 0);
+  }
+  return out;
 }
 
 // 員工帳號專用：自己每個月的服務次數與收入（migration 00076，只回傳彙總數字）。

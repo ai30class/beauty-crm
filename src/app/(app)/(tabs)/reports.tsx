@@ -7,8 +7,9 @@ import { StatusBar } from 'expo-status-bar';
 import { TrendingUp, TrendingDown, DollarSign, Scissors, Plus, Trash2, CalendarDays } from 'lucide-react-native';
 import {
   getMonthlyStats, getExpensesByMonth, createExpense, deleteExpense,
-  getIncomeTrend, getServiceRecordsByMonth, getDailyServiceRecords
+  getIncomeTrend, getServiceRecordsByMonth, getDailyServiceRecords, getPendingDepositSummary
 } from '@/db/api';
+import { PAYMENT_META, CASHFLOW_METHODS, summarizeCashFlow, toCsv, downloadCsv } from '@/lib/payments';
 import type { MonthlyStats, Expense, TrendPoint, ServiceRecord } from '@/types/types';
 import TrendLineChart from '@/components/TrendLineChart';
 
@@ -77,6 +78,8 @@ export default function ReportsTab() {
   const [stats, setStats] = useState<MonthlyStats | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [monthRecords, setMonthRecords] = useState<ServiceRecord[]>([]);
+  const [pendingDeposits, setPendingDeposits] = useState<Awaited<ReturnType<typeof getPendingDepositSummary>> | null>(null);
+  const [showFlowDays, setShowFlowDays] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [expDesc, setExpDesc] = useState('');
@@ -112,14 +115,16 @@ export default function ReportsTab() {
   const loadMonthly = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, e, r] = await Promise.all([
+      const [s, e, r, pd] = await Promise.all([
         getMonthlyStats(year, month),
         getExpensesByMonth(year, month),
         getServiceRecordsByMonth(year, month),
+        getPendingDepositSummary().catch(() => null),
       ]);
       setStats(s);
       setExpenses(e);
       setMonthRecords(r);
+      setPendingDeposits(pd);
     } finally {
       setLoading(false);
     }
@@ -249,23 +254,15 @@ export default function ReportsTab() {
 
           {/* 付款方式小計 */}
           {dailyRecords.length > 0 && (() => {
-            const byMethod = {
-              cash:     { label: '💵 現金',    color: '#5dc0a0', total: 0 },
-              card:     { label: '💳 刷卡',    color: '#8b9de8', total: 0 },
-              line_pay: { label: '📱 LINE Pay', color: '#06c755', total: 0 },
-            } as Record<string, { label: string; color: string; total: number }>;
-            dailyRecords.forEach(r => {
-              const key = (r.payment_method ?? 'cash') as string;
-              if (byMethod[key]) byMethod[key].total += Number(r.amount);
-            });
-            const active = Object.entries(byMethod).filter(([, v]) => v.total > 0);
+            const cf = summarizeCashFlow(dailyRecords);
+            const active = CASHFLOW_METHODS.filter(m => (cf.byMethod[m] ?? 0) > 0);
             if (active.length === 0) return null;
             return (
-              <View className="mx-5 mb-4 flex-row gap-3">
-                {active.map(([key, v]) => (
-                  <View key={key} className="flex-1 rounded-2xl py-3 items-center border" style={{ backgroundColor: v.color + '12', borderColor: v.color + '33' }}>
-                    <Text className="font-rounded text-xs text-muted-foreground mb-0.5">{v.label}</Text>
-                    <Text className="font-rounded text-sm font-bold" style={{ color: v.color }}>${v.total.toLocaleString()}</Text>
+              <View className="mx-5 mb-4 flex-row flex-wrap gap-3">
+                {active.map(m => (
+                  <View key={m} className="rounded-2xl py-3 px-3 items-center border" style={{ flexGrow: 1, minWidth: '30%', backgroundColor: PAYMENT_META[m].color + '12', borderColor: PAYMENT_META[m].color + '33' }}>
+                    <Text className="font-rounded text-xs text-muted-foreground mb-0.5">{PAYMENT_META[m].label}</Text>
+                    <Text className="font-rounded text-sm font-bold" style={{ color: PAYMENT_META[m].color }}>${Math.round(cf.byMethod[m] ?? 0).toLocaleString()}</Text>
                   </View>
                 ))}
               </View>
@@ -284,12 +281,9 @@ export default function ReportsTab() {
               </View>
             ) : (
               dailyRecords.map((r, i) => {
-                const pmMap: Record<string, { label: string; color: string }> = {
-                  cash:     { label: '現金',    color: '#5dc0a0' },
-                  card:     { label: '刷卡',    color: '#8b9de8' },
-                  line_pay: { label: 'LINE Pay', color: '#06c755' },
-                };
-                const pm = pmMap[(r.payment_method ?? 'cash') as string] ?? pmMap.cash;
+                const pmMeta = PAYMENT_META[(r.payment_method ?? 'cash') as keyof typeof PAYMENT_META] ?? PAYMENT_META.cash;
+                const pm = { label: pmMeta.short, color: pmMeta.color };
+                const depAmt = Math.min(Math.max(Number(r.deposit_amount ?? 0), 0), Number(r.amount ?? 0));
                 return (
                   <View key={r.id} className={`py-3 flex-row items-center ${i > 0 ? 'border-t border-border' : ''}`}>
                     <View className="w-8 h-8 rounded-full bg-primary/15 items-center justify-center mr-3">
@@ -302,6 +296,9 @@ export default function ReportsTab() {
                         <View className="px-1.5 py-0.5 rounded-full" style={{ backgroundColor: pm.color + '20' }}>
                           <Text className="font-rounded" style={{ fontSize: 10, color: pm.color }}>{pm.label}</Text>
                         </View>
+                        {depAmt > 0 && (
+                          <Text className="font-rounded" style={{ fontSize: 10, color: '#9a6400' }}>含訂金 ${depAmt.toLocaleString()}</Text>
+                        )}
                       </View>
                     </View>
                     <Text className="font-rounded text-sm font-bold text-primary">${Number(r.amount).toLocaleString()}</Text>
@@ -342,6 +339,126 @@ export default function ReportsTab() {
                 <StatCard icon={<DollarSign size={18} color="#8b9de8" />} label="淨收入" value={`$${stats.netIncome.toLocaleString()}`} color={stats.netIncome >= 0 ? '#5dc0a0' : '#e8789a'} bg="#eef0fc" />
                 <StatCard icon={<Scissors size={18} color="#e8a87c" />} label="服務次數" value={`${stats.serviceCount} 次`} color="#e8a87c" bg="#fdf0e8" />
               </View>
+
+              {/* 金流統計：依付款方式看實際收了多少，營業額拆成「預收訂金」與「現場實收」 */}
+              {(() => {
+                const cf = summarizeCashFlow(monthRecords);
+                const days = Object.keys(cf.byDay).sort();
+                const money = (n: number) => `$${Math.round(n).toLocaleString()}`;
+                const exportFlow = () => {
+                  const rows: (string | number)[][] = [['日期', ...CASHFLOW_METHODS.map(m => PAYMENT_META[m].short), '當日合計', '服務筆數']];
+                  for (const d of days) {
+                    const row = CASHFLOW_METHODS.map(m => cf.byDay[d][m] ?? 0);
+                    rows.push([d, ...row, row.reduce((a, b) => a + b, 0), cf.countByDay[d] ?? 0]);
+                  }
+                  rows.push(['合計', ...CASHFLOW_METHODS.map(m => cf.byMethod[m] ?? 0), CASHFLOW_METHODS.reduce((a, m) => a + (cf.byMethod[m] ?? 0), 0), monthRecords.length]);
+                  downloadCsv(`金流_${year}-${String(month).padStart(2, '0')}.csv`, toCsv(rows));
+                };
+                const exportDetail = () => {
+                  const rows: (string | number)[][] = [['日期', '顧客', '服務項目', '金額', '已收訂金', '訂金收款方式', '現場實收', '付款方式']];
+                  for (const r of [...monthRecords].sort((a, b) => a.service_date.localeCompare(b.service_date))) {
+                    const total = Number(r.amount ?? 0);
+                    const dep = Math.min(Math.max(Number(r.deposit_amount ?? 0), 0), total);
+                    rows.push([r.service_date, r.customer?.name ?? '', r.service_name, total, dep,
+                      dep > 0 ? PAYMENT_META[(r.deposit_method ?? 'bank_transfer') as keyof typeof PAYMENT_META].short : '',
+                      total - dep, PAYMENT_META[(r.payment_method ?? 'cash') as keyof typeof PAYMENT_META].short]);
+                  }
+                  downloadCsv(`服務明細_${year}-${String(month).padStart(2, '0')}.csv`, toCsv(rows));
+                };
+                const methodTotal = CASHFLOW_METHODS.reduce((a, m) => a + (cf.byMethod[m] ?? 0), 0);
+                return (
+                  <View className="mx-5 bg-card rounded-2xl p-4 mb-5 border border-border">
+                    <Text className="font-rounded text-base font-semibold text-foreground mb-0.5">金流統計</Text>
+                    <Text className="font-rounded text-xs text-muted-foreground mb-3">本月實際收到的錢，依付款方式分類</Text>
+
+                    <View className="rounded-2xl px-4 py-3 mb-3" style={{ backgroundColor: '#e0f5ef' }}>
+                      <Text className="font-rounded text-xs" style={{ color: '#2ea87e' }}>本月營業額</Text>
+                      <Text className="font-rounded text-2xl font-bold" style={{ color: '#2ea87e' }}>{money(cf.total)}</Text>
+                      <Text className="font-rounded text-xs mt-1" style={{ color: '#2ea87e' }}>
+                        現場／尾款實收 {money(cf.onsite)}　＋　預收訂金抵用 {money(cf.deposit)}
+                      </Text>
+                    </View>
+
+                    {methodTotal > 0 ? CASHFLOW_METHODS.filter(m => (cf.byMethod[m] ?? 0) > 0).map(m => {
+                      const v = cf.byMethod[m] ?? 0;
+                      const pct = methodTotal > 0 ? (v / methodTotal) * 100 : 0;
+                      return (
+                        <View key={m} className="mb-2.5">
+                          <View className="flex-row items-center justify-between mb-1">
+                            <Text className="font-rounded text-sm text-foreground">{PAYMENT_META[m].label}</Text>
+                            <Text className="font-rounded text-sm font-semibold text-foreground">{money(v)}　<Text className="font-rounded text-xs text-muted-foreground">{pct.toFixed(0)}%</Text></Text>
+                          </View>
+                          <View className="h-2 bg-muted rounded-full overflow-hidden">
+                            <View className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: PAYMENT_META[m].color }} />
+                          </View>
+                        </View>
+                      );
+                    }) : (
+                      <Text className="font-rounded text-sm text-muted-foreground text-center py-2">本月尚無收款記錄</Text>
+                    )}
+                    {cf.packageUseCount > 0 && (
+                      <Text className="font-rounded text-xs text-muted-foreground mt-1">🎫 套票扣款 {cf.packageUseCount} 次（收入已在購買套票時計入）</Text>
+                    )}
+
+                    {pendingDeposits && (pendingDeposits.received.count > 0 || pendingDeposits.awaiting.count > 0) && (
+                      <View className="mt-3 rounded-2xl px-4 py-3 gap-1" style={{ backgroundColor: '#fff8e0', borderWidth: 1, borderColor: '#f5d87a' }}>
+                        <Text className="font-rounded text-xs font-semibold" style={{ color: '#9a6400' }}>目前的訂金（不分月份）</Text>
+                        {pendingDeposits.received.count > 0 && (
+                          <Text className="font-rounded text-sm" style={{ color: '#9a6400' }}>
+                            預收訂金（已收、待服務）{money(pendingDeposits.received.amount)}・{pendingDeposits.received.count} 筆
+                          </Text>
+                        )}
+                        {pendingDeposits.awaiting.count > 0 && (
+                          <Text className="font-rounded text-sm" style={{ color: '#9a6400' }}>
+                            待確認匯款 {money(pendingDeposits.awaiting.amount)}・{pendingDeposits.awaiting.count} 筆
+                          </Text>
+                        )}
+                        <Text className="font-rounded text-xs" style={{ color: '#9a6400' }}>預收訂金要等服務完成結帳，才會計入營業額。</Text>
+                      </View>
+                    )}
+
+                    {days.length > 0 && (
+                      <Pressable className="mt-3 py-2 active:opacity-70" onPress={() => setShowFlowDays(v => !v)}>
+                        <Text className="font-rounded text-sm font-semibold text-primary">{showFlowDays ? '收起每日金流明細 ▲' : '看每日金流明細 ▼'}</Text>
+                      </Pressable>
+                    )}
+                    {showFlowDays && days.length > 0 && (
+                      <ScrollView horizontal showsHorizontalScrollIndicator>
+                        <View>
+                          <View className="flex-row border-b border-border pb-1.5 mb-1">
+                            <Text className="font-rounded text-xs text-muted-foreground" style={{ width: 84 }}>日期</Text>
+                            {CASHFLOW_METHODS.map(m => (
+                              <Text key={m} className="font-rounded text-xs text-muted-foreground text-right" style={{ width: 78 }}>{PAYMENT_META[m].short}</Text>
+                            ))}
+                            <Text className="font-rounded text-xs font-semibold text-foreground text-right" style={{ width: 84 }}>合計</Text>
+                          </View>
+                          {days.map(d => {
+                            const row = CASHFLOW_METHODS.map(m => cf.byDay[d][m] ?? 0);
+                            return (
+                              <View key={d} className="flex-row py-1">
+                                <Text className="font-rounded text-xs text-foreground" style={{ width: 84 }}>{d.slice(5)}</Text>
+                                {row.map((v, i) => (
+                                  <Text key={i} className="font-rounded text-xs text-right" style={{ width: 78, color: v > 0 ? '#3d2b32' : '#d9c9d0' }}>{v > 0 ? money(v) : '–'}</Text>
+                                ))}
+                                <Text className="font-rounded text-xs font-bold text-foreground text-right" style={{ width: 84 }}>{money(row.reduce((a, b) => a + b, 0))}</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </ScrollView>
+                    )}
+
+                    <View className="flex-row gap-2 mt-3">
+                      <Pressable className="flex-1 rounded-xl py-2.5 items-center border border-border active:opacity-70" onPress={exportFlow} disabled={days.length === 0}>
+                        <Text className="font-rounded text-xs font-semibold" style={{ color: days.length === 0 ? '#c4a0ae' : '#e8789a' }}>匯出每日金流 CSV</Text>
+                      </Pressable>
+                      <Pressable className="flex-1 rounded-xl py-2.5 items-center border border-border active:opacity-70" onPress={exportDetail} disabled={monthRecords.length === 0}>
+                        <Text className="font-rounded text-xs font-semibold" style={{ color: monthRecords.length === 0 ? '#c4a0ae' : '#e8789a' }}>匯出服務明細 CSV</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })()}
 
               {/* 收入趨勢折線圖 */}
               <View className="mx-5 bg-card rounded-2xl p-4 mb-5 border border-border">
