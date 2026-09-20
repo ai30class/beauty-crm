@@ -10,6 +10,7 @@ import { ArrowLeft, Check, X, ShoppingBag, Pencil, Ban, Trash2, AlertTriangle } 
 import DateTimePicker from 'react-native-ui-datepicker';
 import { getOnlineOrders, updateOnlineOrderStatus, updateOnlineOrder, getStaff, getOnlineOrderAddonsByOrderIds, incrementCustomerNoShow, deleteOnlineOrder } from '@/db/api';
 import type { OnlineOrder, Staff } from '@/types/types';
+import { DONE_TEXT_COLOR, isDoneStatus } from '@/lib/appointmentStyle';
 
 // ── 共用常數 ──────────────────────────────────────────────
 
@@ -400,7 +401,7 @@ export default function OnlineOrdersScreen() {
               >
                 <View className="flex-row items-start justify-between">
                   <View className="flex-1">
-                    <Text className="font-rounded text-base font-bold text-foreground">{item.service_name}</Text>
+                    <Text className="font-rounded text-base font-bold text-foreground" style={isDoneStatus(item.status) ? { color: DONE_TEXT_COLOR } : undefined}>{item.service_name}</Text>
                     {addonsByOrder[item.id] && (
                       <Text className="font-rounded text-xs mt-0.5" style={{ color: '#e8a87c' }}>+ 加購：{addonsByOrder[item.id]}</Text>
                     )}
@@ -430,7 +431,7 @@ export default function OnlineOrdersScreen() {
                 <View className="flex-row gap-4">
                   <View>
                     <Text className="font-rounded text-xs text-muted-foreground">顧客</Text>
-                    <Text className="font-rounded text-sm text-foreground font-medium">{item.customer_name}</Text>
+                    <Text className="font-rounded text-sm text-foreground font-medium" style={isDoneStatus(item.status) ? { color: DONE_TEXT_COLOR } : undefined}>{item.customer_name}</Text>
                   </View>
                   <View>
                     <Text className="font-rounded text-xs text-muted-foreground">電話</Text>

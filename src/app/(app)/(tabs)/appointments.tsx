@@ -9,6 +9,7 @@ import { Calendar, Plus, Clock, User, CheckCircle, Globe, Trash2, AlertTriangle 
 import OnlineOrderInfoModal from '@/components/OnlineOrderInfoModal';
 import { getMergedAppointments, updateAppointmentStatus, deleteAppointment, deleteOnlineOrder, getAccountType } from '@/db/api';
 import type { UnifiedAppointment } from '@/types/types';
+import { DONE_TEXT_COLOR, isDoneStatus } from '@/lib/appointmentStyle';
 
 // 統一狀態顯示
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -31,6 +32,7 @@ function formatDateTime(iso: string) {
 function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppointment; onStatusChange: () => void; isStaff: boolean }) {
   const { date, time } = formatDateTime(item.appointment_time);
   const status = STATUS_LABELS[item.status] ?? STATUS_LABELS.pending;
+  const isDone = isDoneStatus(item.status);
   const router = useRouter();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
@@ -89,10 +91,10 @@ function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppoi
             }
           </View>
           <View className="flex-1">
-            <Text className="font-rounded text-sm font-semibold text-foreground" numberOfLines={1}>
+            <Text className="font-rounded text-sm font-semibold text-foreground" style={isDone ? { color: DONE_TEXT_COLOR } : undefined} numberOfLines={1}>
               {item.customer_name}
             </Text>
-            <Text className="font-rounded text-xs text-muted-foreground" numberOfLines={1}>
+            <Text className="font-rounded text-xs text-muted-foreground" style={isDone ? { color: DONE_TEXT_COLOR } : undefined} numberOfLines={1}>
               {item.service_name}
             </Text>
           </View>

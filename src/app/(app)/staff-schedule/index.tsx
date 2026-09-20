@@ -19,6 +19,7 @@ import {
   toApptDateStr, timeToMinutes, hhmmToMinutes, minutesToHHMM, isStaffAppt, apptDurationMin,
 } from '@/lib/schedule';
 import type { UnifiedAppointment, BusinessHours, Holiday, StaffReservedSlot, StaffRosterEntry } from '@/types/types';
+import { DONE_TEXT_COLOR, isDoneStatus } from '@/lib/appointmentStyle';
 
 const DAY_KEYS: (keyof BusinessHours)[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -72,6 +73,7 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string }> 
 // ── 預約卡 ────────────────────────────────────────────────────────────────────
 function ApptCard({ item }: { item: UnifiedAppointment }) {
   const status = STATUS_META[item.status] ?? STATUS_META.pending;
+  const isDone = isDoneStatus(item.status);
   return (
     <View
       className="bg-card rounded-2xl px-4 py-3 border border-border gap-2"
@@ -89,7 +91,7 @@ function ApptCard({ item }: { item: UnifiedAppointment }) {
               : <User size={13} color="#e8789a" />
             }
           </View>
-          <Text className="font-rounded text-sm font-bold text-foreground flex-1" numberOfLines={1}>
+          <Text className="font-rounded text-sm font-bold text-foreground flex-1" style={isDone ? { color: DONE_TEXT_COLOR } : undefined} numberOfLines={1}>
             {item.customer_name}
           </Text>
         </View>
@@ -99,7 +101,7 @@ function ApptCard({ item }: { item: UnifiedAppointment }) {
       </View>
 
       {/* 服務名稱 */}
-      <Text className="font-rounded text-sm text-muted-foreground" numberOfLines={1}>{item.service_name}</Text>
+      <Text className="font-rounded text-sm text-muted-foreground" style={isDone ? { color: DONE_TEXT_COLOR } : undefined} numberOfLines={1}>{item.service_name}</Text>
 
       {/* 時間 + 人員 + 費用 */}
       <View className="flex-row items-center gap-3 flex-wrap">
@@ -512,6 +514,7 @@ export default function StaffScheduleScreen() {
                                   const startMin = Math.max(timeToMinutes(a.appointment_time), TIMELINE_START_MIN);
                                   const endMin = Math.min(startMin + apptDurationMin(a), TIMELINE_END_MIN);
                                   const { who, detail } = apptLabels(a);
+                                  const done = isDoneStatus(a.status);
                                   return (
                                     <Pressable key={a.id}
                                       style={({ pressed }) => ({ position: 'absolute', left: 3, right: 3, top: yOf(startMin),
@@ -519,10 +522,10 @@ export default function StaffScheduleScreen() {
                                         backgroundColor: s.color + '33', borderRadius: 6, borderLeftWidth: 4, borderLeftColor: s.color,
                                         opacity: pressed ? 0.7 : 1, overflow: 'hidden', padding: 4 })}
                                       onPress={() => openAppt(a)}>
-                                      <Text className="font-rounded" style={{ fontSize: 11, fontWeight: '700', color: '#3d2b32' }} numberOfLines={1}>
+                                      <Text className="font-rounded" style={{ fontSize: 11, fontWeight: '700', color: done ? DONE_TEXT_COLOR : '#3d2b32' }} numberOfLines={1}>
                                         {formatTime(a.appointment_time)}{who ? ` ${who}` : ''}
                                       </Text>
-                                      {detail ? <Text className="font-rounded" style={{ fontSize: 11, color: '#5a4850' }} numberOfLines={3}>{detail}</Text> : null}
+                                      {detail ? <Text className="font-rounded" style={{ fontSize: 11, color: done ? DONE_TEXT_COLOR : '#5a4850' }} numberOfLines={3}>{detail}</Text> : null}
                                     </Pressable>
                                   );
                                 })}
