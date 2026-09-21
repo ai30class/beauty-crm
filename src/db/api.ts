@@ -1309,6 +1309,14 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
       for (const row of (data ?? []) as { id: string; name: string }[]) staffNames.set(row.id, row.name);
     }
   }
+  // 員工帳號對 staff 表沒有 SELECT 權限，上面 staff embed 是 null，設計師名字與顏色會是空的
+  // （預約列表上的線上預約小視窗會顯示成「未指定」）。用排班表同一支只回傳安全欄位的名單函式補上；
+  // 失敗時維持空白，不會壞。
+  const rosterById = new Map<string, { name: string; color: string }>();
+  if (isStaff) {
+    const roster = await getShopStaffRoster().catch(() => [] as StaffRosterEntry[]);
+    for (const s of roster) rosterById.set(s.id, { name: s.name, color: s.color });
+  }
   // 上面兩個查詢都是「時間由新到舊取 500 筆」：歷史資料超過 500 筆時被截掉的是最舊的，
   // 今天以後的預約一定拿得到（原本是由舊到新取 500 筆，超過就會漏掉最新的）。
   // 最後回傳前有再依時間由舊到新排序。
@@ -1325,8 +1333,8 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
     status: a.status,
     notes: a.notes,
     staff_id: a.staff_id,
-    staff_name: (a.staff as any)?.name,
-    staff_color: (a.staff as any)?.color,
+    staff_name: (a.staff as any)?.name ?? (a.staff_id ? rosterById.get(a.staff_id)?.name : undefined),
+    staff_color: (a.staff as any)?.color ?? (a.staff_id ? rosterById.get(a.staff_id)?.color : undefined),
   }));
 
   const online: UnifiedAppointment[] = (orders as OnlineOrder[]).map(o => ({
@@ -1341,8 +1349,8 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
     status: o.status,
     notes: o.notes,
     staff_id: o.staff_id,
-    staff_name: (o.staff as any)?.name,
-    staff_color: (o.staff as any)?.color,
+    staff_name: (o.staff as any)?.name ?? (o.staff_id ? rosterById.get(o.staff_id)?.name : undefined),
+    staff_color: (o.staff as any)?.color ?? (o.staff_id ? rosterById.get(o.staff_id)?.color : undefined),
     booking_mode: o.booking_mode,
   }));
 
