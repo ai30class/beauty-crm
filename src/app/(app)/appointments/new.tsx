@@ -263,6 +263,8 @@ export default function NewAppointmentScreen() {
         notes: notes.trim() || null,
         status: 'pending',
         staff_id: selectedStaffId,
+        // 存下所選服務的時長（沒選服務就 60 分）；排班表、顧客預約的空檔計算都靠這個
+        duration_minutes: selectedTemplate?.duration_minutes ?? 60,
       });
       // 直接用網址進來（沒有上一頁）時 router.back() 不會有反應，改回預約列表
       if (router.canGoBack()) router.back();

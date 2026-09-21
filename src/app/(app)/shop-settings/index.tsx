@@ -47,7 +47,7 @@ function DayRow({
         <View className="flex-1 flex-row items-center gap-2">
           <TimeSelector value={hours.start} onChange={v => onChange({ ...hours, start: v })} />
           <Text className="font-rounded text-xs text-muted-foreground">至</Text>
-          <TimeSelector value={hours.end} onChange={v => onChange({ ...hours, end: v })} />
+          <TimeSelector value={hours.end} onChange={v => onChange({ ...hours, end: v })} allowEndOfDay />
         </View>
       ) : (
         <Text className="font-rounded text-sm text-muted-foreground flex-1">公休</Text>

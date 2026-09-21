@@ -91,6 +91,8 @@ export interface Appointment {
   status: 'pending' | 'completed' | 'cancelled';
   created_at: string;
   staff_id: string | null;
+  // 手動預約的時長（分鐘，migration 00088）；舊資料是空的，讀取時看 manualDurationMin()
+  duration_minutes?: number | null;
   customer?: { name: string; phone: string };
   staff?: { name: string; color: string } | null;
 }

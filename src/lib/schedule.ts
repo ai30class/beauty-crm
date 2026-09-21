@@ -22,13 +22,19 @@ export function minutesToHHMM(min: number) {
 export function isStaffAppt(a: UnifiedAppointment, s: StaffRosterEntry) {
   return a.staff_id ? a.staff_id === s.id : a.staff_name === s.name;
 }
-// 手動預約在資料庫沒有時長欄位（一律當 60 分）；舊系統匯入的預約真正的時間寫在備註，優先用那個
-export function apptDurationMin(a: UnifiedAppointment) {
+// 手動預約的實際時長：有記錄（duration_minutes，migration 00088）就用記錄；
+// 沒記錄的舊資料——舊系統匯入的看備註「[舊系統匯入] HH:MM~HH:MM」，其餘一律當 60 分鐘。
+// 跟資料庫 get_busy_ranges_core 同一套規則。getMergedAppointments() 已經把它算進 UnifiedAppointment.duration_minutes。
+export function manualDurationMin(a: { duration_minutes?: number | null; notes: string | null }) {
+  if (a.duration_minutes && a.duration_minutes > 0) return a.duration_minutes;
   const m = a.notes?.match(/^\[舊系統匯入\]\s*(\d{2}):(\d{2})~(\d{2}):(\d{2})/);
   if (m) {
     const d = (Number(m[3]) * 60 + Number(m[4])) - (Number(m[1]) * 60 + Number(m[2]));
     if (d > 0) return d;
   }
+  return 60;
+}
+export function apptDurationMin(a: UnifiedAppointment) {
   return a.duration_minutes || 30;
 }
 

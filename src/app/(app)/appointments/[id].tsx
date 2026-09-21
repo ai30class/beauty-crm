@@ -9,6 +9,7 @@ import { ArrowLeft, Trash2, Clock, CheckCircle, XCircle, Clock3, AlertTriangle }
 import DateTimePicker from 'react-native-ui-datepicker';
 import { getAppointmentById, updateAppointment, deleteAppointment, incrementCustomerNoShow, getStaffForPicker, getAccountType } from '@/db/api';
 import TimeOfDayPicker from '@/components/TimeOfDayPicker';
+import { manualDurationMin } from '@/lib/schedule';
 import type { Appointment, StaffRosterEntry } from '@/types/types';
 import { useDeletePinGate } from '@/lib/deletePinGate';
 
@@ -39,6 +40,9 @@ export default function AppointmentDetailScreen() {
   const [status, setStatus] = useState<Appointment['status']>('pending');
   const [staffList, setStaffList] = useState<StaffRosterEntry[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
+  // 服務時長（分鐘）：舊預約沒記錄，顯示成舊規則算出來的值；只有使用者動過它才會寫回資料庫
+  const [duration, setDuration] = useState(60);
+  const [durationChanged, setDurationChanged] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -57,6 +61,7 @@ export default function AppointmentDetailScreen() {
         setNotes(a.notes ?? '');
         setStatus(a.status);
         setSelectedStaffId(a.staff_id);
+        setDuration(manualDurationMin(a));
       }
       setLoading(false);
     })();
@@ -75,6 +80,7 @@ export default function AppointmentDetailScreen() {
         notes: notes.trim() || null,
         status,
         staff_id: selectedStaffId,
+        ...(durationChanged ? { duration_minutes: duration } : {}),
       });
       router.back();
     } catch (e: any) {
@@ -240,6 +246,40 @@ export default function AppointmentDetailScreen() {
             minute={apptDate.getMinutes()}
             onChange={(h, m) => setApptDate(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate(), h, m))}
           />
+        </View>
+
+        {/* 服務時長 */}
+        <View>
+          <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">服務時長</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View className="flex-row gap-2">
+              {Array.from(new Set([30, 60, 90, 120, 150, 180, 210, 240, 300, 360, duration]))
+                .sort((x, y) => x - y)
+                .map(m => {
+                  const active = duration === m;
+                  return (
+                    <Pressable
+                      key={m}
+                      className="px-3.5 py-2 rounded-full border active:opacity-70"
+                      style={{ borderColor: active ? '#e8789a' : '#e0d0d8', backgroundColor: active ? '#fce9f0' : '#fff' }}
+                      onPress={() => { setDuration(m); setDurationChanged(true); }}
+                    >
+                      <Text className="font-rounded text-sm" style={{ color: active ? '#e8789a' : '#c4a0ae' }}>{m} 分</Text>
+                    </Pressable>
+                  );
+                })}
+            </View>
+          </ScrollView>
+          {(() => {
+            const end = new Date(apptDate.getTime() + duration * 60000);
+            const hm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+            const nextDay = end.getDate() !== apptDate.getDate();
+            return (
+              <Text className="font-rounded text-xs text-muted-foreground mt-1.5">
+                預計 {hm(apptDate)}～{nextDay ? '隔天 ' : ''}{hm(end)}
+              </Text>
+            );
+          })()}
         </View>
 
         {/* 備註 */}

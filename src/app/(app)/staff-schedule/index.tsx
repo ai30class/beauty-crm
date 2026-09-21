@@ -136,11 +136,13 @@ function ApptCard({ item }: { item: UnifiedAppointment }) {
   );
 }
 
-// 週視圖時間軸：固定假設範圍 9:00–21:00，涵蓋大多數美業診所的營業時段
+// 週視圖時間軸：固定範圍 9:00–24:00（Emma 9/21：營業到晚上 24:00）。不隨營業時間變動，
+// 所以打烊比 24:00 早的店，晚上那段只是空白。
 const TIMELINE_START_MIN = 9 * 60;
-const TIMELINE_END_MIN = 21 * 60;
-const TRACK_HEIGHT = 320;
-// 日視圖：每小時的高度，一天 12 小時共 720 高，往下捲動看
+const TIMELINE_END_MIN = 24 * 60;
+// 15 小時共 400 高（跟原本 12 小時 320 高同一個每小時高度）
+const TRACK_HEIGHT = 400;
+// 日視圖：每小時的高度，一天 15 小時共 900 高，往下捲動看
 const DAY_HOUR_PX = 60;
 const HOUR_MARKS = Array.from({ length: (TIMELINE_END_MIN - TIMELINE_START_MIN) / 60 + 1 }, (_, i) => 9 + i);
 // 每 30 分鐘一條刻度線（含整點），整點另外顯示數字，半點只畫線不顯示文字

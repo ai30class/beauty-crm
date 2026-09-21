@@ -8,22 +8,30 @@ for (let h = 0; h < 24; h++) {
     TIME_OPTIONS.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
   }
 }
+// 「營業到半夜 24:00」用：只有結束時間選單需要，開始時間不能是 24:00
+const TIME_OPTIONS_WITH_MIDNIGHT = [...TIME_OPTIONS, '24:00'];
 
 // ── 時間選擇器（跳出視窗選單，避免巢狀捲動在網頁版滾不動、蓋住下一列） ───────
 const TIME_ITEM_HEIGHT = 44;
 
-export default function TimeSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export default function TimeSelector({ value, onChange, allowEndOfDay = false }: {
+  value: string;
+  onChange: (v: string) => void;
+  /** 多一個「24:00」選項（結束時間用） */
+  allowEndOfDay?: boolean;
+}) {
+  const options = allowEndOfDay ? TIME_OPTIONS_WITH_MIDNIGHT : TIME_OPTIONS;
   const [open, setOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     if (!open) return;
-    const idx = TIME_OPTIONS.indexOf(value);
+    const idx = options.indexOf(value);
     if (idx < 0) return;
     requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({ y: Math.max(0, (idx - 2) * TIME_ITEM_HEIGHT), animated: false });
     });
-  }, [open, value]);
+  }, [open, value, options]);
 
   return (
     <>
@@ -42,7 +50,7 @@ export default function TimeSelector({ value, onChange }: { value: string; onCha
             onPress={() => {/* 阻止冒泡 */}}
           >
             <ScrollView ref={scrollRef} showsVerticalScrollIndicator>
-              {TIME_OPTIONS.map(t => (
+              {options.map(t => (
                 <Pressable
                   key={t}
                   className="px-4 items-center justify-center active:bg-muted"

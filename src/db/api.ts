@@ -1,5 +1,6 @@
 import { supabase } from '@/client/supabase';
 import { randomUUID } from 'expo-crypto';
+import { manualDurationMin } from '@/lib/schedule';
 import type {
   Customer, ServiceRecord, TrendPoint, Appointment, ServiceTemplate,
   ServicePackage, PackageTransaction, Staff, TimeSlot, ShopProfile,
@@ -299,7 +300,7 @@ export async function getAppointmentById(id: string): Promise<Appointment | null
 
 export async function updateAppointment(
   id: string,
-  payload: Partial<Pick<Appointment, 'appointment_time' | 'notes' | 'status' | 'staff_id'>>
+  payload: Partial<Pick<Appointment, 'appointment_time' | 'notes' | 'status' | 'staff_id' | 'duration_minutes'>>
 ): Promise<void> {
   const { error } = await supabase.from('appointments').update(payload).eq('id', id);
   if (error) throw error;
@@ -793,7 +794,8 @@ export async function getAvailableSlots(
   // 依營業時間產生每 30 分鐘一格的時段
   const closeH = Math.floor(closeMins / 60);
   const closeM = closeMins % 60;
-  const closeDate = new Date(`${dateStr}T${String(closeH).padStart(2,'0')}:${String(closeM).padStart(2,'0')}:00`);
+  // 用「當天 00:00＋分鐘數」算打烊時間：營業到 24:00（1440 分）時，`T24:00:00` 這種寫法不是每個瀏覽器都能解析
+  const closeDate = new Date(dayStartDate.getTime() + closeMins * 60000);
 
   const slots: TimeSlot[] = [];
   for (let slotMins = openMins; slotMins < closeMins; slotMins += 30) {
@@ -1328,7 +1330,7 @@ export async function getMergedAppointments(): Promise<UnifiedAppointment[]> {
     customer_name: a.customer?.name ?? staffNames.get(a.customer_id) ?? '—',
     customer_phone: a.customer?.phone ?? '',
     service_name: '預約服務',
-    duration_minutes: 60,
+    duration_minutes: manualDurationMin(a),
     total_amount: 0,
     status: a.status,
     notes: a.notes,
