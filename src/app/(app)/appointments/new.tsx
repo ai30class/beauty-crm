@@ -56,6 +56,7 @@ export default function NewAppointmentScreen() {
 
   const [templates, setTemplates] = useState<ServiceTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<ServiceTemplate | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState('全部');
 
   const [apptDate, setApptDate] = useState<Date>(() => {
     if (presetDate) {
@@ -249,6 +250,14 @@ export default function NewAppointmentScreen() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apptDate, selectedTemplate]);
+
+  // 服務項目的類別分頁：沿用「服務項目管理」設好的分類（沒設分類的歸「未分類」）；只有一種類別時不顯示分頁。
+  // 跟「新增服務記錄」的快速選擇服務同一套做法，只是篩選、不影響已選的服務。
+  const templateCategories = ['全部', ...Array.from(new Set(templates.map(t => t.category.trim() || '未分類')))];
+  const activeCategory = templateCategories.includes(selectedCategory) ? selectedCategory : '全部';
+  const visibleTemplates = activeCategory === '全部'
+    ? templates
+    : templates.filter(t => (t.category.trim() || '未分類') === activeCategory);
 
   const handleSave = async () => {
     setError('');
@@ -515,9 +524,27 @@ export default function NewAppointmentScreen() {
         {templates.length > 0 && (
           <View>
             <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">服務項目（選填）</Text>
+            {templateCategories.length > 2 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1 mb-2">
+                <View className="flex-row gap-2 px-1 pb-1">
+                  {templateCategories.map(c => (
+                    <Pressable
+                      key={c}
+                      className="px-4 py-1.5 rounded-full active:opacity-70"
+                      style={{ backgroundColor: activeCategory === c ? '#e8789a' : '#fce9f0' }}
+                      onPress={() => setSelectedCategory(c)}
+                    >
+                      <Text className="font-rounded text-sm font-medium" style={{ color: activeCategory === c ? '#fff' : '#e8789a' }}>
+                        {c}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
               <View className="flex-row gap-2 px-1 pb-1">
-                {templates.map(tpl => {
+                {visibleTemplates.map(tpl => {
                   const active = selectedTemplate?.id === tpl.id;
                   return (
                     <Pressable
