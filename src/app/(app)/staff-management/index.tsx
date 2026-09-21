@@ -62,6 +62,7 @@ export default function StaffManagementScreen() {
   const [editCanViewCustomers, setEditCanViewCustomers] = useState(false);
   const [editCanManagePricing, setEditCanManagePricing] = useState(false);
   const [editCanManageShopSettings, setEditCanManageShopSettings] = useState(false);
+  const [editCanCompleteOnlineOrders, setEditCanCompleteOnlineOrders] = useState(false);
 
   // 員工登入帳號：哪些人已經建過了（不能重複邀請）、邀請表單的 email 草稿／
   // 狀態，用 staffId 當 key，因為同一頁可能好幾個人都在編輯狀態
@@ -107,7 +108,7 @@ export default function StaffManagementScreen() {
       await createStaff({
         name: newName.trim(), role: 'therapist', color: newColor, is_active: true, commission_rate: rate, base_salary: baseSalary, bio: newBio.trim() || null, avatar_url: avatarPath,
         // 新員工預設沒有任何登入帳號權限開關（跟還沒建立登入帳號無關，這是獨立的預設值）
-        can_view_customers: false, can_manage_pricing: false, can_manage_shop_settings: false,
+        can_view_customers: false, can_manage_pricing: false, can_manage_shop_settings: false, can_complete_online_orders: false,
       });
       setNewName(''); setNewCommissionRate(''); setNewBaseSalary(''); setNewBio(''); setNewAvatarAsset(null); setShowAdd(false); load();
     } catch (e: any) { setError(e.message); }
@@ -129,6 +130,7 @@ export default function StaffManagementScreen() {
       can_view_customers: editCanViewCustomers,
       can_manage_pricing: editCanManagePricing,
       can_manage_shop_settings: editCanManageShopSettings,
+      can_complete_online_orders: editCanCompleteOnlineOrders,
     });
     setEditId(null); setEditAvatarAsset(null); load();
   };
@@ -362,6 +364,10 @@ export default function StaffManagementScreen() {
                       <Text className="font-rounded text-sm text-foreground flex-1 pr-2">可管理自己的休假與封鎖時段（整家店的營業時間、店休一律只有你能改）</Text>
                       <Switch value={editCanManageShopSettings} onValueChange={setEditCanManageShopSettings} trackColor={{ false: '#e5dde0', true: '#e8789a' }} />
                     </View>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="font-rounded text-sm text-foreground flex-1 pr-2">可替全店的線上預約「完成服務並記錄收入」（只有金額、付款方式、備註；套票、保養品、分帳、照片仍由你處理）</Text>
+                      <Switch value={editCanCompleteOnlineOrders} onValueChange={setEditCanCompleteOnlineOrders} trackColor={{ false: '#e5dde0', true: '#e8789a' }} />
+                    </View>
                   </View>
 
                   {/* 員工登入帳號：建立／已建立狀態 */}
@@ -441,7 +447,7 @@ export default function StaffManagementScreen() {
                   <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted mr-1"
                     onPress={() => {
                       setEditId(s.id); setEditName(s.name); setEditColor(s.color); setEditCommissionRate(String(s.commission_rate)); setEditBaseSalary(String(s.base_salary ?? 0)); setEditBio(s.bio ?? ''); setEditAvatarUrl(s.avatar_url); setEditAvatarAsset(null);
-                      setEditCanViewCustomers(s.can_view_customers); setEditCanManagePricing(s.can_manage_pricing); setEditCanManageShopSettings(s.can_manage_shop_settings);
+                      setEditCanViewCustomers(s.can_view_customers); setEditCanManagePricing(s.can_manage_pricing); setEditCanManageShopSettings(s.can_manage_shop_settings); setEditCanCompleteOnlineOrders(s.can_complete_online_orders ?? false);
                     }}>
                     <Pencil size={15} color="#c4a0ae" />
                   </Pressable>

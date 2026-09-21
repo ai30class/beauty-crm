@@ -7,7 +7,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { Calendar, Plus, Clock, User, CheckCircle, Globe, Trash2, AlertTriangle } from 'lucide-react-native';
 import OnlineOrderInfoModal from '@/components/OnlineOrderInfoModal';
-import { getMergedAppointments, updateAppointmentStatus, deleteAppointment, deleteOnlineOrder, getAccountType } from '@/db/api';
+import StaffCompleteOnlineOrderModal from '@/components/StaffCompleteOnlineOrderModal';
+import { getMergedAppointments, updateAppointmentStatus, deleteAppointment, deleteOnlineOrder, getAccountType, staffCanCompleteOnlineOrders } from '@/db/api';
 import type { UnifiedAppointment } from '@/types/types';
 import { DONE_TEXT_COLOR, isDoneStatus } from '@/lib/appointmentStyle';
 import { useDeletePinGate } from '@/lib/deletePinGate';
@@ -30,7 +31,7 @@ function formatDateTime(iso: string) {
   };
 }
 
-function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppointment; onStatusChange: () => void; isStaff: boolean }) {
+function AppointmentCard({ item, onStatusChange, isStaff, canCompleteOnline }: { item: UnifiedAppointment; onStatusChange: () => void; isStaff: boolean; canCompleteOnline: boolean }) {
   const { date, time } = formatDateTime(item.appointment_time);
   const status = STATUS_LABELS[item.status] ?? STATUS_LABELS.pending;
   const isDone = isDoneStatus(item.status);
@@ -38,6 +39,7 @@ function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppoi
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { gate, gateModal } = useDeletePinGate();
   const [showInfo, setShowInfo] = useState(false);
+  const [showComplete, setShowComplete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
@@ -155,13 +157,18 @@ function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppoi
           <Text className="font-rounded text-sm text-secondary-foreground ml-1 font-medium">標記完成</Text>
         </Pressable>
       )}
-      {/* 員工讀不到線上預約資料表，「完成服務並記錄收入」頁載入不到訂單，只有商家能做 */}
-      {item.source === 'online' && !isStaff && (item.status === 'confirmed' || item.status === 'paid') && (
+      {/* 員工讀不到線上預約資料表，完整的「完成服務並記錄收入」頁載入不到訂單：商家走完整表單；
+          員工只有商家開了「可完成線上預約並記帳」的開關才有，而且走簡化版視窗（金額、付款方式、備註、服務人員） */}
+      {item.source === 'online' && (!isStaff || canCompleteOnline) && (item.status === 'confirmed' || item.status === 'paid') && (
         <Pressable
           className="flex-row items-center justify-center mt-3 gap-2 py-2.5 rounded-xl active:opacity-70"
           style={{ backgroundColor: '#e0f5ef' }}
           onPress={(e) => {
             e.stopPropagation?.();
+            if (isStaff) {
+              setShowComplete(true);
+              return;
+            }
             router.push(
               `/(app)/service-records/new?onlineOrderId=${item.id.replace('online-', '')}` as any
             );
@@ -179,7 +186,17 @@ function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppoi
       )}
     </Pressable>
 
-    <OnlineOrderInfoModal item={showInfo ? item : null} onClose={() => setShowInfo(false)} onChanged={onStatusChange} />
+    <OnlineOrderInfoModal
+      item={showInfo ? item : null}
+      onClose={() => setShowInfo(false)}
+      onChanged={onStatusChange}
+      onComplete={canCompleteOnline ? () => { setShowInfo(false); setShowComplete(true); } : undefined}
+    />
+    <StaffCompleteOnlineOrderModal
+      orderId={showComplete ? item.id.replace('online-', '') : null}
+      onClose={() => setShowComplete(false)}
+      onDone={onStatusChange}
+    />
 
     {/* 刪除確認 Modal */}
     <Modal
@@ -241,6 +258,7 @@ export default function AppointmentsTab() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
   const [isStaff, setIsStaff] = useState(false);
+  const [canCompleteOnline, setCanCompleteOnline] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -251,6 +269,8 @@ export default function AppointmentsTab() {
       ]);
       setAppointments(data);
       setIsStaff(accountType === 'staff');
+      // 員工要有商家開的「可完成線上預約並記帳」開關才會看到完成按鈕
+      setCanCompleteOnline(accountType === 'staff' ? await staffCanCompleteOnlineOrders().catch(() => false) : false);
     } finally {
       setLoading(false);
     }
@@ -304,7 +324,7 @@ export default function AppointmentsTab() {
           keyExtractor={item => item.id}
           contentContainerClassName="px-5 pb-24"
           contentInsetAdjustmentBehavior="automatic"
-          renderItem={({ item }) => <AppointmentCard item={item} onStatusChange={load} isStaff={isStaff} />}
+          renderItem={({ item }) => <AppointmentCard item={item} onStatusChange={load} isStaff={isStaff} canCompleteOnline={canCompleteOnline} />}
           ListEmptyComponent={
             <View className="items-center py-20 gap-3">
               <Calendar size={48} color="#c4a0ae" />

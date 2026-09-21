@@ -615,7 +615,7 @@ export async function createStaff(payload: Omit<Staff, 'id' | 'owner_id' | 'crea
   if (error) throw error;
 }
 
-export async function updateStaff(id: string, payload: Partial<Pick<Staff, 'name' | 'role' | 'color' | 'is_active' | 'commission_rate' | 'bio' | 'avatar_url' | 'base_salary' | 'can_view_customers' | 'can_manage_pricing' | 'can_manage_shop_settings'>>): Promise<void> {
+export async function updateStaff(id: string, payload: Partial<Pick<Staff, 'name' | 'role' | 'color' | 'is_active' | 'commission_rate' | 'bio' | 'avatar_url' | 'base_salary' | 'can_view_customers' | 'can_manage_pricing' | 'can_manage_shop_settings' | 'can_complete_online_orders'>>): Promise<void> {
   const { error } = await supabase.from('staff').update(payload).eq('id', id);
   if (error) throw error;
 }
@@ -852,6 +852,71 @@ export async function staffRescheduleOnlineOrder(orderId: string, appointmentTim
   if (msg.includes('ORDER_NOT_EDITABLE')) throw new Error('這筆預約已完成、取消或退款，不能再調整時間。');
   if (msg.includes('ORDER_NOT_FOUND')) throw new Error('找不到這筆預約，請重新整理後再試。');
   throw error;
+}
+
+// 員工完成線上預約並記帳（簡化版，migration 00087）：員工讀寫不到 online_orders／別人的服務記錄，
+// 一律走下面三支專用函式；有沒有權限由商家在「服務人員管理」逐人開關（預設關）。
+export async function staffCanCompleteOnlineOrders(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('staff_can_complete_online_orders');
+  if (error) throw error;
+  return data === true;
+}
+
+export interface OnlineOrderForCompletion {
+  id: string;
+  customer_id: string | null;
+  customer_name: string;
+  service_name: string;
+  total_amount: number;
+  deposit_amount: number;
+  deposit_method: 'line_pay' | 'bank_transfer' | null;
+  staff_id: string | null;
+  appointment_time: string;
+  status: string;
+}
+
+// 沒有權限、不是自己店家的訂單、或狀態不是已付訂金／已確認，都會回傳 null
+export async function getOnlineOrderForCompletion(orderId: string): Promise<OnlineOrderForCompletion | null> {
+  const { data, error } = await supabase.rpc('staff_get_online_order_for_completion', { p_order_id: orderId });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  return { ...row, total_amount: Number(row.total_amount), deposit_amount: Number(row.deposit_amount ?? 0) };
+}
+
+const STAFF_COMPLETE_ERRORS: Record<string, string> = {
+  NOT_ALLOWED: '你沒有「完成線上預約並記帳」的權限，請聯絡店家開啟。',
+  INVALID_PAYMENT_METHOD: '付款方式不正確，請重新選擇。',
+  INVALID_AMOUNT: '金額不正確，請重新輸入。',
+  ORDER_NOT_FOUND: '找不到這筆預約，請重新整理後再試。',
+  ORDER_NOT_COMPLETABLE: '這筆預約已經完成、取消，或還沒確認收款，不能完成服務。',
+  NO_CUSTOMER: '這筆預約沒有對應的顧客資料，請由店家處理。',
+  STAFF_REQUIRED: '請選擇這次服務的設計師。',
+  INVALID_STAFF: '選擇的設計師不在這家店，請重新選擇。',
+};
+
+// 回傳新建立的服務記錄 id。建立服務記錄與把訂單標成已完成是同一個資料庫交易，不會只做一半。
+export async function staffCompleteOnlineOrder(payload: {
+  orderId: string;
+  amount: number;
+  paymentMethod: 'cash' | 'card' | 'bank_transfer' | 'line_pay' | 'mobile_pay';
+  notes: string;
+  staffId: string | null;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc('staff_complete_online_order', {
+    p_order_id: payload.orderId,
+    p_amount: payload.amount,
+    p_payment_method: payload.paymentMethod,
+    p_notes: payload.notes,
+    p_staff_id: payload.staffId,
+  });
+  if (error) {
+    const msg = error.message ?? '';
+    const known = Object.keys(STAFF_COMPLETE_ERRORS).find(k => msg.includes(k));
+    if (known) throw new Error(STAFF_COMPLETE_ERRORS[known]);
+    throw error;
+  }
+  return data as string;
 }
 
 export async function getOnlineOrders(): Promise<OnlineOrder[]> {

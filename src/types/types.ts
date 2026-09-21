@@ -198,6 +198,8 @@ export interface Staff {
   can_view_customers: boolean;
   can_manage_pricing: boolean;
   can_manage_shop_settings: boolean;
+  // 可以替全店的線上預約「完成服務並記錄收入」（簡化版，migration 00087），預設關閉。
+  can_complete_online_orders: boolean;
 }
 
 // 員工版排班表用的安全欄位——不含 commission_rate/base_salary 等同事不該看到的欄位，

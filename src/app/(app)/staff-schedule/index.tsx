@@ -11,9 +11,10 @@ import {
 import {
   getMergedAppointments, getShopProfile, getHolidays,
   getStaffReservedSlots, createStaffReservedSlot, deleteStaffReservedSlot,
-  getScheduleStaff, getMyStaffPermissions, getMyStaffLink,
+  getScheduleStaff, getMyStaffPermissions, getMyStaffLink, staffCanCompleteOnlineOrders,
 } from '@/db/api';
 import OnlineOrderInfoModal from '@/components/OnlineOrderInfoModal';
+import StaffCompleteOnlineOrderModal from '@/components/StaffCompleteOnlineOrderModal';
 import FreeSlotGrid from '@/components/FreeSlotGrid';
 import {
   toApptDateStr, timeToMinutes, hhmmToMinutes, minutesToHHMM, isStaffAppt, apptDurationMin,
@@ -202,6 +203,9 @@ export default function StaffScheduleScreen() {
   const canManageReservedFor = (staffId: string) =>
     !isStaffAccount || (canOwnTimeOff && !!myStaffId && staffId === myStaffId);
   const [infoAppt, setInfoAppt] = useState<UnifiedAppointment | null>(null);
+  // 員工有商家開的「可完成線上預約並記帳」開關，才會在線上預約小視窗看到完成按鈕
+  const [canCompleteOnline, setCanCompleteOnline] = useState(false);
+  const [completeOrderId, setCompleteOrderId] = useState<string | null>(null);
 
   // 點預約色塊：手動 → 預約詳情；線上 → 商家去訂單頁，員工（讀不到訂單頁資料）改跳唯讀小視窗
   const openAppt = (a: UnifiedAppointment) => {
@@ -235,6 +239,7 @@ export default function StaffScheduleScreen() {
       setIsStaffAccount(perms.isStaff);
       setCanOwnTimeOff(perms.isStaff && perms.canManageOwnTimeOff);
       if (perms.isStaff) setMyStaffId((await getMyStaffLink().catch(() => null))?.staffId ?? null);
+      setCanCompleteOnline(perms.isStaff ? await staffCanCompleteOnlineOrders().catch(() => false) : false);
       const staffById = new Map(staff.map(s => [s.id, s]));
       // 只顯示今天及之後、非取消的；設計師名字/顏色缺的（員工帳號）用 staff_id 補上
       const upcoming = data
@@ -1023,7 +1028,13 @@ export default function StaffScheduleScreen() {
       )}
 
       {/* 員工點線上預約：唯讀小視窗 */}
-      <OnlineOrderInfoModal item={infoAppt} onClose={() => setInfoAppt(null)} onChanged={load} />
+      <OnlineOrderInfoModal
+        item={infoAppt}
+        onClose={() => setInfoAppt(null)}
+        onChanged={load}
+        onComplete={canCompleteOnline ? (orderId) => { setInfoAppt(null); setCompleteOrderId(orderId); } : undefined}
+      />
+      <StaffCompleteOnlineOrderModal orderId={completeOrderId} onClose={() => setCompleteOrderId(null)} onDone={load} />
 
       {/* 點空白處：選替哪位設計師、再選「排新預約」還是「預留時間」 */}
       {(() => {

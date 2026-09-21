@@ -47,11 +47,13 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function OnlineOrderInfoModal({ item, onClose, onChanged }: {
+export default function OnlineOrderInfoModal({ item, onClose, onChanged, onComplete }: {
   item: UnifiedAppointment | null;
   onClose: () => void;
   /** 有傳才會顯示「調整時間」；改完時間後呼叫，讓畫面重新載入 */
   onChanged?: () => void;
+  /** 有傳才會顯示「完成服務並記錄收入」（員工有商家開的權限時）；參數是訂單 id（不含 online- 前綴） */
+  onComplete?: (orderId: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [apptDate, setApptDate] = useState<Date>(new Date());
@@ -70,6 +72,7 @@ export default function OnlineOrderInfoModal({ item, onClose, onChanged }: {
   }, [item?.id]);
 
   const canReschedule = !!item && !!onChanged && !LOCKED_STATUSES.includes(item.status);
+  const canComplete = !!item && !!onComplete && (item.status === 'paid' || item.status === 'confirmed');
 
   const handleSave = async () => {
     if (!item) return;
@@ -166,6 +169,15 @@ export default function OnlineOrderInfoModal({ item, onClose, onChanged }: {
                   <Text className="font-rounded text-xs text-muted-foreground text-center">
                     {canReschedule ? '可以調整時間；取消與其他修改由商家處理' : '線上預約的修改與取消由商家處理'}
                   </Text>
+                  {canComplete && (
+                    <Pressable
+                      className="h-12 rounded-2xl items-center justify-center active:opacity-80"
+                      style={{ backgroundColor: '#5dc0a0' }}
+                      onPress={() => onComplete?.(item.id.replace(/^online-/, ''))}
+                    >
+                      <Text className="font-rounded text-sm font-semibold text-white">完成服務並記錄收入</Text>
+                    </Pressable>
+                  )}
                   {canReschedule && (
                     <Pressable className="h-12 rounded-2xl bg-primary items-center justify-center active:opacity-80" onPress={() => setEditing(true)}>
                       <Text className="font-rounded text-sm font-semibold text-white">調整時間</Text>
