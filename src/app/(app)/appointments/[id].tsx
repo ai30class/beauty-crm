@@ -10,6 +10,7 @@ import DateTimePicker from 'react-native-ui-datepicker';
 import { getAppointmentById, updateAppointment, deleteAppointment, incrementCustomerNoShow, getStaffForPicker } from '@/db/api';
 import TimeOfDayPicker from '@/components/TimeOfDayPicker';
 import type { Appointment, StaffRosterEntry } from '@/types/types';
+import { useDeletePinGate } from '@/lib/deletePinGate';
 
 const STATUS_OPTIONS: { value: Appointment['status']; label: string; color: string; bg: string; icon: React.ReactNode }[] = [
   { value: 'pending',   label: '待服務', color: '#e8789a', bg: '#fce9f0', icon: <Clock3 size={14} color="#e8789a" /> },
@@ -27,6 +28,7 @@ export default function AppointmentDetailScreen() {
   const [error, setError] = useState('');
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const { gate, gateModal } = useDeletePinGate();
   const [markNoShow, setMarkNoShow] = useState(false);
 
   // 編輯狀態
@@ -125,7 +127,7 @@ export default function AppointmentDetailScreen() {
           <Text className="font-rounded text-xl font-bold text-foreground">編輯預約</Text>
           <Text className="font-rounded text-sm text-muted-foreground">{appt.customer?.name}</Text>
         </View>
-        <Pressable className="w-9 h-9 items-center justify-center rounded-full active:bg-muted" onPress={() => setShowDeleteConfirm(true)}>
+        <Pressable className="w-9 h-9 items-center justify-center rounded-full active:bg-muted" onPress={() => gate(() => setShowDeleteConfirm(true))}>
           <Trash2 size={18} color="#e85454" />
         </Pressable>
       </View>
@@ -411,6 +413,7 @@ export default function AppointmentDetailScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      {gateModal}
     </KeyboardAvoidingView>
   );
 }

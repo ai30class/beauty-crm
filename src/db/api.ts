@@ -2053,3 +2053,25 @@ export async function markOwnerNotificationsRead(ids?: string[]): Promise<void> 
   const { error } = await query;
   if (error) throw error;
 }
+
+// ─── 刪除密碼（00084）：刪除預約前要輸入，防手滑。密碼只存加密後的雜湊，前端只能呼叫這三個函式 ──
+export type DeletePinResult = 'ok' | 'wrong' | 'locked' | 'not_set' | 'invalid' | 'not_allowed';
+
+export async function hasDeletePin(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('has_delete_pin');
+  if (error) throw error;
+  return !!data;
+}
+
+export async function verifyDeletePin(pin: string): Promise<DeletePinResult> {
+  const { data, error } = await supabase.rpc('verify_delete_pin', { p_pin: pin });
+  if (error) throw error;
+  return data as DeletePinResult;
+}
+
+// 第一次設定不用給舊密碼；已經設定過就要給對舊密碼
+export async function setDeletePin(newPin: string, currentPin?: string): Promise<DeletePinResult> {
+  const { data, error } = await supabase.rpc('set_delete_pin', { p_new_pin: newPin, p_current_pin: currentPin ?? null });
+  if (error) throw error;
+  return data as DeletePinResult;
+}

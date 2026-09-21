@@ -5,8 +5,10 @@ import { supabase } from '@/client/supabase';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSession } from '@/ctx';
-import { getMyStaffPermissions, getUnreadOwnerNotificationCount } from '@/db/api';
-import { User, Mail, LogOut, ChevronRight, Scissors, Users2, CalendarOff, ShoppingBag, Users, TrendingDown, Package, Store, Cake, Trophy, BarChart2, Tag, TrendingUp, UserX, ListPlus, Wallet, Bell } from 'lucide-react-native';
+import { getMyStaffPermissions, getUnreadOwnerNotificationCount, hasDeletePin } from '@/db/api';
+import { DeletePinModal } from '@/lib/deletePinGate';
+import type { DeletePinMode } from '@/lib/deletePinGate';
+import { User, Mail, LogOut, ChevronRight, Scissors, Users2, CalendarOff, ShoppingBag, Users, TrendingDown, Package, Store, Cake, Trophy, BarChart2, Tag, TrendingUp, UserX, ListPlus, Wallet, Bell, ShieldCheck } from 'lucide-react-native';
 
 export default function ProfileTab() {
   const router = useRouter();
@@ -24,6 +26,14 @@ export default function ProfileTab() {
       .catch(() => setPerms({ isStaff: true, canViewCustomers: false, canManagePricing: false, canManageOwnTimeOff: false }));
   }, []);
   const isStaff = perms?.isStaff ?? true;
+  // 刪除密碼（只有店家本人）：畫面上顯示已設定或尚未設定，按下去可設定／變更
+  const [pinSet, setPinSet] = useState<boolean | null>(null);
+  const [pinMode, setPinMode] = useState<DeletePinMode | null>(null);
+  const refreshPinSet = useCallback(() => {
+    if (isStaff) { setPinSet(null); return; }
+    hasDeletePin().then(setPinSet).catch(() => setPinSet(null));
+  }, [isStaff]);
+  useFocusEffect(refreshPinSet);
   // 新預約通知未讀數（只有店家本人；員工一律 0）
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   useFocusEffect(useCallback(() => {
@@ -378,6 +388,23 @@ export default function ProfileTab() {
         {/* 帳號選單 */}
         <View className="mx-5 bg-card rounded-2xl overflow-hidden border border-border">
           <Text className="font-rounded text-xs font-semibold text-muted-foreground px-5 pt-4 pb-2">帳號</Text>
+          {!isStaff && (
+          <Pressable
+            className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
+            onPress={() => setPinMode(pinSet ? 'change' : 'set')}
+          >
+            <View className="w-8 h-8 rounded-full items-center justify-center mr-3" style={{ backgroundColor: '#fce9f0' }}>
+              <ShieldCheck size={16} color="#e8789a" />
+            </View>
+            <View className="flex-1">
+              <Text className="font-rounded text-base text-foreground">刪除密碼</Text>
+              <Text className="font-rounded text-xs text-muted-foreground mt-0.5">
+                {pinSet ? '已設定・刪除預約前要輸入，點一下可變更' : '尚未設定・設定後刪除預約前要輸入，避免手滑'}
+              </Text>
+            </View>
+            <ChevronRight size={16} color="#c4a0ae" />
+          </Pressable>
+          )}
           <Pressable
             className="flex-row items-center px-5 py-4 border-t border-border active:bg-muted"
             onPress={handleLogout}
@@ -393,6 +420,13 @@ export default function ProfileTab() {
         <Text className="font-rounded text-xs text-muted-foreground text-center mt-8">
           美業管家 v1.0 🌸
         </Text>
+        {pinMode && (
+          <DeletePinModal
+            mode={pinMode}
+            onClose={() => setPinMode(null)}
+            onSuccess={() => { setPinMode(null); refreshPinSet(); }}
+          />
+        )}
       </ScrollView>
     </View>
   );

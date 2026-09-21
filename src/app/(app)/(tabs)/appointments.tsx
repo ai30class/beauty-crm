@@ -10,6 +10,7 @@ import OnlineOrderInfoModal from '@/components/OnlineOrderInfoModal';
 import { getMergedAppointments, updateAppointmentStatus, deleteAppointment, deleteOnlineOrder, getAccountType } from '@/db/api';
 import type { UnifiedAppointment } from '@/types/types';
 import { DONE_TEXT_COLOR, isDoneStatus } from '@/lib/appointmentStyle';
+import { useDeletePinGate } from '@/lib/deletePinGate';
 
 // 統一狀態顯示
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -35,6 +36,7 @@ function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppoi
   const isDone = isDoneStatus(item.status);
   const router = useRouter();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const { gate, gateModal } = useDeletePinGate();
   const [showInfo, setShowInfo] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -108,7 +110,7 @@ function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppoi
           <Pressable
             className="w-7 h-7 rounded-full items-center justify-center active:opacity-60"
             style={{ backgroundColor: '#fff0f3' }}
-            onPress={(e) => { e.stopPropagation?.(); setDeleteError(''); setShowDeleteConfirm(true); }}
+            onPress={(e) => { e.stopPropagation?.(); gate(() => { setDeleteError(''); setShowDeleteConfirm(true); }); }}
           >
             <Trash2 size={13} color="#e85454" />
           </Pressable>
@@ -228,6 +230,7 @@ function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppoi
         </Pressable>
       </Pressable>
     </Modal>
+    {gateModal}
     </>
   );
 }

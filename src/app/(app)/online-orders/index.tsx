@@ -11,6 +11,7 @@ import DateTimePicker from 'react-native-ui-datepicker';
 import { getOnlineOrders, updateOnlineOrderStatus, updateOnlineOrder, getStaff, getOnlineOrderAddonsByOrderIds, incrementCustomerNoShow, deleteOnlineOrder } from '@/db/api';
 import type { OnlineOrder, Staff } from '@/types/types';
 import { DONE_TEXT_COLOR, isDoneStatus } from '@/lib/appointmentStyle';
+import { useDeletePinGate } from '@/lib/deletePinGate';
 
 // ── 共用常數 ──────────────────────────────────────────────
 
@@ -223,6 +224,7 @@ export default function OnlineOrdersScreen() {
   const [filter, setFilter] = useState<'all' | 'paid' | 'pending_payment' | 'pending_transfer_confirm' | 'confirmed'>('all');
   const [editingOrder, setEditingOrder] = useState<OnlineOrder | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OnlineOrder | null>(null);
+  const { gate, gateModal } = useDeletePinGate();
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [noShowTarget, setNoShowTarget] = useState<OnlineOrder | null>(null);
@@ -421,7 +423,7 @@ export default function OnlineOrdersScreen() {
                     <Pressable
                       className="w-7 h-7 rounded-full items-center justify-center active:opacity-60"
                       style={{ backgroundColor: '#fff0f3' }}
-                      onPress={() => { setDeleteError(''); setDeleteTarget(item); }}
+                      onPress={() => gate(() => { setDeleteError(''); setDeleteTarget(item); })}
                     >
                       <Trash2 size={14} color="#e85454" />
                     </Pressable>
@@ -633,6 +635,7 @@ export default function OnlineOrdersScreen() {
           onSaved={load}
         />
       )}
+      {gateModal}
     </View>
   );
 }
