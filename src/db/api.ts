@@ -840,6 +840,20 @@ function throwBookingError(error: { message?: string }): never {
   throw error;
 }
 
+// 員工調整線上預約的時間（migration 00086）：員工讀寫不到 online_orders，只能走這支函式，而且只能改時間
+export async function staffRescheduleOnlineOrder(orderId: string, appointmentTimeISO: string): Promise<void> {
+  const { error } = await supabase.rpc('staff_reschedule_online_order', {
+    p_order_id: orderId,
+    p_appointment_time: appointmentTimeISO,
+  });
+  if (!error) return;
+  const msg = error.message ?? '';
+  if (msg.includes('SLOT_TAKEN')) throw new Error('這位設計師在這個時段已經有預約了，請選其他時間。');
+  if (msg.includes('ORDER_NOT_EDITABLE')) throw new Error('這筆預約已完成、取消或退款，不能再調整時間。');
+  if (msg.includes('ORDER_NOT_FOUND')) throw new Error('找不到這筆預約，請重新整理後再試。');
+  throw error;
+}
+
 export async function getOnlineOrders(): Promise<OnlineOrder[]> {
   const { data, error } = await supabase
     .from('online_orders')

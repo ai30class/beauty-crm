@@ -1023,7 +1023,7 @@ export default function StaffScheduleScreen() {
       )}
 
       {/* 員工點線上預約：唯讀小視窗 */}
-      <OnlineOrderInfoModal item={infoAppt} onClose={() => setInfoAppt(null)} />
+      <OnlineOrderInfoModal item={infoAppt} onClose={() => setInfoAppt(null)} onChanged={load} />
 
       {/* 點空白處：選替哪位設計師、再選「排新預約」還是「預留時間」 */}
       {(() => {

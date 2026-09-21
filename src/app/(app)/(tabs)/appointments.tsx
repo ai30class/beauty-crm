@@ -179,7 +179,7 @@ function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppoi
       )}
     </Pressable>
 
-    <OnlineOrderInfoModal item={showInfo ? item : null} onClose={() => setShowInfo(false)} />
+    <OnlineOrderInfoModal item={showInfo ? item : null} onClose={() => setShowInfo(false)} onChanged={onStatusChange} />
 
     {/* 刪除確認 Modal */}
     <Modal
