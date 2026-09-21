@@ -1,13 +1,13 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  ActivityIndicator, Switch
+  ActivityIndicator, Switch, Modal
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, Plus, Trash2, Pencil, Check, X, User2, Camera, Layers, KeyRound, ShieldCheck } from 'lucide-react-native';
+import { ArrowLeft, Plus, Trash2, Pencil, Check, X, User2, Camera, Layers, KeyRound, ShieldCheck, AlertTriangle } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { readUriAsArrayBuffer } from '@/lib/clientPhotos';
@@ -156,8 +156,24 @@ export default function StaffManagementScreen() {
     load();
   };
 
-  const handleDelete = async (id: string) => {
-    await deleteStaff(id); load();
+  // 刪除人員會連帶刪掉他的休假與預留時間、無法復原，所以先跳確認視窗（做法同公休日管理）
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deletingStaff, setDeletingStaff] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || deletingStaff) return;
+    setDeleteError('');
+    setDeletingStaff(true);
+    try {
+      await deleteStaff(deleteTarget.id);
+      setDeleteTarget(null);
+      load();
+    } catch (e: any) {
+      setDeleteError(e?.message ?? '刪除失敗，請稍後再試');
+    } finally {
+      setDeletingStaff(false);
+    }
   };
 
   return (
@@ -452,7 +468,7 @@ export default function StaffManagementScreen() {
                     <Pencil size={15} color="#c4a0ae" />
                   </Pressable>
                   <Pressable className="w-8 h-8 items-center justify-center rounded-full active:bg-muted"
-                    onPress={() => handleDelete(s.id)}>
+                    onPress={() => { setDeleteError(''); setDeleteTarget({ id: s.id, name: s.name }); }}>
                     <Trash2 size={15} color="#e85454" />
                   </Pressable>
                 </View>
@@ -461,6 +477,57 @@ export default function StaffManagementScreen() {
           ))
         )}
       </ScrollView>
+
+      {/* 刪除服務人員確認 Modal */}
+      <Modal
+        visible={deleteTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteTarget(null)}
+      >
+        <Pressable
+          className="flex-1 bg-black/40 items-center justify-center px-8"
+          onPress={() => { if (!deletingStaff) setDeleteTarget(null); }}
+        >
+          <Pressable
+            className="bg-card w-full rounded-3xl p-6 gap-4"
+            onPress={() => {/* 阻止冒泡 */}}
+          >
+            <View className="items-center gap-3">
+              <View className="w-16 h-16 rounded-full items-center justify-center" style={{ backgroundColor: '#fff0f3' }}>
+                <AlertTriangle size={32} color="#e85454" />
+              </View>
+              <Text className="font-rounded text-lg font-bold text-foreground">確認刪除服務人員？</Text>
+              <Text className="font-rounded text-sm text-muted-foreground text-center">
+                {deleteTarget ? `「${deleteTarget.name}」` : ''}{'\n'}刪除後，這位人員的休假與預留時間也會一併刪除，無法復原。{'\n'}如果只是暫時不接客，建議按「暫停」就好，可以保留歷史資料。
+              </Text>
+              {deleteError ? (
+                <Text className="font-rounded text-xs text-center" style={{ color: '#e85454' }}>{deleteError}</Text>
+              ) : null}
+            </View>
+            <View className="flex-row gap-3 mt-2">
+              <Pressable
+                className="flex-1 h-12 rounded-2xl border border-border items-center justify-center active:opacity-70"
+                disabled={deletingStaff}
+                onPress={() => setDeleteTarget(null)}
+              >
+                <Text className="font-rounded text-sm font-semibold text-muted-foreground">取消</Text>
+              </Pressable>
+              <Pressable
+                className="flex-1 h-12 rounded-2xl items-center justify-center active:opacity-80"
+                style={{ backgroundColor: '#e85454' }}
+                disabled={deletingStaff}
+                onPress={handleConfirmDelete}
+              >
+                {deletingStaff
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text className="font-rounded text-sm font-semibold text-white">確認刪除</Text>
+                }
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

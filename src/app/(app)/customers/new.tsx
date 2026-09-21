@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, ScrollView, Pressable,
   KeyboardAvoidingView, ActivityIndicator
@@ -21,6 +21,8 @@ export default function CustomerFormScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  // loading 狀態要等下一次畫面更新才生效，連點兩下會兩次都通過；ref 是立刻生效的鎖
+  const submittingRef = useRef(false);
   const [error, setError] = useState('');
   const [initLoading, setInitLoading] = useState(isEdit);
 
@@ -39,6 +41,7 @@ export default function CustomerFormScreen() {
   }, [id, isEdit]);
 
   const handleSave = async () => {
+    if (submittingRef.current) return;
     setError('');
     if (!name.trim()) { setError('請輸入顧客姓名'); return; }
     if (!normalizePhone(phone)) { setError('請輸入電話號碼'); return; }
@@ -52,6 +55,7 @@ export default function CustomerFormScreen() {
       birthdayStr = `${y}-${m}-${d}`;
     }
 
+    submittingRef.current = true;
     setLoading(true);
     try {
       if (isEdit) {
@@ -59,10 +63,13 @@ export default function CustomerFormScreen() {
       } else {
         await createCustomer({ name: name.trim(), phone: normalizePhone(phone), birthday: birthdayStr, notes: notes.trim() || null, booking_restricted: false, booking_allowed_hours: [], no_show_count: 0 });
       }
-      router.back();
+      // 存好之後鎖著不放（離開這一頁前不能再送出，否則連按會多建一筆）。
+      // 直接用網址進來（沒有上一頁）時 router.back() 不會有反應，改回顧客列表
+      if (router.canGoBack()) router.back();
+      else router.replace('/(app)/(tabs)/home' as any);
     } catch (e: any) {
       setError(e.message ?? '儲存失敗，請稍後再試');
-    } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
