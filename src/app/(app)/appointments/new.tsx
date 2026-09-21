@@ -264,7 +264,9 @@ export default function NewAppointmentScreen() {
         status: 'pending',
         staff_id: selectedStaffId,
       });
-      router.back();
+      // 直接用網址進來（沒有上一頁）時 router.back() 不會有反應，改回預約列表
+      if (router.canGoBack()) router.back();
+      else router.replace('/(app)/(tabs)/appointments' as any);
     } catch (e: any) {
       setError(e.message ?? '儲存失敗');
     } finally {
