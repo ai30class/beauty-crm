@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system';
@@ -12,6 +13,19 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
   const bytes = new Uint8Array(binaryStr.length);
   for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
   return bytes.buffer;
+}
+
+// 把（縮圖後的）圖片讀成 ArrayBuffer 準備上傳。
+// 網頁版：縮圖後的 uri 是 data:／blob: 網址，expo-file-system 在網頁版讀出來不是純 base64，
+// 直接 atob 會報「The string to be decoded is not correctly encoded」（照片因此一直傳不上去），改用 fetch 讀。
+// 手機版：維持原本的 base64 做法。
+export async function readUriAsArrayBuffer(uri: string): Promise<ArrayBuffer> {
+  if (Platform.OS === 'web') {
+    const res = await fetch(uri);
+    return res.arrayBuffer();
+  }
+  const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+  return base64ToArrayBuffer(base64);
 }
 
 export interface PhotoAsset {
@@ -29,8 +43,8 @@ export async function uploadClientPhoto(asset: PhotoAsset): Promise<string> {
   const compressed = await manipulateAsync(asset.uri, actions, { compress: isPng ? 1 : 0.8, format });
   const ext = isPng ? 'png' : 'jpg';
   const path = `${ownerId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-  const base64 = await FileSystem.readAsStringAsync(compressed.uri, { encoding: 'base64' });
-  const { error } = await supabase.storage.from(CLIENT_PHOTO_BUCKET).upload(path, base64ToArrayBuffer(base64), {
+  const body = await readUriAsArrayBuffer(compressed.uri);
+  const { error } = await supabase.storage.from(CLIENT_PHOTO_BUCKET).upload(path, body, {
     contentType: isPng ? 'image/png' : 'image/jpeg', upsert: false,
   });
   if (error) throw error;

@@ -13,7 +13,7 @@ import { uploadClientPhoto } from '@/lib/clientPhotos';
 import { PAYMENT_META } from '@/lib/payments';
 import type { PaymentMethod } from '@/lib/payments';
 import {
-  createServiceRecord, updateServiceRecord, getCustomerById,
+  createServiceRecord, getCustomerById, removeClientPhotos,
   getServiceTemplates, getPackagesByCustomer, usePackageSession, usePackageAmount,
   getProducts, deductProductStock, createProductUsageBatch,
   getOnlineOrderById, updateOnlineOrderStatus, getCustomerByPhone, getStaffForPicker,
@@ -185,6 +185,25 @@ export default function NewServiceRecordScreen() {
     // 訂金不會超過服務總額；用套票扣款時不處理訂金
     const effectiveDeposit = paymentMethod === 'package' ? 0 : Math.min(paidDeposit, amt);
     setLoading(true);
+    // 照片先上傳：任何一張失敗就整個停下來（並清掉已傳的那張），還沒建立任何記錄，可以直接重按儲存
+    let bPath: string | null = null;
+    let aPath: string | null = null;
+    if (beforeAsset || afterAsset) {
+      const [b, a] = await Promise.allSettled([
+        beforeAsset ? uploadClientPhoto(beforeAsset) : Promise.resolve(null),
+        afterAsset ? uploadClientPhoto(afterAsset) : Promise.resolve(null),
+      ]);
+      bPath = b.status === 'fulfilled' ? b.value : null;
+      aPath = a.status === 'fulfilled' ? a.value : null;
+      const failed = b.status === 'rejected' ? b : a.status === 'rejected' ? a : null;
+      if (failed) {
+        await removeClientPhotos([bPath, aPath]);
+        setError(`照片上傳失敗，記錄還沒有儲存，請再按一次儲存：${(failed.reason as any)?.message ?? '請稍後再試'}`);
+        setLoading(false);
+        return;
+      }
+    }
+    let recordCreated = false;
     try {
       const y = serviceDate.getFullYear();
       const m = String(serviceDate.getMonth() + 1).padStart(2, '0');
@@ -197,8 +216,8 @@ export default function NewServiceRecordScreen() {
         deposit_method: effectiveDeposit > 0 ? depositMethod : null,
         service_date: `${y}-${m}-${d}`,
         notes: notes.trim() || null,
-        before_photo_path: null,
-        after_photo_path: null,
+        before_photo_path: bPath,
+        after_photo_path: aPath,
         payment_method: paymentMethod,
         package_id: paymentMethod === 'package' ? selectedPackageId : null,
         status: 'completed',
@@ -207,6 +226,7 @@ export default function NewServiceRecordScreen() {
         staff_share_percent: (selectedStaffId && coStaffId) ? sharePercent : null,
         co_staff_share_percent: (selectedStaffId && coStaffId) ? coSharePercent : null,
       });
+      recordCreated = true;
       // 套票扣款
       if (paymentMethod === 'package' && selectedPackageId) {
         const pkg = activePackages.find(p => p.id === selectedPackageId);
@@ -232,16 +252,6 @@ export default function NewServiceRecordScreen() {
         });
         await createProductUsageBatch(record.id, itemsWithPrice);
       }
-      const [bPath, aPath] = await Promise.all([
-        beforeAsset ? uploadClientPhoto(beforeAsset) : Promise.resolve(null),
-        afterAsset ? uploadClientPhoto(afterAsset) : Promise.resolve(null),
-      ]);
-      if (bPath || aPath) {
-        await updateServiceRecord(record.id, {
-          before_photo_path: bPath ?? undefined,
-          after_photo_path: aPath ?? undefined,
-        });
-      }
       // 線上訂單：儲存後同步更新狀態為 completed
       if (linkedOnlineOrderId) {
         await updateOnlineOrderStatus(linkedOnlineOrderId, 'completed');
@@ -254,6 +264,8 @@ export default function NewServiceRecordScreen() {
         router.back();
       }
     } catch (e: any) {
+      // 記錄沒建起來，但照片已經傳了：把照片刪掉，不留孤兒檔
+      if (!recordCreated) await removeClientPhotos([bPath, aPath]);
       setError(e.message ?? '儲存失敗');
       setLoading(false);
     }

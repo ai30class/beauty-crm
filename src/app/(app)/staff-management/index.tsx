@@ -10,7 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Plus, Trash2, Pencil, Check, X, User2, Camera, Layers, KeyRound, ShieldCheck } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
+import { readUriAsArrayBuffer } from '@/lib/clientPhotos';
 import { supabase } from '@/client/supabase';
 import { getStaff, createStaff, updateStaff, deleteStaff, getPhotoUrl, getStaffWithLoginAccounts, createStaffAccount } from '@/db/api';
 import type { Staff } from '@/types/types';
@@ -21,13 +21,6 @@ const COLORS = ['#e8789a', '#8b9de8', '#5dc0a0', '#e8a87c', '#c49de8', '#e8d47c'
 // 開一個新 bucket、多一份 migration 跟權限設定
 const BUCKET = 'appd2yss59nidj5_service_photos';
 
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binaryStr = atob(base64);
-  const bytes = new Uint8Array(binaryStr.length);
-  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-  return bytes.buffer;
-}
-
 async function compressAndUploadAvatar(uri: string, mimeType?: string, width?: number): Promise<string> {
   const isPng = mimeType === 'image/png';
   const format = isPng ? SaveFormat.PNG : SaveFormat.JPEG;
@@ -35,8 +28,8 @@ async function compressAndUploadAvatar(uri: string, mimeType?: string, width?: n
   const compressed = await manipulateAsync(uri, actions, { compress: isPng ? 1 : 0.85, format });
   const ext = isPng ? 'png' : 'jpg';
   const path = `staff-avatars/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-  const base64 = await FileSystem.readAsStringAsync(compressed.uri, { encoding: 'base64' });
-  const { error } = await supabase.storage.from(BUCKET).upload(path, base64ToArrayBuffer(base64), {
+  const body = await readUriAsArrayBuffer(compressed.uri);
+  const { error } = await supabase.storage.from(BUCKET).upload(path, body, {
     contentType: isPng ? 'image/png' : 'image/jpeg', upsert: false,
   });
   if (error) throw error;
