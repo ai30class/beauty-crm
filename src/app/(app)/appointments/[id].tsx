@@ -7,7 +7,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Trash2, Clock, CheckCircle, XCircle, Clock3, AlertTriangle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getAppointmentById, updateAppointment, deleteAppointment, incrementCustomerNoShow, getStaffForPicker } from '@/db/api';
+import { getAppointmentById, updateAppointment, deleteAppointment, incrementCustomerNoShow, getStaffForPicker, getAccountType } from '@/db/api';
 import TimeOfDayPicker from '@/components/TimeOfDayPicker';
 import type { Appointment, StaffRosterEntry } from '@/types/types';
 import { useDeletePinGate } from '@/lib/deletePinGate';
@@ -24,6 +24,7 @@ export default function AppointmentDetailScreen() {
 
   const [appt, setAppt] = useState<Appointment | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isStaff, setIsStaff] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -42,8 +43,13 @@ export default function AppointmentDetailScreen() {
   useEffect(() => {
     (async () => {
       if (!id) return;
-      const [a, staff] = await Promise.all([getAppointmentById(id), getStaffForPicker()]);
+      const [a, staff, accountType] = await Promise.all([
+        getAppointmentById(id),
+        getStaffForPicker(),
+        getAccountType().catch(() => 'merchant' as const),
+      ]);
       setStaffList(staff);
+      setIsStaff(accountType === 'staff');
       if (a) {
         setAppt(a);
         const d = new Date(a.appointment_time);
@@ -133,9 +139,12 @@ export default function AppointmentDetailScreen() {
           <Text className="font-rounded text-xl font-bold text-foreground">編輯預約</Text>
           <Text className="font-rounded text-sm text-muted-foreground">{appt.customer?.name}</Text>
         </View>
-        <Pressable className="w-9 h-9 items-center justify-center rounded-full active:bg-muted" onPress={() => gate(() => setShowDeleteConfirm(true))}>
-          <Trash2 size={18} color="#e85454" />
-        </Pressable>
+        {/* 員工帳號不能刪預約（只能取消），不顯示；資料庫也擋 */}
+        {!isStaff && (
+          <Pressable className="w-9 h-9 items-center justify-center rounded-full active:bg-muted" onPress={() => gate(() => setShowDeleteConfirm(true))}>
+            <Trash2 size={18} color="#e85454" />
+          </Pressable>
+        )}
       </View>
 
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="px-5 pb-12 gap-4" className="bg-background">

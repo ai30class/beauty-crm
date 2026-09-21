@@ -105,8 +105,8 @@ function AppointmentCard({ item, onStatusChange, isStaff }: { item: UnifiedAppoi
           <View className="px-2.5 py-1 rounded-full" style={{ backgroundColor: status.bg }}>
             <Text className="font-rounded text-xs font-medium" style={{ color: status.color }}>{status.label}</Text>
           </View>
-          {/* 手動、線上預約都可刪；員工帳號對線上預約（online_orders）沒有刪除權限，不顯示 */}
-          {!(isStaff && item.source === 'online') && (
+          {/* 手動、線上預約都可刪；員工帳號一律不能刪預約（只能取消），不顯示；資料庫也擋 */}
+          {!isStaff && (
           <Pressable
             className="w-7 h-7 rounded-full items-center justify-center active:opacity-60"
             style={{ backgroundColor: '#fff0f3' }}
