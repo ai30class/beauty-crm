@@ -83,6 +83,23 @@ async function pushLineMessage(lineUserId: string, text: string): Promise<boolea
   return res.ok;
 }
 
+// 哪些店有開「LINE 自動提醒」（shop_profiles.line_reminders_enabled，migration 00089，只有平台
+// 管理者用 SQL 打開）。基礎版店家不給 LINE 推播：所有店共用同一個小帳號的訊息額度，不擋的話，
+// 試用店家的顧客只要用 LINE 登入並加好友就會吃掉額度。
+// 查詢失敗一律當作「都沒開」——寧可這次漏發，也不要多發吃額度；錯誤會留在日誌
+// deno-lint-ignore no-explicit-any
+async function getLineEnabledOwners(supabase: any): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('shop_profiles')
+    .select('owner_id')
+    .eq('line_reminders_enabled', true);
+  if (error) {
+    console.error('讀取 LINE 提醒開關失敗，這次一律不發送', error);
+    return new Set<string>();
+  }
+  return new Set<string>((data ?? []).map((r: { owner_id: string }) => r.owner_id));
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -111,7 +128,11 @@ Deno.serve(async (req) => {
         return bm === mm && bd === dd;
       });
 
+      const lineEnabled = await getLineEnabledOwners(supabase);
+      let skipped = 0;
       for (const c of dueTomorrow) {
+        // 沒開 LINE 提醒的店（基礎版）：不推播，也不寫紀錄
+        if (!lineEnabled.has(c.owner_id)) { skipped++; continue; }
         // 防重推送
         const { data: existing } = await supabase
           .from('notification_logs')
@@ -145,6 +166,7 @@ Deno.serve(async (req) => {
         });
         console.log(`🎂 生日提醒 → ${c.name}（${c.birthday}）${sent ? '已用 LINE 發送' : '僅記錄（無 LINE 身份）'}`);
       }
+      if (skipped > 0) console.log(`ℹ️ 生日提醒：略過 ${skipped} 位（店家未開 LINE 提醒）`);
     } else if (type === 'appointment') {
       // 查詢 15–75 分鐘後的預約
       const now = new Date();
@@ -152,8 +174,12 @@ Deno.serve(async (req) => {
       const to   = new Date(now.getTime() + 75 * 60 * 1000).toISOString();
 
       const due = await fetchDueAppointments(supabase, from, to);
+      const lineEnabled = await getLineEnabledOwners(supabase);
+      let skipped = 0;
 
       for (const a of due) {
+        // 沒開 LINE 提醒的店（基礎版）：不推播，也不寫紀錄
+        if (!lineEnabled.has(a.owner_id)) { skipped++; continue; }
         const today = now.toISOString().slice(0, 10);
         const { data: existing } = await supabase
           .from('notification_logs')
@@ -190,6 +216,7 @@ Deno.serve(async (req) => {
         });
         console.log(`🔔 預約提醒 → ${a.customerName}，${a.appointment_time}　${sent ? '已用 LINE 發送' : '僅記錄（無 LINE 身份）'}`);
       }
+      if (skipped > 0) console.log(`ℹ️ 預約提醒：略過 ${skipped} 筆（店家未開 LINE 提醒）`);
     } else if (type === 'appointment_day_before') {
       // 查詢明天（台灣時區的日曆日）的預約，每天固定時間跑一次、提前一天提醒
       const TZ_OFFSET_MS = 8 * 60 * 60 * 1000; // 台灣是 UTC+8，沒有日光節約
@@ -203,8 +230,12 @@ Deno.serve(async (req) => {
       const dayEnd = new Date(`${tomorrowDateStr}T23:59:59.999+08:00`).toISOString();
 
       const due = await fetchDueAppointments(supabase, dayStart, dayEnd);
+      const lineEnabled = await getLineEnabledOwners(supabase);
+      let skipped = 0;
 
       for (const a of due) {
+        // 沒開 LINE 提醒的店（基礎版）：不推播，也不寫紀錄
+        if (!lineEnabled.has(a.owner_id)) { skipped++; continue; }
         // 防重推送：用「今天」當 sent_date，同一筆預約這個提醒類型一天只發一次
         const { data: existing } = await supabase
           .from('notification_logs')
@@ -242,6 +273,7 @@ Deno.serve(async (req) => {
         });
         console.log(`📅 前一天預約提醒 → ${a.customerName}，${a.appointment_time}　${sent ? '已用 LINE 發送' : '僅記錄（無 LINE 身份）'}`);
       }
+      if (skipped > 0) console.log(`ℹ️ 前一天預約提醒：略過 ${skipped} 筆（店家未開 LINE 提醒）`);
     } else if (type === 'expire_pending_deposit') {
       // 匯款訂金流程：待確認匯款超過期限、店家一直沒標記已收訂金的訂單，
       // 自動取消、釋出時段，避免顧客佔著時段卻遲遲沒下文
