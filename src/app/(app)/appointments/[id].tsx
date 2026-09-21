@@ -78,10 +78,16 @@ export default function AppointmentDetailScreen() {
     }
   };
 
+  // 直接用網址進來（沒有上一頁）時 router.back() 不會有反應，改回預約列表
+  const leaveScreen = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(app)/(tabs)/appointments' as any);
+  };
+
   const handleDelete = async () => {
     if (!id) return;
     await deleteAppointment(id);
-    router.back();
+    leaveScreen();
   };
 
   // 標記完成並前往新增服務記錄
@@ -346,7 +352,8 @@ export default function AppointmentDetailScreen() {
                     if (markNoShow && appt?.customer_id) {
                       await incrementCustomerNoShow(appt.customer_id).catch(() => {});
                     }
-                    router.back();
+                    setSaving(false);
+                    leaveScreen();
                   } catch (e: any) {
                     setError(e.message ?? '取消失敗');
                     setSaving(false);

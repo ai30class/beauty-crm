@@ -256,12 +256,18 @@ export default function NewServiceRecordScreen() {
       if (linkedOnlineOrderId) {
         await updateOnlineOrderStatus(linkedOnlineOrderId, 'completed');
       }
+      // 直接用網址進來（沒有上一頁）時 router.back() 不會有反應，改回該顧客的頁面
+      const leaveScreen = () => {
+        if (router.canGoBack()) router.back();
+        else router.replace(`/(app)/customers/${resolvedCustomerId}` as any);
+      };
       if (stockWarnings.length > 0) {
         setError(`記錄已儲存，但注意：${stockWarnings.join('；')}`);
         setLoading(false);
-        setTimeout(() => router.back(), 2500);
+        setTimeout(leaveScreen, 2500);
       } else {
-        router.back();
+        setLoading(false);
+        leaveScreen();
       }
     } catch (e: any) {
       // 記錄沒建起來，但照片已經傳了：把照片刪掉，不留孤兒檔
