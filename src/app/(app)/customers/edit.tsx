@@ -8,6 +8,7 @@ import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
 import { createCustomer, updateCustomer, getCustomerById } from '@/db/api';
+import { REFERRAL_SOURCE_OPTIONS } from '@/lib/referralSource';
 
 export default function CustomerEditScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -18,6 +19,7 @@ export default function CustomerEditScreen() {
   const [birthday, setBirthday] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [notes, setNotes] = useState('');
+  const [referralSource, setReferralSource] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [initLoading, setInitLoading] = useState(true);
@@ -30,6 +32,7 @@ export default function CustomerEditScreen() {
         setPhone(c.phone);
         if (c.birthday) setBirthday(new Date(c.birthday));
         setNotes(c.notes ?? '');
+        setReferralSource(c.referral_source ?? '');
       }
       setInitLoading(false);
     })();
@@ -50,7 +53,7 @@ export default function CustomerEditScreen() {
 
     setLoading(true);
     try {
-      await updateCustomer(id!, { name: name.trim(), phone: phone.trim(), birthday: birthdayStr, notes: notes.trim() || null });
+      await updateCustomer(id!, { name: name.trim(), phone: phone.trim(), birthday: birthdayStr, notes: notes.trim() || null, referral_source: referralSource.trim() || null });
       router.back();
     } catch (e: any) {
       setError(e.message ?? '儲存失敗，請稍後再試');
@@ -103,6 +106,25 @@ export default function CustomerEditScreen() {
         <View>
           <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">備註</Text>
           <TextInput className="bg-card border border-border rounded-2xl px-4 py-3 font-rounded text-base text-foreground" placeholder="備註（選填）" placeholderTextColor="#c4a0ae" value={notes} onChangeText={setNotes} multiline numberOfLines={3} textAlignVertical="top" />
+        </View>
+        <View>
+          <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">怎麼知道我們的？</Text>
+          <View className="flex-row flex-wrap gap-2 mb-2">
+            {REFERRAL_SOURCE_OPTIONS.map(opt => {
+              const active = referralSource === opt;
+              return (
+                <Pressable
+                  key={opt}
+                  className="px-3 py-1.5 rounded-full active:opacity-70"
+                  style={{ backgroundColor: active ? '#e8789a' : '#fce9f0' }}
+                  onPress={() => setReferralSource(active ? '' : opt)}
+                >
+                  <Text className="font-rounded text-xs font-medium" style={{ color: active ? '#fff' : '#c4456a' }}>{opt}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <TextInput className="bg-card border border-border rounded-2xl px-4 font-rounded text-base text-foreground" style={{ height: 52 }} placeholder="或直接輸入（選填）" placeholderTextColor="#c4a0ae" value={referralSource} onChangeText={setReferralSource} />
         </View>
         {error ? <Text className="font-rounded text-destructive text-sm">{error}</Text> : null}
         <Pressable className="bg-primary rounded-2xl items-center justify-center active:opacity-80 mt-2" style={{ height: 56 }} onPress={handleSave} disabled={loading}>

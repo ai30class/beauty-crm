@@ -338,7 +338,7 @@ export default function OnlineBookingScreen() {
   }, [step, anyStaffMode, selectedStaff, staffList, selectedTemplate, ownerId, shopProfile, totalDuration, holidays]);
 
   const depositAmount = selectedTemplate
-    ? Math.round(totalAmount * 0.5)
+    ? Math.round(totalAmount * (selectedTemplate.deposit_percent ?? 50) / 100)
     : 0;
 
   const handleSubmit = async () => {
@@ -1158,7 +1158,7 @@ export default function OnlineBookingScreen() {
               <SummaryRow label="服務費" value={`$${totalAmount.toLocaleString()}`} />
               <View className="border-t border-border pt-2 mt-1">
                 {selectedTemplate?.require_deposit && isRegisteredCustomer !== true ? (
-                  <SummaryRow label="需付訂金（50%）" value={`$${depositAmount.toLocaleString()}`} highlight />
+                  <SummaryRow label={`需付訂金（${selectedTemplate.deposit_percent ?? 50}%）`} value={`$${depositAmount.toLocaleString()}`} highlight />
                 ) : (
                   <SummaryRow
                     label="付款方式"

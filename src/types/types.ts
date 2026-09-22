@@ -31,6 +31,8 @@ export interface Customer {
   no_show_count: number;
   // 顧客標籤（migration 00092），店家自訂文字，自由新增/移除，用於分群與名單篩選
   tags: string[];
+  // 轉介紹來源（migration 00095），新增顧客時記錄「怎麼知道我們的」，供日後行銷歸因
+  referral_source: string | null;
 }
 
 // 顧客同意書電子簽名（migration 00090／00091；四種：portrait 肖像／tattoo 紋繡／lash 接睫毛／hair_removal 除毛）
@@ -182,6 +184,8 @@ export interface ServiceTemplate {
   sort_order: number;
   allow_online_booking: boolean;
   require_deposit: boolean;
+  // 訂金比例（migration 00096），1~100，預設 50；只有 require_deposit 開啟時才有意義
+  deposit_percent: number;
   break_after_minutes: number;
   is_addon: boolean;
   // 同意書分類（migration 00091）：獨立欄位，不依賴 category 這個自由文字欄位打的字一模一樣；

@@ -72,7 +72,7 @@ function TemplateRow({
               style={{ backgroundColor: tpl.require_deposit ? '#8b9de822' : '#a8d5ba22' }}
             >
               <Text className="font-rounded" style={{ fontSize: 10, color: tpl.require_deposit ? '#8b9de8' : '#3da870' }}>
-                {tpl.require_deposit ? '需付訂金' : '免訂金預約'}
+                {tpl.require_deposit ? `需付訂金 ${tpl.deposit_percent}%` : '免訂金預約'}
               </Text>
             </View>
           )}
@@ -100,6 +100,8 @@ type FormState = {
   color: string;
   allow_online_booking: boolean;
   require_deposit: boolean;
+  // 訂金比例（migration 00096），1~100，預設 50
+  deposit_percent: number;
   break_after_minutes: string;
   is_addon: boolean;
   // 同意書分類（migration 00091），獨立欄位，不依賴 category 打的字一模一樣
@@ -111,7 +113,7 @@ type FormState = {
 const EMPTY_FORM: FormState = {
   name: '', category: '', duration_minutes: '', default_amount: '', color: '#e8789a',
   consent_form_type: '', consent_group: '',
-  allow_online_booking: true, require_deposit: true, break_after_minutes: '30', is_addon: false,
+  allow_online_booking: true, require_deposit: true, deposit_percent: 50, break_after_minutes: '30', is_addon: false,
 };
 
 const UNCATEGORIZED = '未分類';
@@ -191,6 +193,7 @@ export default function ServiceTemplatesScreen() {
       color: tpl.color,
       allow_online_booking: tpl.allow_online_booking,
       require_deposit: tpl.require_deposit,
+      deposit_percent: tpl.deposit_percent ?? 50,
       break_after_minutes: String(tpl.break_after_minutes),
       is_addon: tpl.is_addon,
       consent_form_type: tpl.consent_form_type ?? '',
@@ -209,6 +212,7 @@ export default function ServiceTemplatesScreen() {
     const amt = parseFloat(form.default_amount);
     if (isNaN(dur) || dur <= 0) { setError('請輸入有效時長'); return; }
     if (isNaN(amt) || amt < 0) { setError('請輸入有效金額'); return; }
+    if (form.require_deposit && (form.deposit_percent < 1 || form.deposit_percent > 100)) { setError('訂金比例請輸入 1～100'); return; }
 
     setSaving(true);
     try {
@@ -222,6 +226,7 @@ export default function ServiceTemplatesScreen() {
         sort_order: editingId ? (templates.find(t => t.id === editingId)?.sort_order ?? 0) : templates.length,
         allow_online_booking: form.allow_online_booking,
         require_deposit: form.require_deposit,
+        deposit_percent: form.deposit_percent,
         break_after_minutes: isNaN(brk) || brk < 0 ? 0 : brk,
         is_addon: form.is_addon,
         consent_form_type: form.consent_form_type || null,
@@ -454,23 +459,59 @@ export default function ServiceTemplatesScreen() {
 
               {/* 預付訂金開關（僅當開放線上預約時顯示） */}
               {form.allow_online_booking && (
-                <View className="flex-row items-center justify-between pl-3 border-l-2 border-primary/20">
-                  <View className="flex-1 mr-3">
-                    <Text className="font-rounded text-sm font-medium text-foreground">需要預付訂金（50%）</Text>
-                    <Text className="font-rounded text-xs text-muted-foreground mt-0.5">
-                      {form.require_deposit ? '顧客須先付 LINE Pay 訂金才能完成預約' : '顧客可直接預約，無需付款'}
-                    </Text>
+                <View className="pl-3 border-l-2 border-primary/20 gap-3">
+                  <View className="flex-row items-center justify-between">
+                    <View className="flex-1 mr-3">
+                      <Text className="font-rounded text-sm font-medium text-foreground">
+                        需要預付訂金{form.require_deposit ? `（${form.deposit_percent}%）` : ''}
+                      </Text>
+                      <Text className="font-rounded text-xs text-muted-foreground mt-0.5">
+                        {form.require_deposit ? '顧客須先付 LINE Pay 訂金才能完成預約' : '顧客可直接預約，無需付款'}
+                      </Text>
+                    </View>
+                    <Pressable
+                      className="w-12 h-7 rounded-full items-center justify-center active:opacity-80"
+                      style={{ backgroundColor: form.require_deposit ? '#8b9de8' : '#e0d8e0' }}
+                      onPress={() => setForm(f => ({ ...f, require_deposit: !f.require_deposit }))}
+                    >
+                      <View
+                        className="w-5 h-5 rounded-full bg-white"
+                        style={{ marginLeft: form.require_deposit ? 10 : -10, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 2 }}
+                      />
+                    </Pressable>
                   </View>
-                  <Pressable
-                    className="w-12 h-7 rounded-full items-center justify-center active:opacity-80"
-                    style={{ backgroundColor: form.require_deposit ? '#8b9de8' : '#e0d8e0' }}
-                    onPress={() => setForm(f => ({ ...f, require_deposit: !f.require_deposit }))}
-                  >
-                    <View
-                      className="w-5 h-5 rounded-full bg-white"
-                      style={{ marginLeft: form.require_deposit ? 10 : -10, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 2 }}
-                    />
-                  </Pressable>
+
+                  {/* 訂金比例：常用區間快選＋自訂輸入，原本寫死 50% */}
+                  {form.require_deposit && (
+                    <View>
+                      <Text className="font-rounded text-xs text-muted-foreground mb-1.5">訂金比例</Text>
+                      <View className="flex-row gap-2 flex-wrap mb-2">
+                        {[20, 30, 50, 70, 100].map(p => (
+                          <Pressable
+                            key={p}
+                            className="px-3 py-1.5 rounded-full active:opacity-70"
+                            style={{ backgroundColor: form.deposit_percent === p ? '#8b9de8' : '#eef0ff' }}
+                            onPress={() => setForm(f => ({ ...f, deposit_percent: p }))}
+                          >
+                            <Text className="font-rounded text-xs font-medium" style={{ color: form.deposit_percent === p ? '#fff' : '#5a6bc4' }}>{p}%</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                      <View className="flex-row items-center gap-2">
+                        <TextInput
+                          className="bg-background border border-border rounded-xl px-3 font-rounded text-sm text-foreground"
+                          style={{ height: 40, width: 80 }}
+                          keyboardType="number-pad"
+                          value={String(form.deposit_percent)}
+                          onChangeText={v => {
+                            const n = parseInt(v, 10);
+                            setForm(f => ({ ...f, deposit_percent: v === '' ? 0 : (isNaN(n) ? f.deposit_percent : Math.min(100, Math.max(1, n))) }));
+                          }}
+                        />
+                        <Text className="font-rounded text-xs text-muted-foreground">%（1～100，或直接輸入自訂比例）</Text>
+                      </View>
+                    </View>
+                  )}
                 </View>
               )}
 

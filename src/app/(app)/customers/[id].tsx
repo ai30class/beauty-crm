@@ -8,7 +8,7 @@ import { StatusBar } from 'expo-status-bar';
 import {
   ArrowLeft, Pencil, Trash2, Plus, Phone, Cake, FileText,
   Scissors, Calendar, DollarSign, CreditCard, Hash, MinusCircle, Ban, ChevronDown, ChevronUp,
-  Tag, X, AlertTriangle
+  Tag, X, AlertTriangle, Megaphone
 } from 'lucide-react-native';
 import {
   getCustomerById, getServiceRecordsByCustomer,
@@ -296,6 +296,9 @@ export default function CustomerDetailScreen() {
             )}
             {customer.notes && (
               <InfoRow icon={<FileText size={14} color="#e8789a" />} label="備註" value={customer.notes} />
+            )}
+            {customer.referral_source && (
+              <InfoRow icon={<Megaphone size={14} color="#e8789a" />} label="得知管道" value={customer.referral_source} />
             )}
           </View>
         </View>

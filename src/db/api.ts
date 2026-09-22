@@ -118,7 +118,7 @@ export async function createCustomerAndGetId(payload: Omit<Customer, 'id' | 'own
   return { id, name: payload.name };
 }
 
-export async function updateCustomer(id: string, payload: Partial<Pick<Customer, 'name' | 'phone' | 'birthday' | 'notes' | 'booking_restricted' | 'booking_allowed_hours' | 'tags'>>): Promise<void> {
+export async function updateCustomer(id: string, payload: Partial<Pick<Customer, 'name' | 'phone' | 'birthday' | 'notes' | 'booking_restricted' | 'booking_allowed_hours' | 'tags' | 'referral_source'>>): Promise<void> {
   const { error } = await supabase.from('customers').update(payload).eq('id', id);
   if (error) throw error;
 }
@@ -439,7 +439,7 @@ export async function createServiceTemplate(
 
 export async function updateServiceTemplate(
   id: string,
-  payload: Partial<Pick<ServiceTemplate, 'name' | 'category' | 'duration_minutes' | 'default_amount' | 'color' | 'sort_order' | 'allow_online_booking' | 'require_deposit' | 'break_after_minutes' | 'is_addon'>>
+  payload: Partial<Pick<ServiceTemplate, 'name' | 'category' | 'duration_minutes' | 'default_amount' | 'color' | 'sort_order' | 'allow_online_booking' | 'require_deposit' | 'deposit_percent' | 'break_after_minutes' | 'is_addon' | 'consent_form_type' | 'consent_group'>>
 ): Promise<void> {
   const { error } = await supabase.from('service_templates').update(payload).eq('id', id);
   if (error) throw error;

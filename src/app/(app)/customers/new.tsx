@@ -9,6 +9,7 @@ import { ArrowLeft } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
 import { createCustomer, updateCustomer, getCustomerById } from '@/db/api';
 import { normalizePhone } from '@/lib/phone';
+import { REFERRAL_SOURCE_OPTIONS } from '@/lib/referralSource';
 
 export default function CustomerFormScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -20,6 +21,7 @@ export default function CustomerFormScreen() {
   const [birthday, setBirthday] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [notes, setNotes] = useState('');
+  const [referralSource, setReferralSource] = useState('');
   const [loading, setLoading] = useState(false);
   // loading 狀態要等下一次畫面更新才生效，連點兩下會兩次都通過；ref 是立刻生效的鎖
   const submittingRef = useRef(false);
@@ -35,6 +37,7 @@ export default function CustomerFormScreen() {
         setPhone(c.phone);
         if (c.birthday) setBirthday(new Date(c.birthday));
         setNotes(c.notes ?? '');
+        setReferralSource(c.referral_source ?? '');
       }
       setInitLoading(false);
     })();
@@ -59,9 +62,9 @@ export default function CustomerFormScreen() {
     setLoading(true);
     try {
       if (isEdit) {
-        await updateCustomer(id!, { name: name.trim(), phone: normalizePhone(phone), birthday: birthdayStr, notes: notes.trim() || null });
+        await updateCustomer(id!, { name: name.trim(), phone: normalizePhone(phone), birthday: birthdayStr, notes: notes.trim() || null, referral_source: referralSource.trim() || null });
       } else {
-        await createCustomer({ name: name.trim(), phone: normalizePhone(phone), birthday: birthdayStr, notes: notes.trim() || null, booking_restricted: false, booking_allowed_hours: [], no_show_count: 0, tags: [] });
+        await createCustomer({ name: name.trim(), phone: normalizePhone(phone), birthday: birthdayStr, notes: notes.trim() || null, booking_restricted: false, booking_allowed_hours: [], no_show_count: 0, tags: [], referral_source: referralSource.trim() || null });
       }
       // 存好之後鎖著不放（離開這一頁前不能再送出，否則連按會多建一筆）。
       // 直接用網址進來（沒有上一頁）時 router.back() 不會有反應，改回顧客列表
@@ -139,6 +142,34 @@ export default function CustomerFormScreen() {
             multiline
             numberOfLines={3}
             textAlignVertical="top"
+          />
+        </View>
+
+        {/* 轉介紹來源 */}
+        <View>
+          <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">怎麼知道我們的？</Text>
+          <View className="flex-row flex-wrap gap-2 mb-2">
+            {REFERRAL_SOURCE_OPTIONS.map(opt => {
+              const active = referralSource === opt;
+              return (
+                <Pressable
+                  key={opt}
+                  className="px-3 py-1.5 rounded-full active:opacity-70"
+                  style={{ backgroundColor: active ? '#e8789a' : '#fce9f0' }}
+                  onPress={() => setReferralSource(active ? '' : opt)}
+                >
+                  <Text className="font-rounded text-xs font-medium" style={{ color: active ? '#fff' : '#c4456a' }}>{opt}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <TextInput
+            className="bg-card border border-border rounded-2xl px-4 font-rounded text-base text-foreground"
+            style={{ height: 52 }}
+            placeholder="或直接輸入（選填）"
+            placeholderTextColor="#c4a0ae"
+            value={referralSource}
+            onChangeText={setReferralSource}
           />
         </View>
 
