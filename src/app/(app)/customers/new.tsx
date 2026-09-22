@@ -61,7 +61,7 @@ export default function CustomerFormScreen() {
       if (isEdit) {
         await updateCustomer(id!, { name: name.trim(), phone: normalizePhone(phone), birthday: birthdayStr, notes: notes.trim() || null });
       } else {
-        await createCustomer({ name: name.trim(), phone: normalizePhone(phone), birthday: birthdayStr, notes: notes.trim() || null, booking_restricted: false, booking_allowed_hours: [], no_show_count: 0 });
+        await createCustomer({ name: name.trim(), phone: normalizePhone(phone), birthday: birthdayStr, notes: notes.trim() || null, booking_restricted: false, booking_allowed_hours: [], no_show_count: 0, tags: [] });
       }
       // 存好之後鎖著不放（離開這一頁前不能再送出，否則連按會多建一筆）。
       // 直接用網址進來（沒有上一頁）時 router.back() 不會有反應，改回顧客列表

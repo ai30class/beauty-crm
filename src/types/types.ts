@@ -29,6 +29,8 @@ export interface Customer {
   booking_restricted: boolean;
   booking_allowed_hours: { start: string; end: string }[];
   no_show_count: number;
+  // 顧客標籤（migration 00092），店家自訂文字，自由新增/移除，用於分群與名單篩選
+  tags: string[];
 }
 
 // 顧客同意書電子簽名（migration 00090／00091；四種：portrait 肖像／tattoo 紋繡／lash 接睫毛／hair_removal 除毛）

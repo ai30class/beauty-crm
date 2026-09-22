@@ -116,7 +116,7 @@ export default function NewAppointmentScreen() {
     // 其他欄位填假值純粹是為了滿足 Customer 型別，畫面上不會顯示這些假值。
     setSelectedCustomer({
       id: result.id, owner_id: '', name: result.name, phone: '', birthday: null, notes: null,
-      created_at: '', updated_at: '', booking_restricted: false, booking_allowed_hours: [], no_show_count: 0,
+      created_at: '', updated_at: '', booking_restricted: false, booking_allowed_hours: [], no_show_count: 0, tags: [],
     });
     setShowCustomerPicker(false);
     setNeedsProfileFill(false); // 員工沒有編輯權限，不能也不需要走補資料流程
@@ -133,7 +133,7 @@ export default function NewAppointmentScreen() {
         : null;
       const created = await createCustomerAndGetId({
         name: newCustName.trim(), phone: normalizePhone(phoneSearchQuery), birthday: birthdayStr, notes: null,
-        booking_restricted: false, booking_allowed_hours: [], no_show_count: 0,
+        booking_restricted: false, booking_allowed_hours: [], no_show_count: 0, tags: [],
       });
       selectFoundCustomer(created);
       setShowCreateNewCustomer(false);

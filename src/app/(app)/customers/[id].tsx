@@ -7,7 +7,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import {
   ArrowLeft, Pencil, Trash2, Plus, Phone, Cake, FileText,
-  Scissors, Calendar, DollarSign, CreditCard, Hash, MinusCircle, Ban, ChevronDown, ChevronUp
+  Scissors, Calendar, DollarSign, CreditCard, Hash, MinusCircle, Ban, ChevronDown, ChevronUp,
+  Tag, X, AlertTriangle
 } from 'lucide-react-native';
 import {
   getCustomerById, getServiceRecordsByCustomer,
@@ -44,6 +45,12 @@ export default function CustomerDetailScreen() {
   const [newHourStart, setNewHourStart] = useState('09:00');
   const [newHourEnd, setNewHourEnd] = useState('12:00');
 
+  // 顧客標籤（migration 00092，店家自訂文字，自由新增/移除）
+  const [tags, setTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState('');
+  const [savingTags, setSavingTags] = useState(false);
+  const [showHealthDetail, setShowHealthDetail] = useState(false);
+
   const TIME_OPTS: string[] = [];
   for (let h = 0; h < 24; h++) for (const m of [0, 30]) TIME_OPTS.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
 
@@ -66,6 +73,7 @@ export default function CustomerDetailScreen() {
       if (c) {
         setRestricted(c.booking_restricted ?? false);
         setAllowedHours(Array.isArray(c.booking_allowed_hours) ? c.booking_allowed_hours : []);
+        setTags(Array.isArray(c.tags) ? c.tags : []);
       }
       const profile = await getShopProfile().catch(() => null);
       setNoShowThreshold(profile?.no_show_alert_threshold ?? 3);
@@ -107,6 +115,32 @@ export default function CustomerDetailScreen() {
     await saveRestriction(restricted, updated);
   };
 
+  const addTag = async () => {
+    const t = newTag.trim();
+    if (!t || !id || tags.includes(t)) { setNewTag(''); return; }
+    const updated = [...tags, t];
+    setTags(updated);
+    setNewTag('');
+    setSavingTags(true);
+    try {
+      await updateCustomer(id, { tags: updated });
+    } finally {
+      setSavingTags(false);
+    }
+  };
+
+  const removeTag = async (t: string) => {
+    if (!id) return;
+    const updated = tags.filter(x => x !== t);
+    setTags(updated);
+    setSavingTags(true);
+    try {
+      await updateCustomer(id, { tags: updated });
+    } finally {
+      setSavingTags(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!id) return;
     await deleteCustomer(id);
@@ -137,6 +171,13 @@ export default function CustomerDetailScreen() {
   const totalSpent = records.reduce((sum, r) => sum + Number(r.amount), 0);
   const nextAppt = appointments.find(a => a.status === 'pending' && new Date(a.appointment_time) >= new Date());
   const activePackages = packages.filter(p => p.is_active);
+
+  // 從同意書健康問卷自動算出的警示（不額外存欄位，同意書資料改了這裡就跟著變，不會不同步）
+  const healthFlags = consents.flatMap(c =>
+    (c.health_answers ?? [])
+      .filter(h => h.answer === 'yes')
+      .map(h => ({ question: h.question, formTitle: CONSENT_FORM_TITLE[c.form_type], date: c.service_date }))
+  );
 
   return (
     <View className="flex-1 bg-background">
@@ -207,6 +248,30 @@ export default function CustomerDetailScreen() {
                 </Text>
               </View>
             )}
+            {healthFlags.length > 0 && (
+              <Pressable
+                className="mt-2 flex-row items-center gap-1.5 px-3 py-1.5 rounded-full active:opacity-70"
+                style={{ backgroundColor: '#fff0f0' }}
+                onPress={() => setShowHealthDetail(v => !v)}
+              >
+                <AlertTriangle size={12} color="#e85454" />
+                <Text className="font-rounded text-xs font-semibold" style={{ color: '#e85454' }}>
+                  健康問卷有 {healthFlags.length} 項需留意
+                </Text>
+                {showHealthDetail ? <ChevronUp size={12} color="#e85454" /> : <ChevronDown size={12} color="#e85454" />}
+              </Pressable>
+            )}
+            {showHealthDetail && healthFlags.length > 0 && (
+              <View className="mt-2 w-full bg-background rounded-xl p-3 border border-border gap-2">
+                {healthFlags.map((f, i) => (
+                  <View key={i} className={i > 0 ? 'pt-2 border-t border-border' : ''}>
+                    <Text className="font-rounded text-xs text-foreground">{f.question}</Text>
+                    <Text className="font-rounded text-xs text-muted-foreground mt-0.5">{f.formTitle}　{f.date}</Text>
+                  </View>
+                ))}
+                <Text className="font-rounded text-xs text-muted-foreground mt-1">來自同意書健康問卷「是」的回答，供施作前留意，非診斷結果</Text>
+              </View>
+            )}
           </View>
           <View className="gap-2">
             <InfoRow icon={<Phone size={14} color="#e8789a" />} label="電話" value={customer.phone} />
@@ -218,6 +283,47 @@ export default function CustomerDetailScreen() {
             {customer.notes && (
               <InfoRow icon={<FileText size={14} color="#e8789a" />} label="備註" value={customer.notes} />
             )}
+          </View>
+        </View>
+
+        {/* ── 標籤卡片 ───────────────────────────── */}
+        <View className="mx-5 mb-4 bg-card rounded-2xl p-4 border border-border">
+          <View className="flex-row items-center gap-2 mb-3">
+            <Tag size={15} color="#e8789a" />
+            <Text className="font-rounded text-base font-semibold text-foreground">標籤</Text>
+            {savingTags && <ActivityIndicator size="small" color="#e8789a" />}
+          </View>
+          <View className="flex-row flex-wrap gap-2 mb-3">
+            {tags.length === 0 ? (
+              <Text className="font-rounded text-sm text-muted-foreground">尚無標籤，可以加「常客」「待跟進」這類自訂標籤方便分群</Text>
+            ) : (
+              tags.map(t => (
+                <View key={t} className="flex-row items-center gap-1 px-3 py-1.5 rounded-full" style={{ backgroundColor: '#fce9f0' }}>
+                  <Text className="font-rounded text-xs font-medium" style={{ color: '#c4456a' }}>{t}</Text>
+                  <Pressable onPress={() => removeTag(t)} hitSlop={6}>
+                    <X size={12} color="#c4456a" />
+                  </Pressable>
+                </View>
+              ))
+            )}
+          </View>
+          <View className="flex-row items-center gap-2">
+            <TextInput
+              className="flex-1 font-rounded text-sm text-foreground bg-background border border-border rounded-xl px-3 py-2"
+              placeholder="輸入標籤名稱"
+              placeholderTextColor="#c4a0ae"
+              value={newTag}
+              onChangeText={setNewTag}
+              onSubmitEditing={addTag}
+              returnKeyType="done"
+            />
+            <Pressable
+              className="flex-row items-center gap-1 px-3 py-2 rounded-xl bg-primary active:opacity-80"
+              onPress={addTag}
+            >
+              <Plus size={14} color="#fff" />
+              <Text className="font-rounded text-sm text-white font-medium">新增</Text>
+            </Pressable>
           </View>
         </View>
 

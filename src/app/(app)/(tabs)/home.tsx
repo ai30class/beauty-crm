@@ -16,6 +16,7 @@ function getTodayDayKey(): keyof BusinessHours {
 
 function CustomerCard({ item, onPress }: { item: Customer; onPress: () => void }) {
   const initial = item.name.charAt(0);
+  const tags = Array.isArray(item.tags) ? item.tags : [];
   return (
     <Pressable
       className="flex-row items-center bg-card rounded-2xl px-4 py-3 mb-3 active:opacity-80"
@@ -31,6 +32,18 @@ function CustomerCard({ item, onPress }: { item: Customer; onPress: () => void }
           <Phone size={12} color="#c4a0ae" />
           <Text className="font-rounded text-sm text-muted-foreground ml-1">{item.phone}</Text>
         </View>
+        {tags.length > 0 && (
+          <View className="flex-row flex-wrap gap-1 mt-1.5">
+            {tags.slice(0, 3).map(t => (
+              <View key={t} className="px-2 py-0.5 rounded-full" style={{ backgroundColor: '#fce9f0' }}>
+                <Text className="font-rounded text-xs font-medium" style={{ color: '#c4456a' }}>{t}</Text>
+              </View>
+            ))}
+            {tags.length > 3 && (
+              <Text className="font-rounded text-xs text-muted-foreground self-center">+{tags.length - 3}</Text>
+            )}
+          </View>
+        )}
       </View>
       <ChevronRight size={18} color="#c4a0ae" />
     </Pressable>
@@ -50,6 +63,7 @@ export default function HomeScreen() {
   const [staffNoBrowse, setStaffNoBrowse] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
   const [unreadNewBookings, setUnreadNewBookings] = useState(0);
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadCustomers = useCallback(async () => {
@@ -119,13 +133,25 @@ export default function HomeScreen() {
     }, 300);
   };
 
+  // 依目前載入的顧客算出常用標籤（依使用次數排序），供快速篩選；只是顯示排序，不用另外查資料庫
+  const tagCounts = new Map<string, number>();
+  customers.forEach(c => (Array.isArray(c.tags) ? c.tags : []).forEach(t => tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1)));
+  const allTags = Array.from(tagCounts.entries()).sort((a, b) => b[1] - a[1]).map(([t]) => t);
+  const displayedCustomers = activeTagFilter
+    ? customers.filter(c => (Array.isArray(c.tags) ? c.tags : []).includes(activeTagFilter))
+    : customers;
+
   return (
     <View className="flex-1 bg-background">
       <StatusBar style="dark" backgroundColor="#fff5f7" />
       {/* Header */}
       <View className="px-5 pt-14 pb-2 bg-background">
         <Text className="font-rounded text-2xl font-bold text-foreground mb-1">顧客管理</Text>
-        {!staffNoBrowse && <Text className="font-rounded text-sm text-muted-foreground">共 {customers.length} 位顧客</Text>}
+        {!staffNoBrowse && (
+          <Text className="font-rounded text-sm text-muted-foreground">
+            {activeTagFilter ? `「${activeTagFilter}」共 ${displayedCustomers.length} 位` : `共 ${customers.length} 位顧客`}
+          </Text>
+        )}
       </View>
 
       {/* 新預約通知（顧客從預約頁預約成功；只有店家本人看得到） */}
@@ -247,6 +273,27 @@ export default function HomeScreen() {
         </View>
       </View>}
 
+      {/* 標籤快速篩選 */}
+      {!staffNoBrowse && allTags.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-5 mb-3" style={{ flexGrow: 0 }}>
+          <View className="flex-row gap-2">
+            {allTags.map(t => {
+              const active = activeTagFilter === t;
+              return (
+                <Pressable
+                  key={t}
+                  className="px-3 py-1.5 rounded-full active:opacity-70"
+                  style={{ backgroundColor: active ? '#e8789a' : '#fce9f0' }}
+                  onPress={() => setActiveTagFilter(active ? null : t)}
+                >
+                  <Text className="font-rounded text-xs font-medium" style={{ color: active ? '#fff' : '#c4456a' }}>{t}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+      )}
+
       {/* 顧客列表 */}
       {loading ? (
         <View className="flex-1 items-center justify-center">
@@ -268,7 +315,7 @@ export default function HomeScreen() {
         </View>
       ) : (
         <FlatList
-          data={customers}
+          data={displayedCustomers}
           keyExtractor={item => item.id}
           contentContainerClassName="px-5 pb-24"
           contentInsetAdjustmentBehavior="automatic"
@@ -282,7 +329,7 @@ export default function HomeScreen() {
             <View className="items-center justify-center py-20 gap-3">
               <User size={48} color="#c4a0ae" />
               <Text className="font-rounded text-base text-muted-foreground">
-                {query ? '找不到符合的顧客' : '尚未新增任何顧客'}
+                {activeTagFilter ? '這個標籤目前沒有顧客' : query ? '找不到符合的顧客' : '尚未新增任何顧客'}
               </Text>
             </View>
           }

@@ -118,7 +118,7 @@ export async function createCustomerAndGetId(payload: Omit<Customer, 'id' | 'own
   return { id, name: payload.name };
 }
 
-export async function updateCustomer(id: string, payload: Partial<Pick<Customer, 'name' | 'phone' | 'birthday' | 'notes' | 'booking_restricted' | 'booking_allowed_hours'>>): Promise<void> {
+export async function updateCustomer(id: string, payload: Partial<Pick<Customer, 'name' | 'phone' | 'birthday' | 'notes' | 'booking_restricted' | 'booking_allowed_hours' | 'tags'>>): Promise<void> {
   const { error } = await supabase.from('customers').update(payload).eq('id', id);
   if (error) throw error;
 }
