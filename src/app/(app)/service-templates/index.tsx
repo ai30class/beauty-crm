@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, Pressable, ActivityIndicator,
   TextInput, KeyboardAvoidingView, Modal
@@ -126,6 +126,9 @@ export default function ServiceTemplatesScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showBreakInfo, setShowBreakInfo] = useState(false);
+  // 編輯表單畫在清單最上方；清單滑到下面時點某一項的編輯鈕，表單雖然有打開，
+  // 但畫面沒有自動捲回頂部，使用者看不到表單、以為按鈕沒反應。openAdd／openEdit 都要捲回頂部。
+  const scrollRef = useRef<ScrollView>(null);
 
   // 員工帳號要商家開「可管理服務項目與定價」才能新增／編輯／刪除；沒開就只讀（資料庫也擋寫入，
   // 這裡讓畫面跟著隱藏按鈕，避免員工直接打網址進來看到按不成功的按鈕）。權限載入前先不顯示按鈕。
@@ -175,6 +178,7 @@ export default function ServiceTemplatesScreen() {
     setEditingId(null);
     setError('');
     setShowForm(true);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
   };
 
   const openEdit = (tpl: ServiceTemplate) => {
@@ -195,6 +199,7 @@ export default function ServiceTemplatesScreen() {
     setEditingId(tpl.id);
     setError('');
     setShowForm(true);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
   };
 
   const handleSave = async () => {
@@ -259,7 +264,7 @@ export default function ServiceTemplatesScreen() {
         )}
       </View>
 
-      <ScrollView contentContainerClassName="px-5 pb-12" keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} contentContainerClassName="px-5 pb-12" keyboardShouldPersistTaps="handled">
         {/* 員工沒有「可管理服務項目與定價」開關：只能查看 */}
         {readOnlyStaff && (
           <View className="bg-card rounded-2xl p-4 mb-4 border border-border">
