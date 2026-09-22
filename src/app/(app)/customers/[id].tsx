@@ -12,14 +12,15 @@ import {
 import {
   getCustomerById, getServiceRecordsByCustomer,
   getAppointmentsByCustomer, deleteCustomer, deleteServiceRecord,
-  getPackagesByCustomer, updateCustomer, getShopProfile
+  getPackagesByCustomer, updateCustomer, getShopProfile, getClientConsentsByCustomer
 } from '@/db/api';
+import { CONSENT_FORM_TITLE } from '@/lib/consentForms';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import type { Customer, ServiceRecord, Appointment, ServicePackage } from '@/types/types';
+import type { Customer, ServiceRecord, Appointment, ServicePackage, ClientConsent } from '@/types/types';
 
 export default function CustomerDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -28,6 +29,7 @@ export default function CustomerDetailScreen() {
   const [records, setRecords] = useState<ServiceRecord[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [packages, setPackages] = useState<ServicePackage[]>([]);
+  const [consents, setConsents] = useState<ClientConsent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAllRecords, setShowAllRecords] = useState(false);
 
@@ -49,16 +51,18 @@ export default function CustomerDetailScreen() {
     if (!id) return;
     setLoading(true);
     try {
-      const [c, r, a, p] = await Promise.all([
+      const [c, r, a, p, cs] = await Promise.all([
         getCustomerById(id),
         getServiceRecordsByCustomer(id),
         getAppointmentsByCustomer(id),
         getPackagesByCustomer(id),
+        getClientConsentsByCustomer(id).catch(() => []),
       ]);
       setCustomer(c);
       setRecords(r);
       setAppointments(a);
       setPackages(p);
+      setConsents(cs);
       if (c) {
         setRestricted(c.booking_restricted ?? false);
         setAllowedHours(Array.isArray(c.booking_allowed_hours) ? c.booking_allowed_hours : []);
@@ -421,6 +425,41 @@ export default function CustomerDetailScreen() {
                 </Pressable>
               )}
             </>
+          )}
+        </View>
+
+        {/* 同意書：肖像／紋繡／接睫毛／除毛（migration 00090／00091） */}
+        <View className="mx-5 mb-4 bg-card rounded-2xl p-4 border border-border">
+          <View className="flex-row items-center justify-between mb-3">
+            <Text className="font-rounded text-base font-semibold text-foreground">
+              同意書 <Text className="text-muted-foreground font-normal text-sm">({consents.length})</Text>
+            </Text>
+            <Pressable
+              className="flex-row items-center gap-1 active:opacity-70"
+              onPress={() => router.push(`/(app)/consents/new?customerId=${id}` as any)}
+            >
+              <Plus size={15} color="#e8789a" />
+              <Text className="font-rounded text-sm text-primary">新增</Text>
+            </Pressable>
+          </View>
+          {consents.length === 0 ? (
+            <View className="items-center py-6">
+              <FileText size={32} color="#c4a0ae" />
+              <Text className="font-rounded text-sm text-muted-foreground mt-2">尚無同意書</Text>
+            </View>
+          ) : (
+            consents.slice(0, 5).map((c, i) => (
+              <Pressable
+                key={c.id}
+                className={`py-3 active:bg-muted/30 -mx-1 px-1 rounded-xl ${i > 0 ? 'border-t border-border' : ''}`}
+                onPress={() => router.push(`/(app)/consents/${c.id}` as any)}
+              >
+                <Text className="font-rounded text-sm font-semibold text-foreground">{CONSENT_FORM_TITLE[c.form_type]}</Text>
+                <Text className="font-rounded text-xs text-muted-foreground mt-0.5">
+                  {c.service_date}　簽署人：{c.signer_name}{c.is_minor ? '（法定代理人）' : ''}
+                </Text>
+              </Pressable>
+            ))
           )}
         </View>
 

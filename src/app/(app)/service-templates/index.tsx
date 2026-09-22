@@ -13,6 +13,24 @@ import {
 } from '@/db/api';
 import type { ServiceTemplate } from '@/types/types';
 
+// 同意書分類選項：獨立於 category（自由文字）之外，明確控制哪些服務要簽哪份同意書
+const CONSENT_FORM_TYPE_OPTIONS: { value: '' | 'tattoo' | 'lash' | 'hair_removal'; label: string }[] = [
+  { value: '', label: '不需要同意書' },
+  { value: 'tattoo', label: '紋繡類' },
+  { value: 'lash', label: '接睫毛類' },
+  { value: 'hair_removal', label: '除毛類' },
+];
+
+// 新增服務項目時，依名稱／分類的關鍵字自動建議同意書分類（純粹方便，使用者仍可自己改）；
+// 既有項目在 migration 00091 已經跑過一次關鍵字自動歸類，這裡只用在「新建立」的項目上
+function suggestConsentFormType(name: string, category: string): '' | 'tattoo' | 'lash' | 'hair_removal' {
+  const s = `${name}${category}`;
+  if (/紋|繡|霧眉|飄眉|除色/.test(s)) return 'tattoo';
+  if (/睫/.test(s)) return 'lash';
+  if (/除毛|脫毛|蜜蠟|穿線/.test(s)) return 'hair_removal';
+  return '';
+}
+
 const PRESET_COLORS = [
   '#e8789a', '#a8d5ba', '#8b9de8', '#e8a87c',
   '#c4a0ae', '#b5ddd8', '#f5c6d0', '#d4b8e0',
@@ -84,10 +102,15 @@ type FormState = {
   require_deposit: boolean;
   break_after_minutes: string;
   is_addon: boolean;
+  // 同意書分類（migration 00091），獨立欄位，不依賴 category 打的字一模一樣
+  consent_form_type: '' | 'tattoo' | 'lash' | 'hair_removal';
+  // 同意書分組，只有 consent_form_type='tattoo' 時才有意義：同一組視為「同一個方向」不用重簽
+  consent_group: string;
 };
 
 const EMPTY_FORM: FormState = {
   name: '', category: '', duration_minutes: '', default_amount: '', color: '#e8789a',
+  consent_form_type: '', consent_group: '',
   allow_online_booking: true, require_deposit: true, break_after_minutes: '30', is_addon: false,
 };
 
@@ -166,6 +189,8 @@ export default function ServiceTemplatesScreen() {
       require_deposit: tpl.require_deposit,
       break_after_minutes: String(tpl.break_after_minutes),
       is_addon: tpl.is_addon,
+      consent_form_type: tpl.consent_form_type ?? '',
+      consent_group: tpl.consent_group ?? '',
     });
     setEditingId(tpl.id);
     setError('');
@@ -194,6 +219,9 @@ export default function ServiceTemplatesScreen() {
         require_deposit: form.require_deposit,
         break_after_minutes: isNaN(brk) || brk < 0 ? 0 : brk,
         is_addon: form.is_addon,
+        consent_form_type: form.consent_form_type || null,
+        // 只有紋繡類才有意義，改成別的分類就不要留著舊分組字串誤導重簽判斷
+        consent_group: form.consent_form_type === 'tattoo' ? (form.consent_group.trim() || null) : null,
       };
       if (editingId) {
         await updateServiceTemplate(editingId, payload);
@@ -256,7 +284,10 @@ export default function ServiceTemplatesScreen() {
                 placeholder="例：剪髮、染髮、護膚"
                 placeholderTextColor="#c4a0ae"
                 value={form.name}
-                onChangeText={v => setForm(f => ({ ...f, name: v }))}
+                onChangeText={v => setForm(f => (
+                  // 新項目才自動建議同意書分類，避免改名字時把既有項目已經人工設定過的分類覆蓋掉
+                  editingId ? { ...f, name: v } : { ...f, name: v, consent_form_type: suggestConsentFormType(v, f.category) }
+                ))}
               />
             </View>
 
@@ -268,7 +299,9 @@ export default function ServiceTemplatesScreen() {
                 placeholder="例：美甲、紋繡、美容、除毛"
                 placeholderTextColor="#c4a0ae"
                 value={form.category}
-                onChangeText={v => setForm(f => ({ ...f, category: v }))}
+                onChangeText={v => setForm(f => (
+                  editingId ? { ...f, category: v } : { ...f, category: v, consent_form_type: suggestConsentFormType(f.name, v) }
+                ))}
               />
               {existingCategories.length > 0 && (
                 <View className="flex-row gap-2 flex-wrap mt-2">
@@ -285,6 +318,43 @@ export default function ServiceTemplatesScreen() {
                 </View>
               )}
             </View>
+
+            <View>
+              <Text className="font-rounded text-sm font-medium text-foreground mb-1">同意書分類</Text>
+              <View className="flex-row gap-2 flex-wrap">
+                {CONSENT_FORM_TYPE_OPTIONS.map(opt => (
+                  <Pressable
+                    key={opt.value || 'none'}
+                    className="px-3 py-1.5 rounded-full active:opacity-70"
+                    style={{ backgroundColor: form.consent_form_type === opt.value ? '#e8789a' : '#fce9f0' }}
+                    onPress={() => setForm(f => ({ ...f, consent_form_type: opt.value }))}
+                  >
+                    <Text className="font-rounded text-xs" style={{ color: form.consent_form_type === opt.value ? '#fff' : '#e8789a' }}>{opt.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text className="font-rounded text-xs text-muted-foreground mt-1">
+                跟上面的「分類」文字無關，這裡決定顧客第一次做這項服務時，系統要不要提醒簽同意書。
+              </Text>
+            </View>
+
+            {form.consent_form_type === 'tattoo' && (
+              <View>
+                <Text className="font-rounded text-sm font-medium text-foreground mb-1">同意書分組（選填）</Text>
+                <TextInput
+                  className="bg-background border border-border rounded-xl px-3 font-rounded text-sm text-foreground"
+                  style={{ height: 44 }}
+                  placeholder="例：眉部、眼線、唇部"
+                  placeholderTextColor="#c4a0ae"
+                  value={form.consent_group}
+                  onChangeText={v => setForm(f => ({ ...f, consent_group: v }))}
+                />
+                <Text className="font-rounded text-xs text-muted-foreground mt-1">
+                  同一組視為同一個方向，簽過就不用重簽同意書；例如「霧眉」「霧眉補色」都填「眉部」，「紋眼線」填「眼線」。
+                  不填的話，這個項目每次都會被當成要重簽。
+                </Text>
+              </View>
+            )}
 
             <View className="flex-row gap-3">
               <View className="flex-1">

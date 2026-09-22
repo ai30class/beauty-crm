@@ -31,6 +31,37 @@ export interface Customer {
   no_show_count: number;
 }
 
+// 顧客同意書電子簽名（migration 00090／00091；四種：portrait 肖像／tattoo 紋繡／lash 接睫毛／hair_removal 除毛）
+export type ConsentFormType = 'portrait' | 'tattoo' | 'lash' | 'hair_removal';
+
+export interface ClientConsent {
+  id: string;
+  owner_id: string;
+  customer_id: string;
+  form_type: ConsentFormType;
+  // 簽署當下的顧客資料快照，之後顧客資料改了不會影響已簽的同意書
+  customer_name: string;
+  customer_phone: string;
+  customer_birthday: string | null;
+  service_item: string | null;
+  service_date: string;
+  consent_internal_use: boolean;
+  consent_marketing: boolean;
+  consent_full_face: boolean;
+  is_minor: boolean;
+  signer_name: string;
+  customer_signature_path: string;
+  staff_signature_path: string;
+  staff_id: string | null;
+  // 簽署當下的「同意書分組」快照（migration 00091，只有 form_type='tattoo' 有意義）：
+  // 判斷紋繡要不要重簽，看新預約服務項目的分組跟這裡存的是否相同
+  consent_group: string | null;
+  // 健康狀況調查（migration 00091，只有 tattoo／lash／hair_removal 才有，肖像同意書是 null）
+  health_answers: { question: string; answer: 'yes' | 'no' }[] | null;
+  health_notes: string | null;
+  created_at: string;
+}
+
 // 全店封閉時段
 export interface ShopBlockedSlot {
   id: string;
@@ -62,6 +93,10 @@ export interface ServiceRecord {
   package_id: string | null;
   status: 'completed' | 'pending';
   staff_id: string | null;
+  // 選了哪個服務項目、當時屬於哪個分類（migration 00091；快速選服務才會帶入，自由輸入的是空的）。
+  // category 是存檔當下的快照，之後服務項目改分類不會影響舊記錄，月報表按分類統計要靠它
+  service_template_id?: string | null;
+  category?: string | null;
   created_at: string;
   // 多人協作：co_staff_id 有值時，staff_share_percent／co_staff_share_percent 是
   // staff_id／co_staff_id 各自直接實拿佔總金額的%（直接輸入，不透過各自 commission_rate 計算），
@@ -93,6 +128,8 @@ export interface Appointment {
   staff_id: string | null;
   // 手動預約的時長（分鐘，migration 00088）；舊資料是空的，讀取時看 manualDurationMin()
   duration_minutes?: number | null;
+  // 選了哪個服務項目（migration 00091）；舊資料是空的。用來判斷這筆預約要不要提醒簽同意書
+  service_template_id?: string | null;
   customer?: { name: string; phone: string };
   staff?: { name: string; color: string } | null;
 }
@@ -145,6 +182,12 @@ export interface ServiceTemplate {
   require_deposit: boolean;
   break_after_minutes: number;
   is_addon: boolean;
+  // 同意書分類（migration 00091）：獨立欄位，不依賴 category 這個自由文字欄位打的字一模一樣；
+  // null＝不需要簽同意書。既有項目由 migration 用關鍵字自動歸類過一次，之後可在畫面手動改
+  consent_form_type?: 'tattoo' | 'lash' | 'hair_removal' | null;
+  // 同意書分組（migration 00091，只有 consent_form_type='tattoo' 需要填）：同一組視為
+  // 「同一個方向」不用重簽（例如「霧眉」「霧眉補色」都填「眉部」；「紋眼線」填「眼線」）
+  consent_group?: string | null;
   created_at: string;
 }
 

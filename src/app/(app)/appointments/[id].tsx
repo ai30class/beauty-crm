@@ -1,16 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, ScrollView, Pressable,
   KeyboardAvoidingView, ActivityIndicator, Modal
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, Trash2, Clock, CheckCircle, XCircle, Clock3, AlertTriangle } from 'lucide-react-native';
+import { ArrowLeft, Trash2, Clock, CheckCircle, XCircle, Clock3, AlertTriangle, FileWarning } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getAppointmentById, updateAppointment, deleteAppointment, incrementCustomerNoShow, getStaffForPicker, getAccountType } from '@/db/api';
+import {
+  getAppointmentById, updateAppointment, deleteAppointment, incrementCustomerNoShow, getStaffForPicker, getAccountType,
+  getServiceTemplateById, getLatestConsentByFormType,
+} from '@/db/api';
 import TimeOfDayPicker from '@/components/TimeOfDayPicker';
 import { manualDurationMin } from '@/lib/schedule';
-import type { Appointment, StaffRosterEntry } from '@/types/types';
+import { getRequiredConsentFormTypes, CONSENT_FORM_TITLE } from '@/lib/consentForms';
+import type { Appointment, StaffRosterEntry, ConsentFormType } from '@/types/types';
 import { useDeletePinGate } from '@/lib/deletePinGate';
 
 const STATUS_OPTIONS: { value: Appointment['status']; label: string; color: string; bg: string; icon: React.ReactNode }[] = [
@@ -44,6 +49,31 @@ export default function AppointmentDetailScreen() {
   const [duration, setDuration] = useState(60);
   const [durationChanged, setDurationChanged] = useState(false);
 
+  // 同意書提醒（migration 00091，見顧客報到後、操作前要簽署的規則）：這筆預約選的服務項目
+  // 屬於紋繡／接睫毛／除毛任一類，且這位顧客還沒簽過對應的同意書時，跳出提醒
+  const [consentMissingTypes, setConsentMissingTypes] = useState<ConsentFormType[]>([]);
+  const [consentServiceTemplateId, setConsentServiceTemplateId] = useState<string | null>(null);
+
+  // 同意書提醒的檢查邏輯獨立成一個函式：初次載入跑一次，簽完同意書返回這頁時（useFocusEffect）
+  // 要再跑一次，不然畫面會停留在「簽署前」的舊提醒，讓人以為還沒簽
+  const checkConsent = useCallback(async (a: Appointment) => {
+    if (!a.service_template_id) { setConsentMissingTypes([]); return; }
+    setConsentServiceTemplateId(a.service_template_id);
+    const tpl = await getServiceTemplateById(a.service_template_id).catch(() => null);
+    const required = getRequiredConsentFormTypes(tpl?.consent_form_type);
+    if (required.length === 0) { setConsentMissingTypes([]); return; }
+    const missing: ConsentFormType[] = [];
+    for (const t of required) {
+      const latest = await getLatestConsentByFormType(a.customer_id, t).catch(() => null);
+      if (!latest) { missing.push(t); continue; }
+      // 只有紋繡類要比對「同一個方向」；沒設分組（雙方任一邊是空的）一律當作沒簽過，要重簽
+      if (t === 'tattoo' && (!latest.consent_group || latest.consent_group !== (tpl?.consent_group ?? null))) {
+        missing.push(t);
+      }
+    }
+    setConsentMissingTypes(missing);
+  }, []);
+
   useEffect(() => {
     (async () => {
       if (!id) return;
@@ -62,10 +92,17 @@ export default function AppointmentDetailScreen() {
         setStatus(a.status);
         setSelectedStaffId(a.staff_id);
         setDuration(manualDurationMin(a));
+        await checkConsent(a);
       }
       setLoading(false);
     })();
-  }, [id]);
+  }, [id, checkConsent]);
+
+  // 從簽署同意書畫面按返回、回到這一頁時重新檢查一次
+  useFocusEffect(useCallback(() => {
+    if (appt) checkConsent(appt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appt?.id]));
 
   const formatDate = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -154,6 +191,25 @@ export default function AppointmentDetailScreen() {
       </View>
 
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="px-5 pb-12 gap-4" className="bg-background">
+
+        {/* 同意書提醒：報到後、操作前要簽署（Emma 9/23 決定） */}
+        {consentMissingTypes.length > 0 && (
+          <Pressable
+            className="rounded-2xl px-4 py-3 flex-row items-center gap-3 active:opacity-80"
+            style={{ backgroundColor: '#faecd8', borderWidth: 1, borderColor: '#f0d09a' }}
+            onPress={() => router.push(
+              `/(app)/consents/new?customerId=${appt.customer_id}&types=${consentMissingTypes.join(',')}&serviceTemplateId=${consentServiceTemplateId}` as any
+            )}
+          >
+            <FileWarning size={20} color="#b5732a" />
+            <View className="flex-1">
+              <Text className="font-rounded text-sm font-semibold" style={{ color: '#9a6400' }}>
+                尚未簽署：{consentMissingTypes.map(t => CONSENT_FORM_TITLE[t]).join('、')}
+              </Text>
+              <Text className="font-rounded text-xs" style={{ color: '#b5732a' }}>操作前請先完成簽署，點一下前往</Text>
+            </View>
+          </Pressable>
+        )}
 
         {/* 狀態切換 */}
         <View>

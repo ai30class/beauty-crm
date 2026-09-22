@@ -10,7 +10,7 @@ import type {
   MonthlyStats, UnifiedAppointment, ProductSalesRow,
   BirthdayCustomer, CustomerRankRow, StaffPerformanceRow,
   StaffCommissionTier, StaffBonus, PayrollRecord, DormantCustomer, SignupRequest, StaffRosterEntry,
-  OwnerNotification,
+  OwnerNotification, ClientConsent,
 } from '@/types/types';
 
 // ─── 商家申請名單（關閉自助註冊後的替代入口）───────────────────────────────────
@@ -228,6 +228,50 @@ export async function removeClientPhotos(paths: (string | null | undefined)[]): 
   await supabase.storage.from(CLIENT_PHOTO_BUCKET).remove(list).catch(() => {});
 }
 
+// ─── 顧客同意書電子簽名（migration 00090；目前只有 form_type='portrait'）──────────
+// 簽名圖檔跟施術照片共用同一個私有空間，路徑另外加 consents/ 前綴區分，見 migration 00090 說明。
+// staffId：登入者是員工帳號時，呼叫端要傳自己的 staff id（RLS 要求 staff_id 等於自己）；
+// 商家本人簽署／見證則傳 null，或商家在畫面上選了某位員工代替，就傳那位員工的 id。
+export async function createClientConsent(
+  payload: Omit<ClientConsent, 'id' | 'owner_id' | 'created_at'>,
+): Promise<void> {
+  const ownerId = await getMyShopOwnerId();
+  const { error } = await supabase.from('client_consents').insert({ ...payload, owner_id: ownerId });
+  if (error) throw error;
+}
+
+export async function getClientConsentsByCustomer(customerId: string): Promise<ClientConsent[]> {
+  const { data, error } = await supabase
+    .from('client_consents')
+    .select('*')
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getClientConsentById(id: string): Promise<ClientConsent | null> {
+  const { data, error } = await supabase.from('client_consents').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
+// 查這位顧客某一種同意書「最近一次」簽的是哪一筆（用來判斷還要不要簽：見 appointments/[id].tsx 的提醒）
+export async function getLatestConsentByFormType(
+  customerId: string, formType: ClientConsent['form_type'],
+): Promise<ClientConsent | null> {
+  const { data, error } = await supabase
+    .from('client_consents')
+    .select('*')
+    .eq('customer_id', customerId)
+    .eq('form_type', formType)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
 // 補傳／更換單張照片。RLS 擋下時 update 不報錯、只更新 0 筆，所以要檢查筆數
 export async function setServiceRecordPhoto(
   id: string,
@@ -366,6 +410,12 @@ export async function getServiceTemplates(): Promise<ServiceTemplate[]> {
     .order('created_at', { ascending: true });
   if (error) throw error;
   return Array.isArray(data) ? data : [];
+}
+
+export async function getServiceTemplateById(id: string): Promise<ServiceTemplate | null> {
+  const { data, error } = await supabase.from('service_templates').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data ?? null;
 }
 
 // 顧客線上預約頁專用：見 getActiveStaffByOwner 的說明，同樣的理由要帶 owner_id

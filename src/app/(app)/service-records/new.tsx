@@ -31,6 +31,9 @@ export default function NewServiceRecordScreen() {
   const [templates, setTemplates] = useState<ServiceTemplate[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('全部');
   const [serviceName, setServiceName] = useState('');
+  // 點快速選擇的服務項目時記住是哪一筆（migration 00091）：存檔要記 service_template_id／category
+  // 才能拆分月報表；使用者手動打字改掉服務名稱時清空，因為那已經不是原本選的那個項目了
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [serviceDate, setServiceDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -225,6 +228,10 @@ export default function NewServiceRecordScreen() {
         co_staff_id: (selectedStaffId && coStaffId) ? coStaffId : null,
         staff_share_percent: (selectedStaffId && coStaffId) ? sharePercent : null,
         co_staff_share_percent: (selectedStaffId && coStaffId) ? coSharePercent : null,
+        // 記下選的是哪個服務項目、當時的分類（migration 00091），月報表按分類統計要靠這個；
+        // 自由輸入（沒點快速選擇）就是空的，跟決定 8「類別分頁只做篩選」的舊行為一致，不強迫分類
+        service_template_id: selectedTemplateId,
+        category: selectedTemplateId ? (templates.find(t => t.id === selectedTemplateId)?.category ?? null) : null,
       });
       recordCreated = true;
       // 套票扣款
@@ -354,7 +361,7 @@ export default function NewServiceRecordScreen() {
                 {visibleTemplates.map(tpl => (
                   <Pressable key={tpl.id} className="rounded-xl px-3 py-2 active:opacity-70"
                     style={{ backgroundColor: tpl.color + '22', borderWidth: 1.5, borderColor: serviceName === tpl.name ? tpl.color : tpl.color + '44' }}
-                    onPress={() => { setServiceName(tpl.name); setAmount(String(tpl.default_amount)); }}>
+                    onPress={() => { setServiceName(tpl.name); setAmount(String(tpl.default_amount)); setSelectedTemplateId(tpl.id); }}>
                     <Text className="font-rounded text-sm font-medium" style={{ color: tpl.color }}>{tpl.name}</Text>
                     <View className="flex-row items-center gap-1 mt-0.5">
                       <Clock size={9} color={tpl.color} />
@@ -371,7 +378,7 @@ export default function NewServiceRecordScreen() {
           <Text className="font-rounded text-sm font-medium text-foreground mb-1.5">服務項目 *</Text>
           <TextInput className="bg-card border border-border rounded-2xl px-4 font-rounded text-base text-foreground"
             style={{ height: 52 }} placeholder="例：剪髮、染髮、護膚..." placeholderTextColor="#c4a0ae"
-            value={serviceName} onChangeText={setServiceName} />
+            value={serviceName} onChangeText={t => { setServiceName(t); setSelectedTemplateId(null); }} />
         </View>
 
         <View>

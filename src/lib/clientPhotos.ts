@@ -51,6 +51,16 @@ export async function uploadClientPhoto(asset: PhotoAsset): Promise<string> {
   return path;
 }
 
+// 同意書手寫簽名（SignaturePad 產生的 data:image/png;base64,... 網址）上傳到私有空間，
+// 路徑格式見 migration 00090：<店家 ID>/consents/<consent id>/customer.png 或 staff.png
+export async function uploadSignature(dataUrl: string, path: string): Promise<void> {
+  const body = await readUriAsArrayBuffer(dataUrl);
+  const { error } = await supabase.storage.from(CLIENT_PHOTO_BUCKET).upload(path, body, {
+    contentType: 'image/png', upsert: false,
+  });
+  if (error) throw error;
+}
+
 // 拍照或選相簿（都會先讓使用者裁切）。denied＝沒有相機／相簿權限；都沒有＝使用者取消
 export async function pickClientPhoto(
   source: 'camera' | 'gallery',
