@@ -4,9 +4,10 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { Search, Plus, User, Phone, ChevronRight, Scissors, Clock, CalendarDays, AlertCircle, BellRing, Bell } from 'lucide-react-native';
-import { getCustomers, searchCustomers, getServiceTemplates, getShopProfileByOwner, getMergedAppointments, getAccountType, getMyStaffLink, canViewCustomers, getUnreadOwnerNotificationCount } from '@/db/api';
+import { getCustomers, searchCustomers, getServiceTemplates, getShopProfileByOwner, getMergedAppointments, getAccountType, getMyStaffLink, canViewCustomers, getUnreadOwnerNotificationCount, getCustomerRanking } from '@/db/api';
 import { supabase } from '@/client/supabase';
-import type { Customer, ServiceTemplate, BusinessHours, UnifiedAppointment } from '@/types/types';
+import type { Customer, ServiceTemplate, BusinessHours, UnifiedAppointment, CustomerRankRow } from '@/types/types';
+import { classifyCustomerTier, TIER_LABEL, TIER_COLOR, type CustomerTier } from '@/lib/customerTier';
 
 const DAY_KEYS: (keyof BusinessHours)[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -14,7 +15,7 @@ function getTodayDayKey(): keyof BusinessHours {
   return DAY_KEYS[new Date().getDay()];
 }
 
-function CustomerCard({ item, onPress }: { item: Customer; onPress: () => void }) {
+function CustomerCard({ item, tier, onPress }: { item: Customer; tier: CustomerTier; onPress: () => void }) {
   const initial = item.name.charAt(0);
   const tags = Array.isArray(item.tags) ? item.tags : [];
   return (
@@ -27,7 +28,16 @@ function CustomerCard({ item, onPress }: { item: Customer; onPress: () => void }
         <Text className="font-rounded text-primary text-lg font-bold">{initial}</Text>
       </View>
       <View className="flex-1">
-        <Text className="font-rounded text-base font-semibold text-foreground">{item.name}</Text>
+        <View className="flex-row items-center gap-1.5">
+          <Text className="font-rounded text-base font-semibold text-foreground">{item.name}</Text>
+          {(tier === 'frequent' || tier === 'dormant') && (
+            <View className="px-1.5 py-0.5 rounded-full" style={{ backgroundColor: TIER_COLOR[tier] + '22' }}>
+              <Text className="font-rounded" style={{ fontSize: 10, fontWeight: '600', color: TIER_COLOR[tier] }}>
+                {TIER_LABEL[tier]}
+              </Text>
+            </View>
+          )}
+        </View>
         <View className="flex-row items-center mt-0.5">
           <Phone size={12} color="#c4a0ae" />
           <Text className="font-rounded text-sm text-muted-foreground ml-1">{item.phone}</Text>
@@ -64,6 +74,8 @@ export default function HomeScreen() {
   const [isStaff, setIsStaff] = useState(false);
   const [unreadNewBookings, setUnreadNewBookings] = useState(0);
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
+  const [activeTierFilter, setActiveTierFilter] = useState<CustomerTier | null>(null);
+  const [tierMap, setTierMap] = useState<Map<string, CustomerTier>>(new Map());
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadCustomers = useCallback(async () => {
@@ -75,14 +87,24 @@ export default function HomeScreen() {
       setIsStaff(accountType === 'staff');
       // 新預約通知只有店家本人看得到；查不到（例如資料表還沒建）就當 0，不影響其他畫面
       setUnreadNewBookings(accountType === 'staff' ? 0 : await getUnreadOwnerNotificationCount().catch(() => 0));
-      const [data, tpls, { data: { user } }, appts] = await Promise.all([
+      const [data, tpls, { data: { user } }, appts, ranking] = await Promise.all([
         noBrowse ? Promise.resolve([] as Customer[]) : getCustomers(),
         getServiceTemplates(),
         supabase.auth.getUser(),
         getMergedAppointments().catch(() => []),
+        // 顧客分級要用到每位顧客的到店次數／最近到店日；消費排行本來就有算，直接借用，
+        // 傳大數字取代預設的前 20 名截斷，拿到全部顧客的資料
+        noBrowse ? Promise.resolve([] as CustomerRankRow[]) : getCustomerRanking(100000).catch(() => [] as CustomerRankRow[]),
       ]);
       setCustomers(data);
       setTemplates(tpls);
+      const rankingMap = new Map(ranking.map(r => [r.customer_id, r] as const));
+      const tMap = new Map<string, CustomerTier>();
+      data.forEach(c => {
+        const r = rankingMap.get(c.id);
+        tMap.set(c.id, classifyCustomerTier({ visitCount: r?.visit_count ?? 0, lastVisit: r?.last_visit ?? null }));
+      });
+      setTierMap(tMap);
       // 店家 ID：商家是自己的 user.id；員工帳號的 user.id 不是店家 ID，要用所屬商家的 ID
       const shopOwnerId = accountType === 'staff'
         ? (await getMyStaffLink().catch(() => null))?.staffOwnerId ?? null
@@ -137,9 +159,11 @@ export default function HomeScreen() {
   const tagCounts = new Map<string, number>();
   customers.forEach(c => (Array.isArray(c.tags) ? c.tags : []).forEach(t => tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1)));
   const allTags = Array.from(tagCounts.entries()).sort((a, b) => b[1] - a[1]).map(([t]) => t);
-  const displayedCustomers = activeTagFilter
-    ? customers.filter(c => (Array.isArray(c.tags) ? c.tags : []).includes(activeTagFilter))
-    : customers;
+  const displayedCustomers = customers.filter(c => {
+    if (activeTagFilter && !(Array.isArray(c.tags) ? c.tags : []).includes(activeTagFilter)) return false;
+    if (activeTierFilter && tierMap.get(c.id) !== activeTierFilter) return false;
+    return true;
+  });
 
   return (
     <View className="flex-1 bg-background">
@@ -149,7 +173,7 @@ export default function HomeScreen() {
         <Text className="font-rounded text-2xl font-bold text-foreground mb-1">顧客管理</Text>
         {!staffNoBrowse && (
           <Text className="font-rounded text-sm text-muted-foreground">
-            {activeTagFilter ? `「${activeTagFilter}」共 ${displayedCustomers.length} 位` : `共 ${customers.length} 位顧客`}
+            {activeTagFilter || activeTierFilter ? `篩選出 ${displayedCustomers.length} 位` : `共 ${customers.length} 位顧客`}
           </Text>
         )}
       </View>
@@ -273,10 +297,27 @@ export default function HomeScreen() {
         </View>
       </View>}
 
-      {/* 標籤快速篩選 */}
-      {!staffNoBrowse && allTags.length > 0 && (
+      {/* 分級與標籤快速篩選 */}
+      {!staffNoBrowse && (allTags.length > 0 || tierMap.size > 0) && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-5 mb-3" style={{ flexGrow: 0 }}>
           <View className="flex-row gap-2">
+            {(['frequent', 'dormant'] as CustomerTier[]).map(t => {
+              const active = activeTierFilter === t;
+              const count = Array.from(tierMap.values()).filter(v => v === t).length;
+              if (count === 0) return null;
+              return (
+                <Pressable
+                  key={t}
+                  className="px-3 py-1.5 rounded-full active:opacity-70"
+                  style={{ backgroundColor: active ? TIER_COLOR[t] : TIER_COLOR[t] + '22' }}
+                  onPress={() => setActiveTierFilter(active ? null : t)}
+                >
+                  <Text className="font-rounded text-xs font-medium" style={{ color: active ? '#fff' : TIER_COLOR[t] }}>
+                    {TIER_LABEL[t]}（{count}）
+                  </Text>
+                </Pressable>
+              );
+            })}
             {allTags.map(t => {
               const active = activeTagFilter === t;
               return (
@@ -322,6 +363,7 @@ export default function HomeScreen() {
           renderItem={({ item }) => (
             <CustomerCard
               item={item}
+              tier={tierMap.get(item.id) ?? 'new'}
               onPress={() => router.push(`/(app)/customers/${item.id}` as any)}
             />
           )}
@@ -329,7 +371,7 @@ export default function HomeScreen() {
             <View className="items-center justify-center py-20 gap-3">
               <User size={48} color="#c4a0ae" />
               <Text className="font-rounded text-base text-muted-foreground">
-                {activeTagFilter ? '這個標籤目前沒有顧客' : query ? '找不到符合的顧客' : '尚未新增任何顧客'}
+                {activeTagFilter || activeTierFilter ? '這個篩選條件目前沒有顧客' : query ? '找不到符合的顧客' : '尚未新增任何顧客'}
               </Text>
             </View>
           }

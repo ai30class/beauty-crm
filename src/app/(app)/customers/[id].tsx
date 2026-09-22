@@ -16,6 +16,7 @@ import {
   getPackagesByCustomer, updateCustomer, getShopProfile, getClientConsentsByCustomer
 } from '@/db/api';
 import { CONSENT_FORM_TITLE } from '@/lib/consentForms';
+import { classifyCustomerTier, TIER_LABEL, TIER_COLOR } from '@/lib/customerTier';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -172,6 +173,10 @@ export default function CustomerDetailScreen() {
   const nextAppt = appointments.find(a => a.status === 'pending' && new Date(a.appointment_time) >= new Date());
   const activePackages = packages.filter(p => p.is_active);
 
+  // 顧客分級（常客／一般／沉睡客／新顧客），用服務記錄算出的到店次數與最近到店日判斷
+  const lastVisit = records.reduce<string | null>((latest, r) => (!latest || r.service_date > latest) ? r.service_date : latest, null);
+  const tier = classifyCustomerTier({ visitCount: records.length, lastVisit });
+
   // 從同意書健康問卷自動算出的警示（不額外存欄位，同意書資料改了這裡就跟著變，不會不同步）
   const healthFlags = consents.flatMap(c =>
     (c.health_answers ?? [])
@@ -232,7 +237,16 @@ export default function CustomerDetailScreen() {
             <View className="w-16 h-16 rounded-full bg-primary/20 items-center justify-center mb-2">
               <Text className="font-rounded text-primary text-2xl font-bold">{customer.name.charAt(0)}</Text>
             </View>
-            <Text className="font-rounded text-xl font-bold text-foreground">{customer.name}</Text>
+            <View className="flex-row items-center gap-1.5">
+              <Text className="font-rounded text-xl font-bold text-foreground">{customer.name}</Text>
+              {(tier === 'frequent' || tier === 'dormant') && (
+                <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: TIER_COLOR[tier] + '22' }}>
+                  <Text className="font-rounded text-xs font-semibold" style={{ color: TIER_COLOR[tier] }}>
+                    {TIER_LABEL[tier]}
+                  </Text>
+                </View>
+              )}
+            </View>
             {nextAppt && (
               <View className="mt-1 px-3 py-1 rounded-full bg-accent">
                 <Text className="font-rounded text-xs text-accent-foreground">
