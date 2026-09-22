@@ -704,17 +704,22 @@ export default function StaffScheduleScreen() {
                                 const endMin = Math.min(startMin + apptDurationMin(a), TIMELINE_END_MIN);
                                 const top = ((startMin - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
                                 const h = Math.max(((endMin - startMin) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT, 4);
+                                const blockColor = APPT_BLOCK_COLORS[idx % APPT_BLOCK_COLORS.length];
                                 return (
                                   <Pressable
                                     key={a.id}
                                     style={({ pressed }) => ({
                                       position: 'absolute', left: 1, right: 1, top, height: h,
-                                      backgroundColor: APPT_BLOCK_COLORS[idx % APPT_BLOCK_COLORS.length],
+                                      backgroundColor: blockColor + '3a',
                                       borderRadius: 3, borderWidth: 1.5, borderColor: s.color,
-                                      opacity: pressed ? 0.7 : 1,
+                                      opacity: pressed ? 0.7 : 1, overflow: 'hidden', padding: 2,
                                     })}
                                     onPress={() => openAppt(a)}
-                                  />
+                                  >
+                                    <Text numberOfLines={1} className="font-rounded" style={{ fontSize: 8, fontWeight: '700', color: blockColor }}>
+                                      {a.customer_name}
+                                    </Text>
+                                  </Pressable>
                                 );
                               })}
                             </View>
@@ -770,17 +775,22 @@ export default function StaffScheduleScreen() {
                                 const endMin = Math.min(startMin + apptDurationMin(a), TIMELINE_END_MIN);
                                 const top = ((startMin - TIMELINE_START_MIN) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT;
                                 const h = Math.max(((endMin - startMin) / (TIMELINE_END_MIN - TIMELINE_START_MIN)) * TRACK_HEIGHT, 4);
+                                const blockColor = APPT_BLOCK_COLORS[idx % APPT_BLOCK_COLORS.length];
                                 return (
                                   <Pressable
                                     key={a.id}
                                     style={({ pressed }) => ({
                                       position: 'absolute', left: 2, right: 2, top, height: h,
-                                      backgroundColor: APPT_BLOCK_COLORS[idx % APPT_BLOCK_COLORS.length],
+                                      backgroundColor: blockColor + '3a',
                                       borderRadius: 4, borderWidth: 1.5, borderColor: staff.color,
-                                      opacity: pressed ? 0.7 : 1,
+                                      opacity: pressed ? 0.7 : 1, overflow: 'hidden', padding: 3,
                                     })}
                                     onPress={() => openAppt(a)}
-                                  />
+                                  >
+                                    <Text numberOfLines={1} className="font-rounded" style={{ fontSize: 9, fontWeight: '700', color: blockColor }}>
+                                      {a.customer_name}
+                                    </Text>
+                                  </Pressable>
                                 );
                               })}
                             </View>
