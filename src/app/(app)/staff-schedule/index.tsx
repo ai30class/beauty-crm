@@ -196,6 +196,10 @@ export default function StaffScheduleScreen() {
   const [savingReserve, setSavingReserve] = useState(false);
   const [deleteReserveTarget, setDeleteReserveTarget] = useState<StaffReservedSlot | null>(null);
   const [deletingReserve, setDeletingReserve] = useState(false);
+  // 排「預留時間」時，設好的完整時段（不只是點到的那 30 分鐘）如果跟現有預約／其他預留時間重疊，
+  // 存檔前先跳出來提醒，仍可以繼續（店家自己決定，不硬擋）——之前只在點空白處那一步查過開頭 30 分鐘，
+  // 後面调整時長沒有再檢查，RPG 那筆就是這樣跟已經約好的顧客撞期還完全沒提示
+  const [reserveOverlapWarning, setReserveOverlapWarning] = useState<string[] | null>(null);
   const [isStaffAccount, setIsStaffAccount] = useState(false);
   useEffect(() => { setPickStaffId(slotPicker?.staffId ?? null); }, [slotPicker]);
   const [canOwnTimeOff, setCanOwnTimeOff] = useState(false);
@@ -312,12 +316,41 @@ export default function StaffScheduleScreen() {
 
   useFocusEffect(useCallback(() => { loadReservedSlots(weekStart); }, [weekStart, loadReservedSlots]));
 
-  const handleCreateReserve = async () => {
+  // 完整時段（不只是點到的那 30 分鐘）跟這位設計師既有的預約／其他預留時間有沒有重疊，
+  // 回傳重疊到的名稱清單（顧客姓名或預留標籤），沒有重疊回傳空陣列
+  const findReserveOverlaps = (dateStr: string, staffId: string, startMin: number, endMin: number): string[] => {
+    const names: string[] = [];
+    allAppts.forEach(a => {
+      if (a.staff_id !== staffId || toApptDateStr(a.appointment_time) !== dateStr) return;
+      const start = timeToMinutes(a.appointment_time);
+      const end = start + apptDurationMin(a);
+      if (start < endMin && end > startMin) names.push(a.customer_name || '顧客');
+    });
+    reservedSlots.forEach(r => {
+      if (r.staff_id !== staffId || r.reserved_date !== dateStr) return;
+      const start = hhmmToMinutes(r.start_time);
+      const end = hhmmToMinutes(r.end_time);
+      if (start < endMin && end > startMin) names.push(r.label);
+    });
+    return names;
+  };
+
+  const handleCreateReserve = async (skipOverlapCheck = false) => {
     if (!reserveTarget) return;
+    const durationMin = Math.max(parseInt(reserveDurationMin, 10) || 30, 5);
+    const startMin = hhmmToMinutes(reserveTarget.time);
+    const endMin = Math.min(startMin + durationMin, TIMELINE_END_MIN);
+
+    if (!skipOverlapCheck) {
+      const overlaps = findReserveOverlaps(reserveTarget.dateStr, reserveTarget.staffId, startMin, endMin);
+      if (overlaps.length > 0) {
+        setReserveOverlapWarning(overlaps);
+        return;
+      }
+    }
+
     setSavingReserve(true);
     try {
-      const durationMin = Math.max(parseInt(reserveDurationMin, 10) || 30, 5);
-      const endMin = Math.min(hhmmToMinutes(reserveTarget.time) + durationMin, TIMELINE_END_MIN);
       await createStaffReservedSlot({
         staff_id: reserveTarget.staffId,
         reserved_date: reserveTarget.dateStr,
@@ -327,6 +360,7 @@ export default function StaffScheduleScreen() {
       });
       setReserveTarget(null);
       setReserveLabel('');
+      setReserveOverlapWarning(null);
       await loadReservedSlots(weekStart);
     } finally {
       setSavingReserve(false);
@@ -1207,7 +1241,7 @@ export default function StaffScheduleScreen() {
             <Pressable
               className="items-center justify-center rounded-2xl active:opacity-80"
               style={{ height: 52, backgroundColor: '#e8789a' }}
-              onPress={handleCreateReserve}
+              onPress={() => handleCreateReserve()}
               disabled={savingReserve}
             >
               {savingReserve ? <ActivityIndicator color="#fff" /> : <Text className="font-rounded text-base font-semibold text-white">確認預留</Text>}
@@ -1245,6 +1279,36 @@ export default function StaffScheduleScreen() {
                 disabled={deletingReserve}
                 onPress={handleDeleteReserve}>
                 {deletingReserve ? <ActivityIndicator color="#fff" size="small" /> : <Text className="font-rounded text-sm font-semibold text-white">確認刪除</Text>}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* 預留時間跟現有預約／其他預留時間重疊：提醒但不硬擋，店家自己決定要不要繼續 */}
+      <Modal visible={!!reserveOverlapWarning} transparent animationType="fade" onRequestClose={() => setReserveOverlapWarning(null)}>
+        <Pressable className="flex-1 bg-black/40 items-center justify-center px-8" onPress={() => setReserveOverlapWarning(null)}>
+          <Pressable className="bg-card w-full rounded-3xl p-6 gap-4" onPress={() => {}}
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 10 }}>
+            <View className="items-center gap-3">
+              <View className="w-16 h-16 rounded-full items-center justify-center" style={{ backgroundColor: '#faecd8' }}>
+                <Text style={{ fontSize: 28 }}>⚠️</Text>
+              </View>
+              <Text className="font-rounded text-lg font-bold text-foreground text-center">這個時段撞期了</Text>
+              <Text className="font-rounded text-sm text-muted-foreground text-center">
+                跟「{reserveOverlapWarning?.join('、')}」重疊，仍然可以排，請確認不會影響對方的服務。
+              </Text>
+            </View>
+            <View className="flex-row gap-3">
+              <Pressable className="flex-1 h-12 rounded-2xl border border-border items-center justify-center active:opacity-70"
+                onPress={() => setReserveOverlapWarning(null)}>
+                <Text className="font-rounded text-sm font-semibold text-muted-foreground">先不要</Text>
+              </Pressable>
+              <Pressable className="flex-1 h-12 rounded-2xl items-center justify-center active:opacity-80"
+                style={{ backgroundColor: '#e8a000' }}
+                disabled={savingReserve}
+                onPress={() => handleCreateReserve(true)}>
+                {savingReserve ? <ActivityIndicator color="#fff" size="small" /> : <Text className="font-rounded text-sm font-semibold text-white">確定仍要排</Text>}
               </Pressable>
             </View>
           </Pressable>
