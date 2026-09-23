@@ -8,7 +8,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing, AlertTriangle, MessageCircle, Sparkles, HelpCircle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createDirectOnlineOrder, createTransferDepositOrder, customerExistsByPhone, upsertCustomerByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, createOnlineOrderAddons, getPhotoUrl, getSoleOnlineBookingOwnerId, SLOT_TAKEN_MESSAGE } from '@/db/api';
+import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createOnlineOrder, customerExistsByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, getPhotoUrl, getSoleOnlineBookingOwnerId, SLOT_TAKEN_MESSAGE } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import type { Staff, ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
 
@@ -354,10 +354,6 @@ export default function OnlineBookingScreen() {
 
     const [hh, mm] = selectedTime.split(':').map(Number);
     const apptTime = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), hh, mm);
-    const endTime = new Date(apptTime.getTime() + totalDuration * 60000);
-    const addonRows = selectedAddons.map(a => ({
-      service_template_id: a.id, name: a.name, amount: a.default_amount, duration_minutes: a.duration_minutes,
-    }));
 
     // 生日字串（選填，沒填就是 null）
     const birthdayStr = customerBirthday
@@ -366,58 +362,29 @@ export default function OnlineBookingScreen() {
 
     setSubmitting(true);
     try {
-      // ── Upsert 顧客檔案，取得 customer_id 與是否為已建檔熟客 ──────────────
-      const { customerId, wasAlreadyRegistered } = await upsertCustomerByPhone(
-        resolvedOwnerId,
-        customerName.trim(),
-        customerPhone.trim(),
-        birthdayStr,
-        customerUserId,
-      );
-      const needDeposit = selectedTemplate.require_deposit && !wasAlreadyRegistered;
+      // ── 一支資料庫函式完成全部：顧客檔案、價格／時長／訂金重算、熟客判斷、時段規則、
+      //    主單＋加購（migration 00101）。前端只送選了什麼，金額與狀態一律由資料庫決定。
+      const result = await createOnlineOrder({
+        owner_id:            resolvedOwnerId,
+        customer_name:       customerName.trim(),
+        customer_phone:      customerPhone.trim(),
+        customer_birthday:   birthdayStr,
+        staff_id:            selectedStaff?.id ?? null,
+        service_template_id: selectedTemplate.id,
+        appointment_time:    apptTime.toISOString(),
+        notes:               notes.trim() || null,
+        addon_template_ids:  selectedAddons.map(a => a.id),
+      });
 
-      // ── 直接預約（免訂金）──────────────────────────────
-      if (!needDeposit) {
-        const order = await createDirectOnlineOrder({
-          owner_id:            resolvedOwnerId,
-          customer_name:       customerName.trim(),
-          customer_phone:      customerPhone.trim(),
-          customer_id:         customerId,
-          customer_user_id:    customerUserId,
-          staff_id:            selectedStaff?.id ?? null,
-          service_template_id: selectedTemplate.id,
-          service_name:        selectedTemplate.name,
-          duration_minutes:    totalDuration,
-          total_amount:        totalAmount,
-          appointment_time:    apptTime.toISOString(),
-          end_time:            endTime.toISOString(),
-          notes:               notes.trim() || null,
-        });
-        await createOnlineOrderAddons(order.id, resolvedOwnerId, addonRows);
+      // ── 免訂金：直接成立 ───────────────────────────────
+      if (result.bookingMode === 'direct') {
         setDirectSuccess(true);
         return;
       }
 
       // ── 需付訂金 → 銀行轉帳＋私訊確認（帳號、核對都在 LINE 私訊裡人工處理，
       //    不在公開預約頁顯示銀行帳號）─────────────────────────────
-      const order = await createTransferDepositOrder({
-        owner_id:            resolvedOwnerId,
-        customer_name:       customerName.trim(),
-        customer_phone:      customerPhone.trim(),
-        customer_id:         customerId,
-        customer_user_id:    customerUserId,
-        staff_id:            selectedStaff?.id ?? null,
-        service_template_id: selectedTemplate.id,
-        service_name:        selectedTemplate.name,
-        duration_minutes:    totalDuration,
-        total_amount:        totalAmount,
-        deposit_amount:      depositAmount,
-        appointment_time:    apptTime.toISOString(),
-        end_time:            endTime.toISOString(),
-        notes:               notes.trim() || null,
-      });
-      await createOnlineOrderAddons(order.id, resolvedOwnerId, addonRows);
-      router.push(`/online-booking/deposit-transfer?orderId=${order.id}` as any);
+      router.push(`/online-booking/deposit-transfer?orderId=${result.orderId}` as any);
     } catch (e: any) {
       setError(e.message ?? '提交失敗，請重試');
       // 時段剛被別人約走：回到選時段那一步並重新載入，被約走的那格就會消失

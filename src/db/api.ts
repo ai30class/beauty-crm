@@ -45,32 +45,6 @@ export async function customerExistsByPhone(ownerId: string, phone: string): Pro
   return !!data;
 }
 
-/**
- * 線上預約用：依電話號碼 upsert 顧客檔案（透過 SECURITY DEFINER RPC，
- * 避免顧客自助登入時被 RLS 擋下查詢/寫錯 owner_id，也不開放顧客直接
- * 讀取 customers 表）。回傳 customer_id 與是否為已建檔熟客。
- */
-export async function upsertCustomerByPhone(
-  ownerId: string,
-  name: string,
-  phone: string,
-  birthday: string | null,
-  customerUserId?: string | null,
-): Promise<{ customerId: string; wasAlreadyRegistered: boolean }> {
-  const { data, error } = await supabase
-    .rpc('upsert_customer_by_phone', {
-      p_owner_id: ownerId,
-      p_name: name,
-      p_phone: phone,
-      p_birthday: birthday,
-      p_customer_user_id: customerUserId ?? null,
-    })
-    .single();
-  if (error) throw error;
-  const row = data as { customer_id: string; was_already_registered: boolean };
-  return { customerId: row.customer_id, wasAlreadyRegistered: row.was_already_registered };
-}
-
 // 已登入的回頭客：讀出這位顧客上次在這家店留的姓名/電話/生日，不用重打
 export async function getMyCustomerProfile(ownerId: string): Promise<{ id: string; name: string; phone: string; birthday: string | null } | null> {
   const { data, error } = await supabase
@@ -1094,84 +1068,44 @@ export async function deleteWaitlistEntry(id: string): Promise<void> {
   if (error) throw error;
 }
 
-// 直接預約（免訂金）——在 client 端直接寫入 DB，不經 LINE Pay
-export async function createDirectOnlineOrder(payload: {
+// 顧客送出線上預約（migration 00101）：只送「哪家店、哪個服務、哪位設計師、哪個時間、哪些加購、姓名電話生日」，
+// 顧客檔案、價格、時長、訂金比例、熟客免訂金、狀態、結束時間、時段規則、主單＋加購，全部由資料庫決定，
+// 前端不再直接寫入 online_orders / online_order_addons（舊的直接寫入規則已由 00102 拆掉）。
+export async function createOnlineOrder(payload: {
   owner_id: string;
   customer_name: string;
   customer_phone: string;
-  customer_id: string;
-  customer_user_id: string | null;
+  customer_birthday: string | null;
   staff_id: string | null;
   service_template_id: string;
-  service_name: string;
-  duration_minutes: number;
-  total_amount: number;
   appointment_time: string;
-  end_time: string;
   notes: string | null;
-}): Promise<OnlineOrder> {
+  addon_template_ids: string[];
+}): Promise<{ orderId: string; bookingMode: 'deposit' | 'direct'; depositAmount: number; wasAlreadyRegistered: boolean }> {
   const { data, error } = await supabase
-    .from('online_orders')
-    .insert({
-      ...payload,
-      deposit_amount: 0,
-      status: 'confirmed',
-      booking_mode: 'direct',
+    .rpc('create_online_order', {
+      p_owner_id:            payload.owner_id,
+      p_name:                payload.customer_name,
+      p_phone:               payload.customer_phone,
+      p_birthday:            payload.customer_birthday,
+      p_staff_id:            payload.staff_id,
+      p_service_template_id: payload.service_template_id,
+      p_appointment_time:    payload.appointment_time,
+      p_notes:               payload.notes,
+      p_addon_template_ids:  payload.addon_template_ids,
     })
-    .select('*, staff:staff!staff_id(name, color)')
     .single();
   if (error) throwBookingError(error);
-  return data as OnlineOrder;
-}
-
-// 需訂金但走「銀行轉帳＋私訊確認」（不經 LINE Pay）——建立訂單為
-// pending_transfer_confirm，帳號核對／確認轉帳都在 LINE 私訊裡人工處理，
-// 店家核對完銀行帳戶後自己在後台標記已收訂金（見 updateOnlineOrderStatus）。
-// deadlineHours 內沒被標記，會被排程自動取消釋出時段（見 send-reminders）。
-export async function createTransferDepositOrder(payload: {
-  owner_id: string;
-  customer_name: string;
-  customer_phone: string;
-  customer_id: string;
-  customer_user_id: string | null;
-  staff_id: string | null;
-  service_template_id: string;
-  service_name: string;
-  duration_minutes: number;
-  total_amount: number;
-  deposit_amount: number;
-  appointment_time: string;
-  end_time: string;
-  notes: string | null;
-}, deadlineHours = 48): Promise<OnlineOrder> {
-  const deadline = new Date(Date.now() + deadlineHours * 3600_000).toISOString();
-  const { data, error } = await supabase
-    .from('online_orders')
-    .insert({
-      ...payload,
-      status: 'pending_transfer_confirm',
-      booking_mode: 'deposit',
-      deposit_confirm_deadline: deadline,
-    })
-    .select('*, staff:staff!staff_id(name, color)')
-    .single();
-  if (error) throwBookingError(error);
-  return data as OnlineOrder;
+  const row = data as { order_id: string; booking_mode: 'deposit' | 'direct'; deposit_amount: number; was_already_registered: boolean };
+  return {
+    orderId: row.order_id,
+    bookingMode: row.booking_mode,
+    depositAmount: Number(row.deposit_amount),
+    wasAlreadyRegistered: row.was_already_registered,
+  };
 }
 
 // ─── 加購服務 ─────────────────────────────────────────────────────────────────
-
-export async function createOnlineOrderAddons(
-  orderId: string,
-  ownerId: string,
-  addons: { service_template_id: string; name: string; amount: number; duration_minutes: number }[],
-): Promise<void> {
-  if (addons.length === 0) return;
-  const { error } = await supabase.from('online_order_addons').insert(
-    addons.map(a => ({ ...a, order_id: orderId, owner_id: ownerId }))
-  );
-  if (error) throw error;
-}
 
 // 商家後台用：一次查多筆訂單各自加購了什麼（訂單列表要顯示用）
 export async function getOnlineOrderAddonsByOrderIds(orderIds: string[]): Promise<OnlineOrderAddon[]> {
