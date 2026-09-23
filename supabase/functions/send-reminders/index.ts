@@ -103,6 +103,24 @@ async function getLineEnabledOwners(supabase: any): Promise<Set<string>> {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
+  // 只接受排程（pg_cron）呼叫：要帶 x-cron-secret，且跟 Vault 裡的 CRON_SECRET 一致（00104）。
+  // anon key 是公開的，光有它不算數；沒帶暗號或暗號不對一律 401，不做任何事。
+  {
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+    const { data: ok } = await admin.rpc('check_cron_secret', {
+      p_secret: req.headers.get('x-cron-secret') ?? '',
+    });
+    if (ok !== true) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
   try {
     const { type } = await req.json() as { type: 'birthday' | 'appointment' | 'appointment_day_before' | 'expire_pending_deposit' };
     const supabase = createClient(
