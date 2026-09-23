@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, ScrollView, Pressable,
-  KeyboardAvoidingView, ActivityIndicator
+  KeyboardAvoidingView, ActivityIndicator, Alert
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -17,6 +17,7 @@ import {
   getServiceTemplates, getPackagesByCustomer, usePackageSession, usePackageAmount,
   getProducts, deductProductStock, createProductUsageBatch,
   getOnlineOrderById, updateOnlineOrderStatus, getCustomerByPhone, getStaffForPicker,
+  getShopProfile,
 } from '@/db/api';
 import type { ServiceTemplate, Product, StaffRosterEntry } from '@/types/types';
 
@@ -44,6 +45,7 @@ export default function NewServiceRecordScreen() {
   const [beforeAsset, setBeforeAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [afterAsset, setAfterAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [photosEnabled, setPhotosEnabled] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   // 線上預約已收的訂金：結帳時自動抵扣，只收尾款（訂金屬於服務總額的一部分）
   const [paidDeposit, setPaidDeposit] = useState(0);
@@ -134,10 +136,17 @@ export default function NewServiceRecordScreen() {
       // 載入服務人員列表
       const staff = await getStaffForPicker();
       setStaffList(staff);
+      // 施術前後照片是進階版功能，逐店開關（見 migration 00097）
+      const profile = await getShopProfile();
+      setPhotosEnabled(profile?.service_photos_enabled ?? false);
     })();
   }, [customerIdParam, templateId, onlineOrderId]);
 
   const pickPhoto = async (type: 'before' | 'after', source: 'camera' | 'gallery') => {
+    if (!photosEnabled) {
+      Alert.alert('進階版功能', '服務記錄施術前後照片是進階版功能，如需使用請聯繫我們升級方案。');
+      return;
+    }
     let asset: ImagePicker.ImagePickerAsset | undefined;
     if (source === 'camera') {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();

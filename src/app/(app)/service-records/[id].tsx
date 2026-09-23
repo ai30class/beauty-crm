@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, Share } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Share, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Share2, Scissors, DollarSign, CalendarDays, FileText, Package, User, Camera, ImageIcon } from 'lucide-react-native';
-import { getServiceRecordById, getClientPhotoUrl, getProductUsageByRecord, setServiceRecordPhoto, removeClientPhotos } from '@/db/api';
+import { getServiceRecordById, getClientPhotoUrl, getProductUsageByRecord, setServiceRecordPhoto, removeClientPhotos, getShopProfile } from '@/db/api';
 import { pickClientPhoto, uploadClientPhoto } from '@/lib/clientPhotos';
 import type { ServiceRecord, ProductUsage } from '@/types/types';
 
@@ -15,16 +15,19 @@ export default function ServiceRecordDetailScreen() {
   const [record, setRecord] = useState<ServiceRecord | null>(null);
   const [usages, setUsages] = useState<ProductUsage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [photosEnabled, setPhotosEnabled] = useState(false);
 
   useFocusEffect(useCallback(() => {
     (async () => {
       setLoading(true);
-      const [r, u] = await Promise.all([
+      const [r, u, profile] = await Promise.all([
         getServiceRecordById(id),
         getProductUsageByRecord(id),
+        getShopProfile(),
       ]);
       setRecord(r);
       setUsages(u);
+      setPhotosEnabled(profile?.service_photos_enabled ?? false);
       setLoading(false);
     })();
   }, [id]));
@@ -45,6 +48,10 @@ export default function ServiceRecordDetailScreen() {
 
   // 補傳（原本沒有）或更換（原本有）單張照片：先上傳新的、再更新記錄、最後才刪舊檔；任何一步失敗都不會弄丟原本的照片
   const changePhoto = async (which: 'before' | 'after', source: 'camera' | 'gallery') => {
+    if (!photosEnabled) {
+      Alert.alert('進階版功能', '服務記錄施術前後照片是進階版功能，如需使用請聯繫我們升級方案。');
+      return;
+    }
     if (!record || photoBusy) return;
     setPhotoError('');
     const picked = await pickClientPhoto(source);

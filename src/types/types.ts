@@ -532,6 +532,8 @@ export interface ShopProfile {
   line_oa_id: string | null;
   no_show_alert_threshold: number;
   parking_info: string | null;
+  // 進階版功能：服務記錄施術前後照片（migration 00097），逐店手動開啟，預設關閉
+  service_photos_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
