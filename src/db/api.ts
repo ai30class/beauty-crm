@@ -621,18 +621,15 @@ export async function getActiveStaff(): Promise<Staff[]> {
   return Array.isArray(data) ? data : [];
 }
 
-// 顧客線上預約頁專用：一定要帶 owner_id，不能只靠 RLS scope
-// （customer_select 規則只檢查「呼叫者是不是顧客」，沒有限制是哪家店，
-//  沒帶 owner_id 篩選的話，顧客在任一店家的預約頁會看到全部店家混在一起）
-export async function getActiveStaffByOwner(ownerId: string): Promise<Staff[]> {
-  const { data, error } = await supabase
-    .from('staff')
-    .select('*')
-    .eq('owner_id', ownerId)
-    .eq('is_active', true)
-    .order('created_at', { ascending: true });
+// 顧客線上預約頁專用：走 get_booking_staff 函式（00106），只拿公開欄位（名字、顏色、簡介、大頭照），
+// 拿不到底薪、抽成、權限開關——原本 select('*') 會把這些薪資欄位整列送到顧客瀏覽器。
+// 函式內已限定這家店、服務中的人員，依建立時間排序。
+export type PublicStaff = Pick<Staff, 'id' | 'owner_id' | 'name' | 'role' | 'color' | 'is_active' | 'bio' | 'avatar_url' | 'created_at'>;
+
+export async function getActiveStaffByOwner(ownerId: string): Promise<PublicStaff[]> {
+  const { data, error } = await supabase.rpc('get_booking_staff', { p_owner: ownerId });
   if (error) throw error;
-  return Array.isArray(data) ? data : [];
+  return Array.isArray(data) ? (data as PublicStaff[]) : [];
 }
 
 export async function createStaff(payload: Omit<Staff, 'id' | 'owner_id' | 'created_at'>): Promise<void> {

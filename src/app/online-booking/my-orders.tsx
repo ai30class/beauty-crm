@@ -38,14 +38,25 @@ export default function MyOrdersScreen() {
         setIsLineAccount(!!user.email?.endsWith('@line.internal'));
 
         // 查詢此帳號建立的所有預約（依 customer_user_id = auth.uid() 比對）
-        const { data, error } = await supabase
-          .from('online_orders')
-          .select('*, staff:staff!staff_id(name, color)')
-          .eq('customer_user_id', user.id)
-          .order('appointment_time', { ascending: false });
+        // 設計師名字改走 get_my_orders_staff（00106，只回名字與顏色），不再直接讀 staff 表——
+        // 顧客帳號讀 staff 表會連底薪、抽成一起讀到，00107 之後顧客對 staff 表完全讀不到
+        const [{ data, error }, { data: staffRows }] = await Promise.all([
+          supabase
+            .from('online_orders')
+            .select('*')
+            .eq('customer_user_id', user.id)
+            .order('appointment_time', { ascending: false }),
+          supabase.rpc('get_my_orders_staff'),
+        ]);
 
         if (error) throw error;
-        setOrders(Array.isArray(data) ? data : []);
+        const staffById = new Map<string, { name: string; color: string }>(
+          (Array.isArray(staffRows) ? staffRows : []).map((s: { id: string; name: string; color: string }) => [s.id, { name: s.name, color: s.color }]),
+        );
+        setOrders((Array.isArray(data) ? data : []).map((o: OnlineOrder) => ({
+          ...o,
+          staff: o.staff_id ? staffById.get(o.staff_id) : undefined,
+        })));
 
         const myPackages = await getMyPackages().catch(() => []);
         setPackages(myPackages);

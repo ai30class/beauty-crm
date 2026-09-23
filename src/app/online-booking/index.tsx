@@ -10,7 +10,8 @@ import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCir
 import DateTimePicker from 'react-native-ui-datepicker';
 import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createOnlineOrder, customerExistsByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, getPhotoUrl, getSoleOnlineBookingOwnerId, SLOT_TAKEN_MESSAGE } from '@/db/api';
 import { supabase } from '@/client/supabase';
-import type { Staff, ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
+import type { ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
+import type { PublicStaff } from '@/db/api';
 
 const DAY_KEYS: (keyof BusinessHours)[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -53,7 +54,7 @@ export default function OnlineBookingScreen() {
   // 資料載入
   const [templates, setTemplates] = useState<ServiceTemplate[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('全部');
-  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [staffList, setStaffList] = useState<PublicStaff[]>([]);
   const [holidays, setHolidays] = useState<string[]>([]);
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -63,12 +64,12 @@ export default function OnlineBookingScreen() {
   // 使用者選擇
   const [selectedTemplate, setSelectedTemplate] = useState<ServiceTemplate | null>(null);
   const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
-  const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
+  const [selectedStaff, setSelectedStaff] = useState<PublicStaff | null>(null);
   // 「不指定人員，直接看空檔」：合併所有服務人員的可預約時段，slotStaffMap
   // 記錄每個時段有哪些人員有空，選定時段後才從裡面挑一位實際指派
   const [anyStaffMode, setAnyStaffMode] = useState(false);
-  const [slotStaffMap, setSlotStaffMap] = useState<Record<string, Staff[]>>({});
-  const [staffInfoModal, setStaffInfoModal] = useState<Staff | null>(null);
+  const [slotStaffMap, setSlotStaffMap] = useState<Record<string, PublicStaff[]>>({});
+  const [staffInfoModal, setStaffInfoModal] = useState<PublicStaff | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const d = new Date(); d.setDate(d.getDate() + 1); return d;
   });
@@ -251,7 +252,7 @@ export default function OnlineBookingScreen() {
             ).then(slots => ({ staff: st, slots }))
           ));
           const merged = new Map<string, TimeSlot>();
-          const staffMap: Record<string, Staff[]> = {};
+          const staffMap: Record<string, PublicStaff[]> = {};
           for (const { staff, slots: staffSlots } of perStaff) {
             for (const slot of staffSlots) {
               if (!merged.has(slot.time)) merged.set(slot.time, { ...slot, available: false });
@@ -312,7 +313,7 @@ export default function OnlineBookingScreen() {
         for (let i = 0; i < DATE_STRIP_DAYS; i++) {
           days.push(new Date(today.getFullYear(), today.getMonth(), today.getDate() + i));
         }
-        const staffToCheck = anyStaffMode ? staffList : ([selectedStaff].filter(Boolean) as Staff[]);
+        const staffToCheck = anyStaffMode ? staffList : ([selectedStaff].filter(Boolean) as PublicStaff[]);
         const results = await Promise.all(days.map(async d => {
           const dateStr = toLocalDateStr(d);
           if (isHoliday(d) || isBusinessHoliday(d)) return { dateStr, available: false };
