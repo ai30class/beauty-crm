@@ -28,8 +28,15 @@ const PENDING_OWNER_ID_KEY = 'bcrm_pending_owner_id';
 
 export default function CustomerAuthScreen() {
   const router = useRouter();
-  const { ownerId, logout } = useLocalSearchParams<{ ownerId?: string; logout?: string }>();
+  const { ownerId, logout, returnTo } = useLocalSearchParams<{ ownerId?: string; logout?: string; returnTo?: string }>();
   const justLoggedOut = logout === '1';
+  // 登入後要回去的頁面。只認得白名單裡的值（目前只有「查詢我的預約」頁），
+  // 不直接拿網址參數當跳轉目標，避免被拿來做任意跳轉。
+  const safeReturnTo = returnTo === 'customer-lookup' ? 'customer-lookup' : null;
+  const afterLoginPath = (oid?: string | null) =>
+    safeReturnTo ? '/customer-lookup' : `/online-booking?ownerId=${oid ?? ''}`;
+  const withReturnTo = (url: string) =>
+    safeReturnTo ? `${url}${url.includes('?') ? '&' : '?'}returnTo=${safeReturnTo}` : url;
 
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -145,7 +152,7 @@ export default function CustomerAuthScreen() {
       });
       if (otpErr) throw otpErr;
 
-      router.replace(`/online-booking?ownerId=${targetOwnerId}` as any);
+      router.replace(afterLoginPath(targetOwnerId) as any);
     } catch (e: any) {
       setError(e.message ?? 'LINE 登入失敗，請稍後再試');
     } finally {
@@ -165,7 +172,7 @@ export default function CustomerAuthScreen() {
         // 不該帶進下一輪的參數，一旦被 LINE 導回來會誤觸發登出分支（見上面
         // justLoggedOut 註解），所以這裡自己組一個乾淨的網址，只帶 ownerId。
         const targetOwnerId = resolveOwnerId();
-        const path = `/online-booking/customer-auth${targetOwnerId ? `?ownerId=${targetOwnerId}` : ''}`;
+        const path = withReturnTo(`/online-booking/customer-auth${targetOwnerId ? `?ownerId=${targetOwnerId}` : ''}`);
         const cleanRedirect = typeof window !== 'undefined' ? `${window.location.origin}${path}` : path;
         liff.login({ redirectUri: cleanRedirect });
       }
@@ -187,7 +194,7 @@ export default function CustomerAuthScreen() {
     setLineLoading(true);
     try {
       const targetOwnerId = resolveOwnerId();
-      const redirectUrl = `${window.location.origin}/online-booking/google-callback?ownerId=${targetOwnerId}`;
+      const redirectUrl = withReturnTo(`${window.location.origin}/online-booking/google-callback?ownerId=${targetOwnerId}`);
       const { data, error: e } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
@@ -216,7 +223,7 @@ export default function CustomerAuthScreen() {
     setLineLoading(true);
     try {
       const targetOwnerId = resolveOwnerId();
-      const redirectUrl = `${window.location.origin}/online-booking/facebook-callback?ownerId=${targetOwnerId}`;
+      const redirectUrl = withReturnTo(`${window.location.origin}/online-booking/facebook-callback?ownerId=${targetOwnerId}`);
       const { data, error: e } = await supabase.auth.signInWithOAuth({
         provider: 'facebook',
         options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
@@ -251,7 +258,7 @@ export default function CustomerAuthScreen() {
       } else {
         const { error: e } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (e) throw e;
-        router.replace(`/online-booking?ownerId=${ownerId ?? ''}` as any);
+        router.replace(afterLoginPath(ownerId) as any);
       }
     } catch (e: any) {
       setError(e.message ?? '操作失敗，請稍後再試');

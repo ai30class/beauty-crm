@@ -9,7 +9,9 @@ import { supabase } from '@/client/supabase';
 // 的線上預約頁，所以 ownerId 要跟著 redirectTo 網址一起帶過來、帶回去。
 export default function GoogleCallbackScreen() {
   const router = useRouter();
-  const { ownerId } = useLocalSearchParams<{ ownerId?: string }>();
+  const { ownerId, returnTo } = useLocalSearchParams<{ ownerId?: string; returnTo?: string }>();
+  // 只認白名單裡的回跳目的地（目前只有「查詢我的預約」頁）
+  const afterLoginPath = returnTo === 'customer-lookup' ? '/customer-lookup' : `/online-booking?ownerId=${ownerId ?? ''}`;
   const [blockedAsMerchant, setBlockedAsMerchant] = useState(false);
 
   useEffect(() => {
@@ -46,9 +48,9 @@ export default function GoogleCallbackScreen() {
         await supabase.rpc('mark_self_as_customer'); // profiles 的 account_type 不能由用戶自己 UPDATE（migration 00068），改走 RPC（00072）
       }
 
-      router.replace(`/online-booking?ownerId=${ownerId ?? ''}` as any);
+      router.replace(afterLoginPath as any);
     })();
-  }, [ownerId, router]);
+  }, [ownerId, afterLoginPath, router]);
 
   if (blockedAsMerchant) {
     return (

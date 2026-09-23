@@ -10,6 +10,7 @@ import {
   Clock, User2, Phone, FileText, CheckCircle, Loader, XCircle, Edit3,
 } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
+import { supabase } from '@/client/supabase';
 import { getOnlineOrdersByPhone, updateOnlineOrderByPhone, cancelOnlineOrderByPhone } from '@/db/api';
 import type { OnlineOrder } from '@/types/types';
 
@@ -428,6 +429,24 @@ export default function CustomerLookupScreen() {
   const [error, setError] = useState('');
   const [orders, setOrders] = useState<OnlineOrder[] | null>(null);
 
+  // 查／改／取消預約要登入（migration 00103：資料庫只回自己帳號名下的預約）。
+  // 沒登入先去登入頁，登入完會帶 returnTo 回到這裡。
+  const [authChecked, setAuthChecked] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (!session) {
+        router.replace('/online-booking/customer-auth?returnTo=customer-lookup' as any);
+        return;
+      }
+      setAuthChecked(true);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 月曆狀態
   const today = new Date();
   const [calYear, setCalYear] = useState(today.getFullYear());
@@ -493,6 +512,14 @@ export default function CustomerLookupScreen() {
   );
 
   const monthNames = ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'];
+
+  if (!authChecked) {
+    return (
+      <View className="flex-1 bg-background items-center justify-center">
+        <ActivityIndicator size="large" color="#e8789a" />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView behavior={process.env.EXPO_OS === 'ios' ? 'padding' : 'height'} className="flex-1">
