@@ -9,8 +9,10 @@ const corsHeaders = {
 };
 
 // 依 customer_id 找出對應的 LINE userId（顧客要用過「用 LINE 一鍵登入」且同意加好友
-// 才會有），找不到就代表沒辦法推播給這位顧客，只能留在 notification_logs 當稽核紀錄
-async function findLineUserId(supabase: ReturnType<typeof createClient>, customerId: string): Promise<string | null> {
+// 才會有），找不到就代表沒辦法推播給這位顧客，只能留在 notification_logs 當稽核紀錄。
+// 只認「這家店自己的 LINE 登入頻道」拿到的編號（00110）：不同提供者底下同一個人的
+// LINE 編號不同，拿別家頻道的編號用這家店的通行證發，LINE 會直接拒絕
+async function findLineUserId(supabase: ReturnType<typeof createClient>, customerId: string, loginChannelId: string): Promise<string | null> {
   const { data: cust } = await supabase
     .from('customers')
     .select('customer_user_id')
@@ -22,6 +24,7 @@ async function findLineUserId(supabase: ReturnType<typeof createClient>, custome
     .from('line_identities')
     .select('line_user_id')
     .eq('user_id', cust.customer_user_id)
+    .eq('login_channel_id', loginChannelId)
     .maybeSingle();
   return identity?.line_user_id ?? null;
 }
@@ -71,9 +74,7 @@ async function fetchDueAppointments(
   return [...fromAppts, ...fromOrders];
 }
 
-async function pushLineMessage(lineUserId: string, text: string): Promise<boolean> {
-  const token = Deno.env.get('LINE_MESSAGING_CHANNEL_ACCESS_TOKEN');
-  if (!token) return false;
+async function pushLineMessage(token: string, lineUserId: string, text: string): Promise<boolean> {
   const res = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -83,21 +84,35 @@ async function pushLineMessage(lineUserId: string, text: string): Promise<boolea
   return res.ok;
 }
 
-// 哪些店有開「LINE 自動提醒」（shop_profiles.line_reminders_enabled，migration 00089，只有平台
-// 管理者用 SQL 打開）。基礎版店家不給 LINE 推播：所有店共用同一個小帳號的訊息額度，不擋的話，
-// 試用店家的顧客只要用 LINE 登入並加好友就會吃掉額度。
-// 查詢失敗一律當作「都沒開」——寧可這次漏發，也不要多發吃額度；錯誤會留在日誌
+// 哪些店可以發 LINE 提醒：有開「LINE 自動提醒」（shop_profiles.line_reminders_enabled，migration 00089，
+// 只有平台管理者用 SQL 打開），而且已經設定好自己的 LINE 官方帳號（shop_line_channels＋Vault，00110）。
+// 2026-09-24 起強制規定：沒有自己 LINE 帳號的店一律不發，不再用環境變數裡那組共用的帳號——
+// 不然 A 店的提醒會從別家的官方帳號發出去、吃別人的訊息額度。
+// 查詢失敗一律當作「不能發」——寧可這次漏發，也不要發錯帳號；原因會留在日誌
+type ShopLine = { token: string; loginChannelId: string };
 // deno-lint-ignore no-explicit-any
-async function getLineEnabledOwners(supabase: any): Promise<Set<string>> {
+async function getLineReadyShops(supabase: any): Promise<Map<string, ShopLine>> {
+  const shops = new Map<string, ShopLine>();
   const { data, error } = await supabase
     .from('shop_profiles')
     .select('owner_id')
     .eq('line_reminders_enabled', true);
   if (error) {
     console.error('讀取 LINE 提醒開關失敗，這次一律不發送', error);
-    return new Set<string>();
+    return shops;
   }
-  return new Set<string>((data ?? []).map((r: { owner_id: string }) => r.owner_id));
+  for (const r of (data ?? []) as Array<{ owner_id: string }>) {
+    const { data: rows, error: secErr } = await supabase.rpc('get_shop_line_secrets', { p_owner_id: r.owner_id });
+    const s = Array.isArray(rows) ? rows[0] : null;
+    const token: string = s?.messaging_access_token ?? '';
+    // 通行證只會是英數加 + / =；有空白或中文代表填錯（例如貼成說明文字），不能拿去發
+    if (secErr || !s?.login_channel_id || !/^[A-Za-z0-9+/=]{20,}$/.test(token)) {
+      console.error(`⚠️ 店家 ${r.owner_id} 有開 LINE 提醒，但還沒設定好自己的 LINE 官方帳號，這次不發送`, secErr ?? '');
+      continue;
+    }
+    shops.set(r.owner_id, { token, loginChannelId: s.login_channel_id });
+  }
+  return shops;
 }
 
 Deno.serve(async (req) => {
@@ -146,11 +161,12 @@ Deno.serve(async (req) => {
         return bm === mm && bd === dd;
       });
 
-      const lineEnabled = await getLineEnabledOwners(supabase);
+      const lineShops = await getLineReadyShops(supabase);
       let skipped = 0;
       for (const c of dueTomorrow) {
-        // 沒開 LINE 提醒的店（基礎版）：不推播，也不寫紀錄
-        if (!lineEnabled.has(c.owner_id)) { skipped++; continue; }
+        // 沒開 LINE 提醒、或還沒設定自己 LINE 帳號的店：不推播，也不寫紀錄
+        const shopLine = lineShops.get(c.owner_id);
+        if (!shopLine) { skipped++; continue; }
         // 防重推送
         const { data: existing } = await supabase
           .from('notification_logs')
@@ -167,10 +183,11 @@ Deno.serve(async (req) => {
           .eq('owner_id', c.owner_id)
           .maybeSingle();
 
-        const lineUserId = await findLineUserId(supabase, c.id);
+        const lineUserId = await findLineUserId(supabase, c.id, shopLine.loginChannelId);
         let sent = false;
         if (lineUserId) {
           sent = await pushLineMessage(
+            shopLine.token,
             lineUserId,
             `🎂 ${c.name} 你好，${shop?.shop_name ?? '我們'}祝你生日快樂！期待你再度光臨 🌸`,
           );
@@ -184,7 +201,7 @@ Deno.serve(async (req) => {
         });
         console.log(`🎂 生日提醒 → ${c.name}（${c.birthday}）${sent ? '已用 LINE 發送' : '僅記錄（無 LINE 身份）'}`);
       }
-      if (skipped > 0) console.log(`ℹ️ 生日提醒：略過 ${skipped} 位（店家未開 LINE 提醒）`);
+      if (skipped > 0) console.log(`ℹ️ 生日提醒：略過 ${skipped} 位（店家未開 LINE 提醒或未設定自己的 LINE 帳號）`);
     } else if (type === 'appointment') {
       // 查詢 15–75 分鐘後的預約
       const now = new Date();
@@ -192,12 +209,13 @@ Deno.serve(async (req) => {
       const to   = new Date(now.getTime() + 75 * 60 * 1000).toISOString();
 
       const due = await fetchDueAppointments(supabase, from, to);
-      const lineEnabled = await getLineEnabledOwners(supabase);
+      const lineShops = await getLineReadyShops(supabase);
       let skipped = 0;
 
       for (const a of due) {
-        // 沒開 LINE 提醒的店（基礎版）：不推播，也不寫紀錄
-        if (!lineEnabled.has(a.owner_id)) { skipped++; continue; }
+        // 沒開 LINE 提醒、或還沒設定自己 LINE 帳號的店：不推播，也不寫紀錄
+        const shopLine = lineShops.get(a.owner_id);
+        if (!shopLine) { skipped++; continue; }
         const today = now.toISOString().slice(0, 10);
         const { data: existing } = await supabase
           .from('notification_logs')
@@ -217,10 +235,11 @@ Deno.serve(async (req) => {
           .eq('owner_id', a.owner_id)
           .maybeSingle();
 
-        const lineUserId = a.customer_id ? await findLineUserId(supabase, a.customer_id) : null;
+        const lineUserId = a.customer_id ? await findLineUserId(supabase, a.customer_id, shopLine.loginChannelId) : null;
         let sent = false;
         if (lineUserId) {
           sent = await pushLineMessage(
+            shopLine.token,
             lineUserId,
             `⏰ 提醒您，${timeStr} 在${shop?.shop_name ?? '我們店裡'}有一個預約，別忘記囉 🌸`,
           );
@@ -234,7 +253,7 @@ Deno.serve(async (req) => {
         });
         console.log(`🔔 預約提醒 → ${a.customerName}，${a.appointment_time}　${sent ? '已用 LINE 發送' : '僅記錄（無 LINE 身份）'}`);
       }
-      if (skipped > 0) console.log(`ℹ️ 預約提醒：略過 ${skipped} 筆（店家未開 LINE 提醒）`);
+      if (skipped > 0) console.log(`ℹ️ 預約提醒：略過 ${skipped} 筆（店家未開 LINE 提醒或未設定自己的 LINE 帳號）`);
     } else if (type === 'appointment_day_before') {
       // 查詢明天（台灣時區的日曆日）的預約，每天固定時間跑一次、提前一天提醒
       const TZ_OFFSET_MS = 8 * 60 * 60 * 1000; // 台灣是 UTC+8，沒有日光節約
@@ -248,12 +267,13 @@ Deno.serve(async (req) => {
       const dayEnd = new Date(`${tomorrowDateStr}T23:59:59.999+08:00`).toISOString();
 
       const due = await fetchDueAppointments(supabase, dayStart, dayEnd);
-      const lineEnabled = await getLineEnabledOwners(supabase);
+      const lineShops = await getLineReadyShops(supabase);
       let skipped = 0;
 
       for (const a of due) {
-        // 沒開 LINE 提醒的店（基礎版）：不推播，也不寫紀錄
-        if (!lineEnabled.has(a.owner_id)) { skipped++; continue; }
+        // 沒開 LINE 提醒、或還沒設定自己 LINE 帳號的店：不推播，也不寫紀錄
+        const shopLine = lineShops.get(a.owner_id);
+        if (!shopLine) { skipped++; continue; }
         // 防重推送：用「今天」當 sent_date，同一筆預約這個提醒類型一天只發一次
         const { data: existing } = await supabase
           .from('notification_logs')
@@ -274,10 +294,11 @@ Deno.serve(async (req) => {
           .eq('owner_id', a.owner_id)
           .maybeSingle();
 
-        const lineUserId = a.customer_id ? await findLineUserId(supabase, a.customer_id) : null;
+        const lineUserId = a.customer_id ? await findLineUserId(supabase, a.customer_id, shopLine.loginChannelId) : null;
         let sent = false;
         if (lineUserId) {
           sent = await pushLineMessage(
+            shopLine.token,
             lineUserId,
             `📅 提醒您，明天 ${dateStr} ${timeStr} 在${shop?.shop_name ?? '我們店裡'}有一個預約，記得準時來喔 🌸`,
           );
@@ -291,7 +312,7 @@ Deno.serve(async (req) => {
         });
         console.log(`📅 前一天預約提醒 → ${a.customerName}，${a.appointment_time}　${sent ? '已用 LINE 發送' : '僅記錄（無 LINE 身份）'}`);
       }
-      if (skipped > 0) console.log(`ℹ️ 前一天預約提醒：略過 ${skipped} 筆（店家未開 LINE 提醒）`);
+      if (skipped > 0) console.log(`ℹ️ 前一天預約提醒：略過 ${skipped} 筆（店家未開 LINE 提醒或未設定自己的 LINE 帳號）`);
     } else if (type === 'expire_pending_deposit') {
       // 匯款訂金流程：待確認匯款超過期限、店家一直沒標記已收訂金的訂單，
       // 自動取消、釋出時段，避免顧客佔著時段卻遲遲沒下文
