@@ -13,7 +13,9 @@ const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
 // LIFF ID 不是密鑰（前端本來就要帶著它去初始化 LIFF SDK）。2026-09-24 起每家店用自己的
 // LINE 官方帳號（00110），LIFF ID 依預約頁所屬店家向 get_shop_liff_id 查；
-// 查不到＝這家店沒開 LINE 登入，就不顯示 LINE 登入按鈕（Gmail／Email 照常可用）
+// 查不到（基礎版、試用店，或網址沒帶店家）就用平台自己的「美業管家」登入入口——
+// 只登入、不發提醒，後端 line-login 也會用同一個平台頻道驗證
+const PLATFORM_LIFF_ID = '2011730171-RBhHkU5R';
 
 // Facebook 一鍵登入的程式碼已經寫好（handleFacebookLogin、facebook-callback.tsx），
 // 但 Supabase 後台的 Facebook provider 還沒開通（要先在 Meta for Developers
@@ -52,8 +54,8 @@ export default function CustomerAuthScreen() {
   const [showForgot, setShowForgot] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
-  // undefined＝還在查；null＝這家店沒有自己的 LINE 登入
-  const [liffId, setLiffId] = useState<string | null | undefined>(undefined);
+  // undefined＝還在查（查完一定有值：店家自己的，或平台的）
+  const [liffId, setLiffId] = useState<string | undefined>(undefined);
 
   // LIFF 登入跳轉時網址列的 query string（例如 ownerId）常常不可靠，實測發現
   // 光從 window.location.search 重建有時還是抓不到——優先順序：路由參數 →
@@ -94,20 +96,13 @@ export default function CustomerAuthScreen() {
     (async () => {
       try {
         const shopOwnerId = resolveOwnerId();
-        let shopLiffId: string | null = null;
+        let shopLiffId = PLATFORM_LIFF_ID;
         if (shopOwnerId) {
           const { data } = await supabase.rpc('get_shop_liff_id', { p_owner_id: shopOwnerId });
-          shopLiffId = typeof data === 'string' && data ? data : null;
+          if (typeof data === 'string' && data) shopLiffId = data;
         }
         if (cancelled) return;
         setLiffId(shopLiffId);
-        if (!shopLiffId) {
-          // 這家店沒開 LINE 登入：不初始化 LIFF，只把網址列的 ?logout=1 清掉（理由見下面）
-          if (justLoggedOut) {
-            router.replace((shopOwnerId ? `/online-booking/customer-auth?ownerId=${shopOwnerId}` : '/online-booking/customer-auth') as any);
-          }
-          return;
-        }
 
         const liff = (await import('@line/liff')).default;
         await liff.init({ liffId: shopLiffId });
@@ -450,7 +445,7 @@ export default function CustomerAuthScreen() {
               <Text className="text-primary" onPress={() => router.push(`/online-booking/privacy-policy?ownerId=${resolveOwnerId()}` as any)}>服務條款及隱私政策</Text>
             </Text>
 
-            {/* LINE 一鍵登入：只有設定好自己 LINE 官方帳號的店才顯示 */}
+            {/* LINE 一鍵登入：店家自己的入口或平台入口，查完才顯示（避免 LIFF 還沒初始化就被按） */}
             {liffId ? (
               <Pressable
                 className="rounded-2xl h-14 items-center justify-center active:opacity-80 flex-row gap-2"
