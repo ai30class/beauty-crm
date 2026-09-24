@@ -37,6 +37,7 @@ export default function LineCallbackScreen() {
           body: JSON.stringify({
             code,
             redirect_uri: `${window.location.origin}/online-booking/line-callback`,
+            ownerId, // 每家店用自己的 LINE 登入頻道（00110），後端靠它挑頻道
           }),
         });
         const json = await res.json();

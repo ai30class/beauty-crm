@@ -11,8 +11,9 @@ import { supabase } from '@/client/supabase';
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
-// LIFF ID 不是密鑰（前端本來就要帶著它去初始化 LIFF SDK），可以直接寫在前端
-const LIFF_ID = '2011486633-e6gmiIWk';
+// LIFF ID 不是密鑰（前端本來就要帶著它去初始化 LIFF SDK）。2026-09-24 起每家店用自己的
+// LINE 官方帳號（00110），LIFF ID 依預約頁所屬店家向 get_shop_liff_id 查；
+// 查不到＝這家店沒開 LINE 登入，就不顯示 LINE 登入按鈕（Gmail／Email 照常可用）
 
 // Facebook 一鍵登入的程式碼已經寫好（handleFacebookLogin、facebook-callback.tsx），
 // 但 Supabase 後台的 Facebook provider 還沒開通（要先在 Meta for Developers
@@ -51,6 +52,8 @@ export default function CustomerAuthScreen() {
   const [showForgot, setShowForgot] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
+  // undefined＝還在查；null＝這家店沒有自己的 LINE 登入
+  const [liffId, setLiffId] = useState<string | null | undefined>(undefined);
 
   // LIFF 登入跳轉時網址列的 query string（例如 ownerId）常常不可靠，實測發現
   // 光從 window.location.search 重建有時還是抓不到——優先順序：路由參數 →
@@ -90,8 +93,24 @@ export default function CustomerAuthScreen() {
     let cancelled = false;
     (async () => {
       try {
+        const shopOwnerId = resolveOwnerId();
+        let shopLiffId: string | null = null;
+        if (shopOwnerId) {
+          const { data } = await supabase.rpc('get_shop_liff_id', { p_owner_id: shopOwnerId });
+          shopLiffId = typeof data === 'string' && data ? data : null;
+        }
+        if (cancelled) return;
+        setLiffId(shopLiffId);
+        if (!shopLiffId) {
+          // 這家店沒開 LINE 登入：不初始化 LIFF，只把網址列的 ?logout=1 清掉（理由見下面）
+          if (justLoggedOut) {
+            router.replace((shopOwnerId ? `/online-booking/customer-auth?ownerId=${shopOwnerId}` : '/online-booking/customer-auth') as any);
+          }
+          return;
+        }
+
         const liff = (await import('@line/liff')).default;
-        await liff.init({ liffId: LIFF_ID });
+        await liff.init({ liffId: shopLiffId });
 
         // 顧客剛從「我的預約」按了登出（帶 ?logout=1 導過來）：這一頁本來就是
         // LIFF App 的入口頁，一定在 LIFF 註冊的 Endpoint URL 範圍內，把
@@ -141,7 +160,7 @@ export default function CustomerAuthScreen() {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/line-login/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-        body: JSON.stringify({ idToken }),
+        body: JSON.stringify({ idToken, ownerId: targetOwnerId }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'LINE 登入失敗');
@@ -431,21 +450,23 @@ export default function CustomerAuthScreen() {
               <Text className="text-primary" onPress={() => router.push(`/online-booking/privacy-policy?ownerId=${resolveOwnerId()}` as any)}>服務條款及隱私政策</Text>
             </Text>
 
-            {/* LINE 一鍵登入 */}
-            <Pressable
-              className="rounded-2xl h-14 items-center justify-center active:opacity-80 flex-row gap-2"
-              style={{ backgroundColor: '#06C755' }}
-              onPress={handleLineLogin}
-              disabled={lineLoading}
-            >
-              {lineLoading && oauthProvider === 'line'
-                ? <ActivityIndicator color="#fff" />
-                : <>
-                    <MessageCircle size={18} color="#fff" />
-                    <Text className="font-rounded text-base text-white font-semibold">用 LINE 一鍵登入</Text>
-                  </>
-              }
-            </Pressable>
+            {/* LINE 一鍵登入：只有設定好自己 LINE 官方帳號的店才顯示 */}
+            {liffId ? (
+              <Pressable
+                className="rounded-2xl h-14 items-center justify-center active:opacity-80 flex-row gap-2"
+                style={{ backgroundColor: '#06C755' }}
+                onPress={handleLineLogin}
+                disabled={lineLoading}
+              >
+                {lineLoading && oauthProvider === 'line'
+                  ? <ActivityIndicator color="#fff" />
+                  : <>
+                      <MessageCircle size={18} color="#fff" />
+                      <Text className="font-rounded text-base text-white font-semibold">用 LINE 一鍵登入</Text>
+                    </>
+                }
+              </Pressable>
+            ) : null}
 
             {/* Gmail 一鍵登入 */}
             <Pressable
