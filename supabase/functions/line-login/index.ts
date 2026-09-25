@@ -134,48 +134,9 @@ Deno.serve(async (req) => {
       return await issueSessionForLineUser(supabase, lineUserId, displayName, pictureUrl, channelId, corsHeaders);
     }
 
-    if (action === 'callback' && req.method === 'POST') {
-      const { code, redirect_uri, ownerId } = await req.json() as { code: string; redirect_uri: string; ownerId?: string };
-      if (!code || !redirect_uri) {
-        return new Response(JSON.stringify({ error: '缺少必填欄位' }), { status: 400, headers: corsHeaders });
-      }
-      const channel = await getLoginChannel(supabase, ownerId);
-      if (!channel) {
-        return new Response(JSON.stringify({ error: NOT_CONFIGURED }), { status: 500, headers: corsHeaders });
-      }
-      const { channelId, channelSecret } = channel;
-
-      // ── 用 code 換 token ──────────────────────────────────────────────
-      const tokenRes = await fetch('https://api.line.me/oauth2/v2.1/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          code,
-          redirect_uri,
-          client_id: channelId,
-          client_secret: channelSecret,
-        }),
-      });
-      const tokenJson = await tokenRes.json();
-      if (!tokenRes.ok || !tokenJson.id_token) {
-        return new Response(JSON.stringify({ error: tokenJson.error_description ?? 'LINE 登入交換失敗' }), { status: 502, headers: corsHeaders });
-      }
-
-      // ── 驗證 id_token 簽章 + 內容 ──────────────────────────────────────
-      const { payload } = await jwtVerify(tokenJson.id_token, LINE_JWKS, {
-        issuer: 'https://access.line.me',
-        audience: channelId,
-      });
-      const lineUserId = payload.sub as string;
-      const displayName = (payload.name as string | undefined) ?? '';
-      const pictureUrl = (payload.picture as string | undefined) ?? null;
-      if (!lineUserId) {
-        return new Response(JSON.stringify({ error: 'LINE 回傳資料不完整' }), { status: 502, headers: corsHeaders });
-      }
-
-      return await issueSessionForLineUser(supabase, lineUserId, displayName, pictureUrl, channelId, corsHeaders);
-    }
+    // 舊的 OAuth code 換 token 入口（action === 'callback'）已於 2026-09-25 移除：
+    // 那條路把 state 當成 ownerId 用、沒有驗證登入請求來源（CSRF），而且現在 LINE 登入
+    // 全部走上面的 LIFF verify，前端的 /online-booking/line-callback 頁面也一併刪除。
 
     return new Response('not found', { status: 404, headers: corsHeaders });
   } catch (e: unknown) {
