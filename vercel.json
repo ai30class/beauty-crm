@@ -14,6 +14,7 @@
       "headers": [
         { "key": "X-Frame-Options", "value": "DENY" },
         { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'" },
+        { "key": "Content-Security-Policy-Report-Only", "value": "default-src 'self'; script-src 'self' https://static.line-scdn.net https://liffsdk.line-scdn.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://uoqdkzdyjuvspwqijkdh.supabase.co https://*.line-scdn.net; font-src 'self' data:; connect-src 'self' https://uoqdkzdyjuvspwqijkdh.supabase.co https://api.line.me https://access.line.me https://liff.line.me https://api-data.line.me https://*.line-scdn.net https://uts-front.line-apps.com; frame-src https://liff.line.me https://liff-subwindow.line.me https://access.line.me; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://access.line.me; report-uri https://uoqdkzdyjuvspwqijkdh.supabase.co/functions/v1/csp-report" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         { "key": "Permissions-Policy", "value": "camera=(self), microphone=(), geolocation=(), payment=(), usb=()" }

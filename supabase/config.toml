@@ -3,3 +3,7 @@ enable_confirmations = false
 
 [auth.email]
 enable_confirmations = false
+
+# csp-report：收瀏覽器的 CSP 違規報告，瀏覽器送報告不帶登入資訊，正式環境已在 Supabase 後台關掉 Verify JWT（2026-09-25）
+[functions.csp-report]
+verify_jwt = false
