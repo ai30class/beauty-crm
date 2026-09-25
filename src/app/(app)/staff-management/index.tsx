@@ -12,7 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { readUriAsArrayBuffer } from '@/lib/clientPhotos';
 import { supabase } from '@/client/supabase';
-import { getStaff, createStaff, updateStaff, deleteStaff, getPhotoUrl, getStaffWithLoginAccounts, createStaffAccount } from '@/db/api';
+import { getStaff, createStaff, updateStaff, deleteStaff, getPhotoUrl, getStaffWithLoginAccounts, createStaffAccount, getMyShopOwnerId } from '@/db/api';
 import type { Staff } from '@/types/types';
 
 const COLORS = ['#e8789a', '#8b9de8', '#5dc0a0', '#e8a87c', '#c49de8', '#e8d47c', '#7cbde8'];
@@ -27,7 +27,9 @@ async function compressAndUploadAvatar(uri: string, mimeType?: string, width?: n
   const actions = (width && width > 500) ? [{ resize: { width: 500 } }] : [];
   const compressed = await manipulateAsync(uri, actions, { compress: isPng ? 1 : 0.85, format });
   const ext = isPng ? 'png' : 'jpg';
-  const path = `staff-avatars/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+  // 路徑第二層是店家 ID：migration 00111 規定只能上傳／刪除自己店資料夾裡的大頭照，避免不同店家互刪
+  const shopId = await getMyShopOwnerId();
+  const path = `staff-avatars/${shopId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
   const body = await readUriAsArrayBuffer(compressed.uri);
   const { error } = await supabase.storage.from(BUCKET).upload(path, body, {
     contentType: isPng ? 'image/png' : 'image/jpeg', upsert: false,
