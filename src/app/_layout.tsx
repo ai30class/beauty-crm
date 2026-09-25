@@ -107,8 +107,8 @@ function usePWAMeta() {
     setMeta('apple-mobile-web-app-title', '美業管家');
     // manifest
     setLink('manifest', '/manifest.json');
-    // Apple touch icon
-    setLink('apple-touch-icon', '/assets/icon.png', { sizes: '192x192' });
+    // Apple touch icon（圖要放 public/ 才會被部署；assets/ 底下的圖正式站讀不到，會拿到 index.html）
+    setLink('apple-touch-icon', '/icons/apple-touch-icon.png', { sizes: '180x180' });
   }, []);
 }
 

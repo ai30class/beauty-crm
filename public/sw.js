@@ -1,11 +1,11 @@
 // 美業管家 Service Worker
 // 負責：離線快取、背景同步、推播通知基礎
 
-const CACHE_NAME = 'beauty-crm-v3';
+const CACHE_NAME = 'beauty-crm-v4';
 const STATIC_ASSETS = [
   '/offline.html',
-  '/assets/icon.png',
-  '/assets/favicon.png',
+  '/icons/icon-192.png',
+  '/icons/favicon-64.png',
 ];
 
 // ── Install：快取靜態資源 ──────────────────────────────────
@@ -90,8 +90,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || '美業管家';
   const options = {
     body: data.body || '您有新的訊息',
-    icon: '/assets/icon.png',
-    badge: '/assets/favicon.png',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/favicon-64.png',
     data: data.url ? { url: data.url } : {},
   };
   event.waitUntil(self.registration.showNotification(title, options));
