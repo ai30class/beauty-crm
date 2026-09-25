@@ -825,6 +825,9 @@ export async function getAvailableSlots(
     const slotStart = new Date(`${dateStr}T${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}:00`);
     const slotEnd = new Date(slotStart.getTime() + (durationMinutes + breakMinutes) * 60000);
     if (slotEnd > closeDate) continue;
+    // 已經過去的時段不列出來（預約當天才會遇到）：資料庫送出時本來就會擋「不能預約已經過去的時間」，
+    // 但畫面上還顯示可選、甚至可以點去登記候補，顧客會以為今天約不了
+    if (slotStart.getTime() <= Date.now()) continue;
 
     // 既有預約衝突
     const conflict = busyRanges.some(r =>
