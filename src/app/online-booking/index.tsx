@@ -8,7 +8,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing, AlertTriangle, MessageCircle, Sparkles, HelpCircle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createOnlineOrder, customerExistsByPhone, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, getPhotoUrl, getSoleOnlineBookingOwnerId, SLOT_TAKEN_MESSAGE } from '@/db/api';
+import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createOnlineOrder, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, getPhotoUrl, getSoleOnlineBookingOwnerId, SLOT_TAKEN_MESSAGE } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import type { ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
 import type { PublicStaff } from '@/db/api';
@@ -120,7 +120,11 @@ export default function OnlineBookingScreen() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [directSuccess, setDirectSuccess] = useState(false);
-  const [isRegisteredCustomer, setIsRegisteredCustomer] = useState<boolean | null>(null); // null=未查詢
+  // 熟客提示只根據「登入者自己在這家店的顧客資料」（getMyCustomerProfile），不再用輸入的電話去查——
+  // 那會讓任何登入帳號拿電話探測某人是不是某店熟客（2026-09-25 第三輪檢測）。實際收不收訂金一律由
+  // create_online_order 送出時決定。null＝不確定（沒有自己的檔案，或電話已改成別支）
+  const [isRegisteredCustomer, setIsRegisteredCustomer] = useState<boolean | null>(null);
+  const [myProfilePhone, setMyProfilePhone] = useState<string | null>(null);
 
   // 取得老闆 ID（用於查公休和時段衝突）——ownerId 這個 local state 才是後面所有
   // 查詢真正依賴的來源，不要再依賴 presetOwnerId（router 的 useLocalSearchParams）：
@@ -213,6 +217,7 @@ export default function OnlineBookingScreen() {
         if (profile) {
           setCustomerName(profile.name);
           setCustomerPhone(profile.phone);
+          setMyProfilePhone(profile.phone);
           if (profile.birthday) setCustomerBirthday(new Date(`${profile.birthday}T12:00:00`));
           setIsRegisteredCustomer(true);
           setStep(s => (s === 'identity' ? 'service' : s));
@@ -635,14 +640,10 @@ export default function OnlineBookingScreen() {
                   placeholder="09xxxxxxxx"
                   placeholderTextColor="#c4a0ae"
                   value={customerPhone}
-                  onChangeText={async (v) => {
+                  onChangeText={(v) => {
                     setCustomerPhone(v);
-                    if (/^09\d{8}$/.test(v) && ownerId) {
-                      const found = await customerExistsByPhone(ownerId, v.trim());
-                      setIsRegisteredCustomer(found);
-                    } else {
-                      setIsRegisteredCustomer(null);
-                    }
+                    // 只有跟自己檔案上的電話一樣才維持熟客提示；改成別支就不預告，送出時再由資料庫判斷
+                    setIsRegisteredCustomer(myProfilePhone && v.trim() === myProfilePhone ? true : null);
                   }}
                   keyboardType="phone-pad"
                   maxLength={10}
@@ -657,10 +658,10 @@ export default function OnlineBookingScreen() {
                   </Text>
                 </View>
               )}
-              {isRegisteredCustomer === false && (
+              {isRegisteredCustomer !== true && /^09\d{8}$/.test(customerPhone) && (
                 <View className="mt-2 flex-row items-center gap-2 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
                   <Text className="font-rounded text-xs text-amber-700">
-                    首次預約的服務項目若需訂金，將於確認時說明
+                    若服務項目需要訂金，將於送出預約時說明
                   </Text>
                 </View>
               )}

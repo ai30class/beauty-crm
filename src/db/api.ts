@@ -34,17 +34,6 @@ export async function getCustomerByPhone(phone: string): Promise<Customer | null
   return data ?? null;
 }
 
-/**
- * 線上預約表單即時顯示「您是我們的熟客」用：透過 SECURITY DEFINER RPC
- * 只回傳 boolean，不外洩顧客 PII，也不受顧客自助登入時的 RLS 限制。
- */
-export async function customerExistsByPhone(ownerId: string, phone: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .rpc('customer_exists_by_phone', { p_owner_id: ownerId, p_phone: phone });
-  if (error) throw error;
-  return !!data;
-}
-
 // 已登入的回頭客：讀出這位顧客上次在這家店留的姓名/電話/生日，不用重打
 export async function getMyCustomerProfile(ownerId: string): Promise<{ id: string; name: string; phone: string; birthday: string | null } | null> {
   const { data, error } = await supabase
