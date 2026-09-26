@@ -425,8 +425,8 @@ export async function getPackagesByCustomer(customerId: string): Promise<Service
   return Array.isArray(data) ? data : [];
 }
 
-// 顧客端：查自己的儲值卡/套票餘額（RLS 依 online_orders.customer_user_id
-// 反查 customer_id，只給選填的顯示欄位，不含商家內部備註）
+// 顧客端：查自己的儲值卡/套票餘額（RLS 只放行「customer_user_id＝自己」的顧客檔案的套票，
+// 00114 起不再看線上預約掛在誰名下；只選顯示用欄位，不含商家內部備註）
 export async function getMyPackages(): Promise<Pick<ServicePackage,
   'id' | 'package_type' | 'name' | 'total_sessions' | 'used_sessions' |
   'initial_amount' | 'remaining_amount' | 'purchase_date' | 'expire_date' | 'is_active'
