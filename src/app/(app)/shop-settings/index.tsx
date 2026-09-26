@@ -74,6 +74,8 @@ export default function ShopSettingsScreen() {
 
   // 營業時間
   const [hours, setHours] = useState<BusinessHours>(DEFAULT_HOURS);
+  // 線上預約可不可以約當天（00113），預設可以
+  const [allowSameDay, setAllowSameDay] = useState(true);
 
   // LINE 官方帳號（訂金私訊確認用）
   const [lineOaId, setLineOaId] = useState('');
@@ -114,6 +116,7 @@ export default function ShopSettingsScreen() {
           setDescription(profile.description);
           setParkingInfo(profile.parking_info ?? '');
           setHours({ ...DEFAULT_HOURS, ...profile.business_hours });
+          setAllowSameDay(profile.allow_same_day_online_booking !== false);
           setLineOaId(profile.line_oa_id ?? '');
           setNoShowThreshold(String(profile.no_show_alert_threshold ?? 3));
         }
@@ -183,6 +186,7 @@ export default function ShopSettingsScreen() {
         description: description.trim(),
         parking_info: parkingInfo.trim() || null,
         business_hours: hours,
+        allow_same_day_online_booking: allowSameDay,
         line_oa_id: lineOaId.trim() || null,
         no_show_alert_threshold: threshold,
       });
@@ -340,6 +344,21 @@ export default function ShopSettingsScreen() {
           </View>
           <Text className="font-rounded text-xs text-muted-foreground mt-2 px-1">
             💡 關閉當天開關即代表公休，線上預約系統將自動封鎖該日
+          </Text>
+
+          {/* 線上預約可不可以約當天（00113） */}
+          <View className="bg-card border border-border rounded-2xl px-4 py-3 mt-3 flex-row items-center gap-3">
+            <Text className="font-rounded text-sm font-medium text-foreground flex-1">線上預約可以約當天</Text>
+            <Switch
+              value={allowSameDay}
+              onValueChange={setAllowSameDay}
+              trackColor={{ false: '#f0e0e8', true: '#e8789a' }}
+              thumbColor="#fff"
+              style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
+            />
+          </View>
+          <Text className="font-rounded text-xs text-muted-foreground mt-2 px-1">
+            💡 關掉後，顧客在線上最早只能約明天，今天會顯示「不開放當天」並提示來電；店家自己在後台幫客人建立預約不受影響（例如現場客、電話客）
           </Text>
         </View>
 

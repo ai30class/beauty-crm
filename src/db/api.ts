@@ -1562,10 +1562,10 @@ export async function getShopProfile(): Promise<ShopProfile | null> {
   return data ?? null;
 }
 
-export async function getShopProfileByOwner(ownerId: string): Promise<Pick<ShopProfile, 'shop_name' | 'phone' | 'address' | 'description' | 'business_hours' | 'line_oa_id' | 'parking_info'> | null> {
+export async function getShopProfileByOwner(ownerId: string): Promise<Pick<ShopProfile, 'shop_name' | 'phone' | 'address' | 'description' | 'business_hours' | 'line_oa_id' | 'parking_info' | 'allow_same_day_online_booking'> | null> {
   const { data, error } = await supabase
     .from('shop_profiles')
-    .select('shop_name, phone, address, description, business_hours, line_oa_id, parking_info')
+    .select('shop_name, phone, address, description, business_hours, line_oa_id, parking_info, allow_same_day_online_booking')
     .eq('owner_id', ownerId)
     .maybeSingle();
   if (error) throw error;
@@ -1581,6 +1581,7 @@ export async function upsertShopProfile(payload: {
   line_oa_id?: string | null;
   no_show_alert_threshold?: number;
   parking_info?: string | null;
+  allow_same_day_online_booking?: boolean;
 }): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('未登入');

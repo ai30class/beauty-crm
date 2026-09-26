@@ -136,7 +136,7 @@ export default function OnlineBookingScreen() {
     if (typeof window === 'undefined') return '';
     try { return localStorage.getItem('bcrm_pending_owner_id') ?? ''; } catch { return ''; }
   });
-  const [shopProfile, setShopProfile] = useState<Pick<ShopProfile, 'shop_name' | 'phone' | 'address' | 'description' | 'business_hours' | 'line_oa_id' | 'parking_info'> | null>(null);
+  const [shopProfile, setShopProfile] = useState<Pick<ShopProfile, 'shop_name' | 'phone' | 'address' | 'description' | 'business_hours' | 'line_oa_id' | 'parking_info' | 'allow_same_day_online_booking'> | null>(null);
 
   // presetOwnerId 之後才解析出來（或改變）的話，同步更新 ownerId，同時把
   // 這把 key 存進 localStorage（跟 customer-auth.tsx 共用），供下次兜底用
@@ -299,6 +299,11 @@ export default function OnlineBookingScreen() {
     return !shopProfile.business_hours[dayKey]?.open;
   };
 
+  // 店家關掉「線上預約可以約當天」（00113）：今天不能選，資料庫送出時也會擋
+  const isSameDayClosed = (d: Date): boolean =>
+    shopProfile?.allow_same_day_online_booking === false && toLocalDateStr(d) === toLocalDateStr(new Date());
+  const sameDayClosedMessage = '本店線上預約不開放當天，請選擇明天以後的日期';
+
   // 日期速覽列：讓顧客一眼掃過去未來幾天哪幾天還有空，不用一天一天手動翻。
   // 只算「有沒有空」的布林值，不算完整時段，換頁選到那天才會再查一次完整時段
   // （下面既有的 slots useEffect），避免這裡的預覽跟正式選時段的資料邏輯重複。
@@ -321,7 +326,7 @@ export default function OnlineBookingScreen() {
         const staffToCheck = anyStaffMode ? staffList : ([selectedStaff].filter(Boolean) as PublicStaff[]);
         const results = await Promise.all(days.map(async d => {
           const dateStr = toLocalDateStr(d);
-          if (isHoliday(d) || isBusinessHoliday(d)) return { dateStr, available: false };
+          if (isHoliday(d) || isBusinessHoliday(d) || isSameDayClosed(d)) return { dateStr, available: false };
           if (staffToCheck.length === 0) {
             const s = await getAvailableSlots(ownerId, null, dateStr, totalDuration, selectedTemplate.break_after_minutes, customerPhone || undefined, shopProfile?.business_hours);
             return { dateStr, available: s.some(x => x.available) };
@@ -926,7 +931,8 @@ export default function OnlineBookingScreen() {
                   const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
                   const dateStr = toLocalDateStr(d);
                   const isSelected = dateStr === toLocalDateStr(selectedDate);
-                  const dayOff = isHoliday(d) || isBusinessHoliday(d);
+                  const sameDayClosed = isSameDayClosed(d);
+                  const dayOff = isHoliday(d) || isBusinessHoliday(d) || sameDayClosed;
                   const hasSlot = dateOverview[dateStr];
                   return (
                     <Pressable
@@ -945,7 +951,9 @@ export default function OnlineBookingScreen() {
                       <Text className="font-rounded text-base font-bold mt-0.5" style={{ color: isSelected ? '#fff' : '#e8789a' }}>
                         {d.getDate()}
                       </Text>
-                      {dateOverviewLoading ? (
+                      {sameDayClosed ? (
+                        <Text className="font-rounded mt-0.5" style={{ fontSize: 10, color: isSelected ? '#fff' : '#c4a0ae' }}>不開放</Text>
+                      ) : dateOverviewLoading ? (
                         <View className="w-1.5 h-1.5 rounded-full mt-1" style={{ backgroundColor: isSelected ? '#ffffff88' : '#d0b0be' }} />
                       ) : (
                         <View
@@ -967,11 +975,15 @@ export default function OnlineBookingScreen() {
                 <CalendarDays size={16} color="#e8789a" />
                 <Text className="font-rounded text-base text-foreground">{toLocalDateStr(selectedDate)}</Text>
               </View>
-              {(isHoliday(selectedDate) || isBusinessHoliday(selectedDate)) && (
+              {(isHoliday(selectedDate) || isBusinessHoliday(selectedDate)) ? (
                 <View className="bg-destructive/10 px-2 py-0.5 rounded-full">
                   <Text className="font-rounded text-xs text-destructive">公休日</Text>
                 </View>
-              )}
+              ) : isSameDayClosed(selectedDate) ? (
+                <View className="bg-destructive/10 px-2 py-0.5 rounded-full">
+                  <Text className="font-rounded text-xs text-destructive">不開放當天</Text>
+                </View>
+              ) : null}
             </Pressable>
 
             {showDatePicker && (
@@ -988,7 +1000,29 @@ export default function OnlineBookingScreen() {
               </View>
             )}
 
-            {(isHoliday(selectedDate) || isBusinessHoliday(selectedDate)) ? (
+            {isSameDayClosed(selectedDate) && !(isHoliday(selectedDate) || isBusinessHoliday(selectedDate)) ? (
+              <View className="rounded-2xl p-4 items-center gap-1.5"
+                style={{ backgroundColor: '#fff8e0', borderWidth: 1, borderColor: '#f5d87a' }}>
+                <Text className="font-rounded text-sm font-semibold" style={{ color: '#9a6400' }}>
+                  今天不開放線上預約
+                </Text>
+                <Text className="font-rounded text-xs text-center" style={{ color: '#b08000' }}>
+                  {sameDayClosedMessage}
+                </Text>
+                {!!shopProfile?.phone?.trim() && (
+                  <Pressable
+                    className="flex-row items-center gap-1.5 mt-1 px-3 py-1.5 rounded-full active:opacity-70"
+                    style={{ backgroundColor: '#fdecc0' }}
+                    onPress={() => Linking.openURL(`tel:${shopProfile.phone.trim()}`)}
+                  >
+                    <Phone size={13} color="#9a6400" />
+                    <Text className="font-rounded text-xs font-semibold" style={{ color: '#9a6400' }}>
+                      當天預約請來電 {shopProfile.phone.trim()}
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            ) : (isHoliday(selectedDate) || isBusinessHoliday(selectedDate)) ? (
               <View className="rounded-2xl p-4 items-center gap-1.5"
                 style={{ backgroundColor: '#fff8e0', borderWidth: 1, borderColor: '#f5d87a' }}>
                 <Text className="font-rounded text-sm font-semibold" style={{ color: '#9a6400' }}>
@@ -1057,6 +1091,7 @@ export default function OnlineBookingScreen() {
               onPress={() => {
                 setError('');
                 if (isHoliday(selectedDate)) { setError('請選擇非公休日'); return; }
+                if (isSameDayClosed(selectedDate)) { setError(sameDayClosedMessage); return; }
                 if (!selectedTime) { setError('請選擇時段'); return; }
                 // 不指定人員模式：從這個時段有空的人員裡挑一位，實際指派給這筆預約
                 if (anyStaffMode) {

@@ -534,6 +534,8 @@ export interface ShopProfile {
   parking_info: string | null;
   // 進階版功能：服務記錄施術前後照片（migration 00097），逐店手動開啟，預設關閉
   service_photos_enabled: boolean;
+  // 線上預約可不可以約當天（migration 00113），預設 true；false＝顧客線上最早只能約明天
+  allow_same_day_online_booking: boolean;
   created_at: string;
   updated_at: string;
 }
