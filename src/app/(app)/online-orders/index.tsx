@@ -8,10 +8,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, Check, X, ShoppingBag, Pencil, Ban, Trash2, AlertTriangle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getOnlineOrders, updateOnlineOrderStatus, updateOnlineOrder, getStaff, getOnlineOrderAddonsByOrderIds, incrementCustomerNoShow, deleteOnlineOrder } from '@/db/api';
+import { getOnlineOrders, updateOnlineOrderStatus, updateOnlineOrder, getStaff, getOnlineOrderAddonsByOrderIds, incrementCustomerNoShow, deleteOnlineOrder, getCustomerLinkRequests } from '@/db/api';
+import type { CustomerLinkRequest } from '@/db/api';
 import type { OnlineOrder, Staff } from '@/types/types';
 import { DONE_TEXT_COLOR, isDoneStatus } from '@/lib/appointmentStyle';
 import { useDeletePinGate } from '@/lib/deletePinGate';
+import CustomerLinkCard from '@/components/CustomerLinkCard';
 
 // ── 共用常數 ──────────────────────────────────────────────
 
@@ -220,6 +222,8 @@ export default function OnlineOrdersScreen() {
   const [orders, setOrders] = useState<OnlineOrder[]>([]);
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [addonsByOrder, setAddonsByOrder] = useState<Record<string, string>>({});
+  // 待確認是不是本人（00115）：key＝「顧客檔 ID:預約者帳號 ID」，對到的那筆預約上顯示確認卡片
+  const [linkRequests, setLinkRequests] = useState<Record<string, CustomerLinkRequest>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'paid' | 'pending_payment' | 'pending_transfer_confirm' | 'confirmed'>('all');
   const [editingOrder, setEditingOrder] = useState<OnlineOrder | null>(null);
@@ -235,9 +239,10 @@ export default function OnlineOrdersScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [o, s] = await Promise.all([getOnlineOrders(), getStaff()]);
+      const [o, s, reqs] = await Promise.all([getOnlineOrders(), getStaff(), getCustomerLinkRequests().catch(() => [])]);
       setOrders(o);
       setStaffList(s);
+      setLinkRequests(Object.fromEntries(reqs.map(r => [`${r.customer_id}:${r.requester_user_id}`, r])));
       const addons = await getOnlineOrderAddonsByOrderIds(o.map(x => x.id));
       const map: Record<string, string[]> = {};
       for (const a of addons) {
@@ -387,6 +392,9 @@ export default function OnlineOrdersScreen() {
             const d = new Date(item.appointment_time);
             const apptStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
             const isPendingTransfer = item.status === 'pending_transfer_confirm';
+            const linkRequest = item.customer_id && item.customer_user_id
+              ? linkRequests[`${item.customer_id}:${item.customer_user_id}`]
+              : undefined;
 
             return (
               <View
@@ -538,6 +546,7 @@ export default function OnlineOrdersScreen() {
                 {item.notes ? (
                   <Text className="font-rounded text-xs text-muted-foreground" numberOfLines={2}>備：{item.notes}</Text>
                 ) : null}
+                {linkRequest ? <CustomerLinkCard request={linkRequest} onResolved={load} /> : null}
               </View>
             );
           }}

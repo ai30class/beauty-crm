@@ -7,7 +7,7 @@ import {ActivityIndicator,Pressable, ScrollView, Text,
   View,
 } from 'react-native';
 import { supabase } from '@/client/supabase';
-import { getMyPackages } from '@/db/api';
+import { getMyPackages, getMyCustomerLinkPending } from '@/db/api';
 import type { OnlineOrder, ServicePackage } from '@/types/types';
 
 type MyPackage = Pick<ServicePackage,
@@ -19,6 +19,8 @@ export default function MyOrdersScreen() {
   const router = useRouter();
   const [orders, setOrders] = useState<OnlineOrder[]>([]);
   const [packages, setPackages] = useState<MyPackage[]>([]);
+  // 有店家還在確認我的身分（00115）：確認前看不到那家店的套票，顯示提示讓顧客知道不是不見了
+  const [linkPending, setLinkPending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState('');
   const [userPhone, setUserPhone] = useState('');
@@ -58,8 +60,12 @@ export default function MyOrdersScreen() {
           staff: o.staff_id ? staffById.get(o.staff_id) : undefined,
         })));
 
-        const myPackages = await getMyPackages().catch(() => []);
+        const [myPackages, pending] = await Promise.all([
+          getMyPackages().catch(() => []),
+          getMyCustomerLinkPending().catch(() => false),
+        ]);
         setPackages(myPackages);
+        setLinkPending(pending);
       } catch (e) {
         console.error('載入預約記錄失敗', e);
         setOrders([]);
@@ -176,6 +182,15 @@ export default function MyOrdersScreen() {
             <KeyRound size={16} color="#c4a0ae" />
             <Text className="font-rounded text-sm text-foreground flex-1">修改密碼</Text>
           </Pressable>
+        )}
+
+        {linkPending && (
+          <View className="mx-5 mb-3 flex-row items-start gap-2 rounded-2xl px-4 py-3" style={{ backgroundColor: '#fff8ee', borderWidth: 1, borderColor: '#f5d9a8' }}>
+            <Wallet size={14} color="#c98a1a" style={{ marginTop: 2 }} />
+            <Text className="font-rounded text-xs flex-1" style={{ color: '#9a6a12' }}>
+              店家正在確認您的身分，確認後就會在這裡看到您的儲值卡／套票。預約不受影響喔 🌸
+            </Text>
+          </View>
         )}
 
         {/* 我的儲值卡/套票 */}

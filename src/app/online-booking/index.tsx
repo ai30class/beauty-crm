@@ -8,7 +8,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, ArrowRight, User2, Clock, DollarSign, CalendarDays, CheckCircle, Cake, Store, Phone, MapPin, FileText, LogIn, ClipboardList, X, BellRing, AlertTriangle, MessageCircle, Sparkles, HelpCircle } from 'lucide-react-native';
 import DateTimePicker from 'react-native-ui-datepicker';
-import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createOnlineOrder, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, getPhotoUrl, getSoleOnlineBookingOwnerId, SLOT_TAKEN_MESSAGE } from '@/db/api';
+import { getActiveStaffByOwner, getServiceTemplatesByOwner, getAvailableSlots, getHolidaysByOwner, createOnlineOrder, getShopProfileByOwner, createWaitlistEntry, getMyCustomerProfile, getMyBookingPrefill, getPhotoUrl, getSoleOnlineBookingOwnerId, SLOT_TAKEN_MESSAGE } from '@/db/api';
 import { supabase } from '@/client/supabase';
 import type { ServiceTemplate, TimeSlot, ShopProfile, BusinessHours } from '@/types/types';
 import type { PublicStaff } from '@/db/api';
@@ -220,6 +220,22 @@ export default function OnlineBookingScreen() {
           setMyProfilePhone(profile.phone);
           if (profile.birthday) setCustomerBirthday(new Date(`${profile.birthday}T12:00:00`));
           setIsRegisteredCustomer(true);
+          setStep(s => (s === 'identity' ? 'service' : s));
+          return;
+        }
+        // 還沒連結顧客檔的（電話對到舊顧客檔、店家還在確認是不是本人；00115）：
+        // 帶入他自己上次預約時填的。確認中的資料庫照舊當熟客免訂金；被店家標記不是本人的不預告熟客
+        const prefill = await getMyBookingPrefill(ownerId).catch(() => null);
+        if (cancelled) return;
+        if (prefill) {
+          // 已連結的顧客剛好碰到登入憑證還沒就緒時，上面查不到、這裡查得到——再確認一次是不是已連結
+          const linked = prefill.link_pending ? null : await getMyCustomerProfile(ownerId).catch(() => null);
+          if (cancelled) return;
+          setCustomerName(prefill.name);
+          setCustomerPhone(prefill.phone);
+          setMyProfilePhone(prefill.phone);
+          if (prefill.birthday) setCustomerBirthday(new Date(`${prefill.birthday}T12:00:00`));
+          setIsRegisteredCustomer(prefill.link_pending || linked ? true : null);
           setStep(s => (s === 'identity' ? 'service' : s));
           return;
         }

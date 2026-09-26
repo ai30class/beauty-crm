@@ -13,8 +13,11 @@ import {
 import {
   getCustomerById, getServiceRecordsByCustomer,
   getAppointmentsByCustomer, deleteCustomer, deleteServiceRecord,
-  getPackagesByCustomer, updateCustomer, getShopProfile, getClientConsentsByCustomer
+  getPackagesByCustomer, updateCustomer, getShopProfile, getClientConsentsByCustomer,
+  getCustomerLinkRequests
 } from '@/db/api';
+import type { CustomerLinkRequest } from '@/db/api';
+import CustomerLinkCard from '@/components/CustomerLinkCard';
 import { CONSENT_FORM_TITLE } from '@/lib/consentForms';
 import { classifyCustomerTier, TIER_LABEL, TIER_COLOR } from '@/lib/customerTier';
 import {
@@ -32,6 +35,8 @@ export default function CustomerDetailScreen() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [packages, setPackages] = useState<ServicePackage[]>([]);
   const [consents, setConsents] = useState<ClientConsent[]>([]);
+  // 有 LINE 帳號用這位顧客的電話預約、等店家確認是不是本人（00115）
+  const [linkRequests, setLinkRequests] = useState<CustomerLinkRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAllRecords, setShowAllRecords] = useState(false);
 
@@ -66,6 +71,8 @@ export default function CustomerDetailScreen() {
         getPackagesByCustomer(id),
         getClientConsentsByCustomer(id).catch(() => []),
       ]);
+      const reqs = await getCustomerLinkRequests().catch(() => []);
+      setLinkRequests(reqs.filter(r => r.customer_id === id));
       setCustomer(c);
       setRecords(r);
       setAppointments(a);
@@ -230,6 +237,11 @@ export default function CustomerDetailScreen() {
       </View>
 
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerClassName="pb-12">
+        {linkRequests.length > 0 && (
+          <View className="mx-5 mb-4 gap-3">
+            {linkRequests.map(r => <CustomerLinkCard key={r.id} request={r} onResolved={load} />)}
+          </View>
+        )}
         {/* 基本資訊卡片 */}
         <View className="mx-5 mb-4 bg-card rounded-2xl p-4 border border-border"
           style={{ shadowColor: '#e8789a', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 2 }}>

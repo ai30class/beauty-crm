@@ -45,6 +45,56 @@ export async function getMyCustomerProfile(ownerId: string): Promise<{ id: strin
   return data;
 }
 
+// 預約頁自動帶入（00115）：已連結的讀顧客檔；電話對到舊顧客檔、店家還沒確認身分的，
+// 只帶他自己上次預約時填的（不會帶出店家顧客檔的任何資料）。link_pending＝店家確認中
+export async function getMyBookingPrefill(ownerId: string): Promise<{ name: string; phone: string; birthday: string | null; link_pending: boolean } | null> {
+  const { data, error } = await supabase.rpc('get_my_booking_prefill', { p_owner_id: ownerId });
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
+// 顧客端「我的套票」用：有沒有店家還在確認我的身分（00115）
+export async function getMyCustomerLinkPending(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('my_customer_link_pending');
+  if (error) throw error;
+  return data === true;
+}
+
+// ─── 顧客身分確認（00115，只有店家本人拿得到） ──────────────────────────────────
+
+export type CustomerLinkRequest = {
+  id: string;
+  customer_id: string;
+  requester_user_id: string;
+  status: 'pending' | 'linked' | 'rejected' | 'superseded';
+  requested_name: string;
+  requested_phone: string;
+  requested_birthday: string | null;
+  line_display_name: string | null;
+  line_picture_url: string | null;
+  customer_name: string;
+  customer_phone: string;
+  customer_birthday: string | null;
+  last_visit_date: string | null;
+  visit_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+// 待確認清單：員工呼叫會拿到空的（函式只回傳 owner_id = 自己的）
+export async function getCustomerLinkRequests(): Promise<CustomerLinkRequest[]> {
+  const { data, error } = await supabase.rpc('get_customer_link_requests', { p_status: 'pending' });
+  if (error) throw error;
+  return (Array.isArray(data) ? data : []).map((r: CustomerLinkRequest) => ({ ...r, visit_count: Number(r.visit_count ?? 0) }));
+}
+
+// 店家按「是本人」（isSelf=true）或「不是本人」；回傳給店家看的結果文字
+export async function resolveCustomerLinkRequest(id: string, isSelf: boolean): Promise<string> {
+  const { data, error } = await supabase.rpc('resolve_customer_link_request', { p_request_id: id, p_is_self: isSelf });
+  if (error) throw error;
+  return typeof data === 'string' ? data : '已處理';
+}
+
 export async function getCustomers(): Promise<Customer[]> {
   const { data, error } = await supabase
     .from('customers')
