@@ -125,10 +125,31 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
-    const { data: ok } = await admin.rpc('check_cron_secret', {
-      p_secret: req.headers.get('x-cron-secret') ?? '',
-    });
+    // 暗號檢查偶爾會因為資料庫一時出錯而失敗（9/24、9/26 整點兩個排程同時跑時各發生一次，
+    // 舊寫法沒看 error，出錯就被當成「暗號不對」回 401，排程那次就白跑了）。
+    // 改成：出錯先記錄、等 1.5 秒再試一次；確定查到「暗號不對」才回 401，
+    // 連續兩次都出錯則回 500，在 Invocations 會顯示成紅色，跟真的被擋（401）分得開。
+    let ok: unknown = null;
+    let checkFailed = true;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const { data, error } = await admin.rpc('check_cron_secret', {
+        p_secret: req.headers.get('x-cron-secret') ?? '',
+      });
+      // 正常一定回 true 或 false；有錯誤、或回了其他東西（例如 null），都當成「這次沒查成功」
+      if (!error && typeof data === 'boolean') { ok = data; checkFailed = false; break; }
+      console.error(`⚠️ 暗號檢查第 ${attempt} 次沒查成功`, error?.message ?? error ?? `回傳值：${JSON.stringify(data)}`);
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 1500));
+    }
+    if (checkFailed) {
+      return new Response(JSON.stringify({ error: 'secret check failed' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     if (ok !== true) {
+      // 留個線索方便追查（只記有沒有帶、長度多少，不記暗號本身）
+      const len = (req.headers.get('x-cron-secret') ?? '').length;
+      console.warn(`🚫 暗號不對，拒絕執行（有帶暗號：${len > 0}，長度 ${len}）`);
       return new Response(JSON.stringify({ error: 'unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
