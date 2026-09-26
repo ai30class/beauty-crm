@@ -29,6 +29,28 @@ async function findLineUserId(supabase: ReturnType<typeof createClient>, custome
   return identity?.line_user_id ?? null;
 }
 
+// 依「預約」找出要提醒的 LINE userId（身分確認規劃第一步，2026-09-26）：
+// 線上預約是顧客本人用 LINE 登入後送出的，直接用「送出預約的那個帳號」找 LINE，
+// 不再繞經顧客檔——這樣電話對到舊顧客檔、店家還沒確認身分（還沒綁定）時，本人照樣收得到提醒；
+// 用別人電話預約的，提醒也只會發給預約的人自己，不會發到那支電話原本主人的 LINE。
+// 店家後台手動建的預約（沒有 customer_user_id），跟以前一樣透過顧客檔找。
+async function findLineUserIdForAppt(
+  supabase: ReturnType<typeof createClient>,
+  a: { customer_id: string | null; customer_user_id: string | null },
+  loginChannelId: string,
+): Promise<string | null> {
+  if (a.customer_user_id) {
+    const { data: identity } = await supabase
+      .from('line_identities')
+      .select('line_user_id')
+      .eq('user_id', a.customer_user_id)
+      .eq('login_channel_id', loginChannelId)
+      .maybeSingle();
+    return identity?.line_user_id ?? null;
+  }
+  return a.customer_id ? await findLineUserId(supabase, a.customer_id, loginChannelId) : null;
+}
+
 // 統一撈「預約時間落在指定區間內、真的算數的預約」——同時涵蓋商家後台手動建的
 // appointments，跟顧客線上預約（含 LINE 登入）建的 online_orders（只算 paid／
 // confirmed，還在等訂金確認的 pending_transfer_confirm 不提醒）。這兩張表原本
@@ -39,7 +61,7 @@ async function fetchDueAppointments(
   supabase: any,
   from: string,
   to: string,
-): Promise<Array<{ id: string; owner_id: string; customer_id: string | null; appointment_time: string; customerName: string }>> {
+): Promise<Array<{ id: string; owner_id: string; customer_id: string | null; customer_user_id: string | null; appointment_time: string; customerName: string }>> {
   const [{ data: appts }, { data: orders }] = await Promise.all([
     supabase
       .from('appointments')
@@ -49,7 +71,7 @@ async function fetchDueAppointments(
       .lte('appointment_time', to),
     supabase
       .from('online_orders')
-      .select('id, owner_id, customer_id, customer_name, appointment_time')
+      .select('id, owner_id, customer_id, customer_user_id, customer_name, appointment_time')
       .in('status', ['paid', 'confirmed'])
       .gte('appointment_time', from)
       .lte('appointment_time', to),
@@ -60,6 +82,7 @@ async function fetchDueAppointments(
     id: a.id as string,
     owner_id: a.owner_id as string,
     customer_id: a.customer_id as string | null,
+    customer_user_id: null,
     appointment_time: a.appointment_time as string,
     customerName: (a.customers?.name as string | undefined) ?? '顧客',
   }));
@@ -68,6 +91,7 @@ async function fetchDueAppointments(
     id: o.id as string,
     owner_id: o.owner_id as string,
     customer_id: o.customer_id as string | null,
+    customer_user_id: (o.customer_user_id as string | null) ?? null,
     appointment_time: o.appointment_time as string,
     customerName: (o.customer_name as string | undefined) ?? '顧客',
   }));
@@ -256,7 +280,7 @@ Deno.serve(async (req) => {
           .eq('owner_id', a.owner_id)
           .maybeSingle();
 
-        const lineUserId = a.customer_id ? await findLineUserId(supabase, a.customer_id, shopLine.loginChannelId) : null;
+        const lineUserId = await findLineUserIdForAppt(supabase, a, shopLine.loginChannelId);
         let sent = false;
         if (lineUserId) {
           sent = await pushLineMessage(
@@ -315,7 +339,7 @@ Deno.serve(async (req) => {
           .eq('owner_id', a.owner_id)
           .maybeSingle();
 
-        const lineUserId = a.customer_id ? await findLineUserId(supabase, a.customer_id, shopLine.loginChannelId) : null;
+        const lineUserId = await findLineUserIdForAppt(supabase, a, shopLine.loginChannelId);
         let sent = false;
         if (lineUserId) {
           sent = await pushLineMessage(
